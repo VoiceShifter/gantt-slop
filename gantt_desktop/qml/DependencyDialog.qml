@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 Dialog {
     id: dialog
+    objectName: "dependencyDialog"
     property string linkId: ""
     property string sourceId: ""
     property string targetId: ""
@@ -34,6 +35,8 @@ Dialog {
                 Label { text: "Тип связи"; color: "#777777" }
                 ComboBox {
                     id: kind
+                    objectName: "dependencyKind"
+                    Accessible.name: "Тип связи"
                     Layout.fillWidth: true
                     model: ["FS · Окончание → Начало", "SS · Начало → Начало", "FF · Окончание → Окончание", "SF · Начало → Окончание"]
                 }
@@ -45,10 +48,19 @@ Dialog {
         }
         Label { text: "Отрицательный лаг разрешён. Циклические связи не допускаются."; font.pixelSize: 11; color: "#777777"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
         RowLayout {
-            Layout.alignment: Qt.AlignRight
-            ActionButton { text: "Отмена"; onClicked: dialog.close() }
+            Layout.fillWidth: true
+            ActionButton {
+                objectName: "deleteDependency"
+                visible: !!dialog.linkId
+                text: "Удалить связь"
+                palette.buttonText: "#cf535d"
+                onClicked: { controller.removeDependency(dialog.linkId); dialog.close() }
+            }
+            Item { Layout.fillWidth: true }
+            ActionButton { text: "Отмена"; objectName: "cancelDependency"; onClicked: dialog.close() }
             ActionButton {
                 text: "Сохранить"; primary: true; objectName: "saveDependency"
+                enabled: !!source.currentValue && !!target.currentValue && source.currentValue !== target.currentValue
                 onClicked: {
                     const relation = ["FS", "SS", "FF", "SF"][kind.currentIndex]
                     const ok = dialog.linkId

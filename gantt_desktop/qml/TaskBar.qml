@@ -151,7 +151,7 @@ Item {
         visible: !controller.bulkMode && !task.summary && !task.milestone
         hoverEnabled: true
         preventStealing: true
-        cursorShape: task.canMove ? Qt.SizeHorCursor : Qt.ForbiddenCursor
+        cursorShape: task.canResizeStart ? Qt.SizeHorCursor : Qt.ForbiddenCursor
         onPressed: function(mouse) { bar.begin("start", leftEdge, mouse) }
         onPositionChanged: function(mouse) { if (pressed) bar.update(leftEdge, mouse) }
         onReleased: bar.finish()
@@ -165,20 +165,25 @@ Item {
         visible: !controller.bulkMode && !task.summary && !task.milestone
         hoverEnabled: true
         preventStealing: true
-        cursorShape: Qt.SizeHorCursor
+        cursorShape: task.canResizeEnd ? Qt.SizeHorCursor : Qt.ForbiddenCursor
         onPressed: function(mouse) { bar.begin("end", rightEdge, mouse) }
         onPositionChanged: function(mouse) { if (pressed) bar.update(rightEdge, mouse) }
         onReleased: bar.finish()
         onCanceled: { bar.dragging = false; bar.preview = ({}) }
     }
     Repeater {
-        model: task.summary ? [] : ["S", "F"]
-        delegate: Rectangle {
+        model: ["S", "F"]
+        delegate: Item {
             required property string modelData
-            x: modelData === "S" ? -18 : bar.width + 5
-            y: 5; width: 12; height: 12; radius: 6
-            color: "#f4f4f4"; border.color: "#898f95"
+            x: modelData === "S" ? -22 : bar.width
+            width: 22; height: 22
             visible: !controller.bulkMode && (bar.over || workspace.linkSource !== "")
+            Rectangle {
+                anchors.centerIn: parent
+                width: 12; height: 12; radius: 6
+                readonly property bool origin: workspace.linkSource === task.taskId && workspace.sourceEnd === modelData
+                color: origin ? "#dceeff" : "#f4f4f4"; border.color: origin ? "#2387df" : "#898f95"
+            }
             MouseArea {
                 id: linkArea
                 objectName: "link-" + modelData + "-" + task.taskId
@@ -207,11 +212,13 @@ Item {
                     workspace.updateLink(point.x, point.y)
                 }
                 onReleased: function(mouse) {
+                    workspace.linkDragging = false
                     if (linkMoved && workspace.linkSource) {
                         const point = mapToItem(workspace.sceneItem, mouse.x, mouse.y)
                         workspace.finishLink(point.x, point.y)
                     }
                 }
+                onCanceled: workspace.cancelLink()
                 ToolTip.visible: containsMouse
                 ToolTip.text: modelData === "S" ? "Связь от начала задачи" : "Связь от завершения задачи"
             }

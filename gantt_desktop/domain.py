@@ -162,6 +162,9 @@ def new_id() -> str:
     return uuid4().hex[:12]
 
 
+GroupAnchors = dict[str, tuple[datetime, datetime]]
+
+
 @dataclass
 class Project:
     name: str = "Новый проект"
@@ -179,11 +182,32 @@ class Project:
             result.extend(self.descendants(child.id))
         return result
 
+    def ancestors(self, task_id: str) -> set[str]:
+        result = set()
+        parent = self.tasks[task_id].parent
+        while parent:
+            result.add(parent)
+            parent = self.tasks[parent].parent
+        return result
+
     def leaves(self, task_id: str) -> list[Task]:
         task = self.tasks[task_id]
         if task.kind != "group":
             return [task]
         return [t for t in self.descendants(task_id) if t.kind != "group"]
+
+    def dependency_members(self, task_id: str) -> set[str]:
+        """Terminal tasks, including empty groups, represented by an endpoint."""
+        children = self.children(task_id)
+        if not children:
+            return {task_id}
+        return set().union(*(self.dependency_members(t.id) for t in children))
+
+    def can_move(self, task_id: str) -> bool:
+        moving = self.dependency_members(task_id)
+        return not any(self.dependency_members(d.target) & moving
+                       and not self.dependency_members(d.source) <= moving
+                       for d in self.dependencies)
 
     def span(self, task_id: str) -> tuple[datetime, datetime]:
         task = self.tasks[task_id]
@@ -196,12 +220,20 @@ class Project:
     def incoming(self, task_id: str) -> list[Dependency]:
         return [link for link in self.dependencies if link.target == task_id]
 
+    def endpoint_locked(self, task_id: str, end: str) -> bool:
+        return any(d.kind[1] == end for d in self.incoming(task_id))
+
     def topological(self) -> list[str]:
         degree = dict.fromkeys(self.tasks, 0)
-        outgoing: dict[str, list[str]] = {key: [] for key in self.tasks}
+        outgoing: dict[str, set[str]] = {key: set() for key in self.tasks}
+        # Project summary edges onto their members so hierarchy-induced cycles
+        # are rejected too (e.g. Group A → Group B → a child of Group A).
         for link in self.dependencies:
-            degree[link.target] += 1
-            outgoing[link.source].append(link.target)
+            for source in self.dependency_members(link.source):
+                for target in self.dependency_members(link.target):
+                    if target not in outgoing[source]:
+                        outgoing[source].add(target)
+                        degree[target] += 1
         queue = deque(key for key, value in degree.items() if not value)
         result = []
         while queue:
@@ -258,8 +290,8 @@ class Project:
                 raise ScheduleError("Зависимость ссылается на неизвестную задачу.")
             if link.source == link.target or link.kind not in {"FS", "SS", "FF", "SF"}:
                 raise ScheduleError("Некорректный тип или конец зависимости.")
-            if any(self.tasks[key].kind == "group" for key in (link.source, link.target)):
-                raise ScheduleError("В этой версии связываются задачи и вехи, не группы.")
+            if self.dependency_members(link.source) & self.dependency_members(link.target):
+                raise ScheduleError("Нельзя связать группу с её подзадачей.")
             if (link.source, link.target) in pairs:
                 raise ScheduleError("Эти задачи уже связаны.")
             pairs.add((link.source, link.target))
@@ -267,50 +299,111 @@ class Project:
                 raise ScheduleError("Лаг задаётся в рабочих минутах.")
         self.topological()
 
-    def align(self, task_id: str) -> None:
+    def required_start(self, task_id: str) -> datetime | None:
         target = self.tasks[task_id]
+        duration = self.calendar.between(*self.span(task_id)) if target.kind == "group" else target.duration
         starts = []
         for link in self.incoming(task_id):
             source_span = self.span(link.source)
             anchor = source_span[1 if link.kind[0] == "F" else 0]
             anchor = self.calendar.add(anchor, link.lag)
             if link.kind[1] == "F":
-                starts.append(self.calendar.add(anchor, -target.duration))
+                starts.append(self.calendar.add(anchor, -duration))
             else:
                 starts.append(self.calendar.normalize(anchor))
-        if starts:
-            target.start = max(starts)
+        return max(starts) if starts else None
 
-    def propagate(self, changed: set[str]) -> None:
-        affected = set(changed)
-        queue = deque(changed)
-        while queue:
-            source = queue.popleft()
+    def group_anchors(self) -> GroupAnchors:
+        """Capture actual/constrained summary starts before a scheduling edit."""
+        result = {}
+        for task in self.tasks.values():
+            required = self.required_start(task.id) if task.kind == "group" else None
+            if required is not None:
+                result[task.id] = self.span(task.id)[0], required
+        return result
+
+    def align(self, task_id: str, floors: dict[str, datetime] | None = None,
+              previous: GroupAnchors | None = None) -> None:
+        required = self.required_start(task_id)
+        if required is None:
+            return
+        target = self.tasks[task_id]
+        floors = floors if floors is not None else {}
+        if target.kind != "group" or not self.children(task_id):
+            target.start = max(required, floors[task_id]) if task_id in floors else required
+            return
+        members = self.dependency_members(task_id)
+        start = self.span(task_id)[0]
+        shift = self.calendar.between(start, required)
+        if previous is not None and task_id in previous:
+            old_start, old_required = previous[task_id]
+            desired = self.calendar.add(old_start, self.calendar.between(old_required, required))
+            # Preserve slack caused by other child constraints, without applying
+            # a containing group's manual/automatic translation a second time.
+            shift = max(shift, self.calendar.between(start, desired))
+        # A nested group must not undo the containing group's translation.
+        for key in members & floors.keys():
+            shift = max(shift, self.calendar.between(self.tasks[key].start, floors[key]))
+        for key in members:
+            task = self.tasks[key]
+            if shift:
+                task.start = self.calendar.add(task.start, shift)
+                if task.duration:
+                    task.start = self.calendar.normalize(task.start)
+        last = max(sorted(members), key=lambda key: self.span(key)[1])
+        for link in self.incoming(task_id):
+            anchor = self.calendar.add(self.span(link.source)[link.kind[0] == "F"], link.lag)
+            bound = self.calendar.add(anchor, -self.tasks[last].duration) if link.kind[1] == "F" else self.calendar.normalize(anchor)
+            # Start constraints apply to every child; a finish constraint needs
+            # one terminal child to reach that finish. Other children may follow
+            # their own predecessors in either direction on later edits.
+            for key in ({last} if link.kind[1] == "F" else members):
+                floors[key] = max(floors[key], bound) if key in floors else bound
+
+    def propagate(self, changed: set[str], previous: GroupAnchors | None = None,
+                  *, align_changed: bool = False) -> None:
+        previous = self.group_anchors() if previous is None else previous
+        members = {key: self.dependency_members(key) for key in self.tasks}
+        affected = set().union(*(members[key] for key in changed))
+        while True:
+            before = len(affected)
             for link in self.dependencies:
-                if link.source == source and link.target not in affected:
-                    affected.add(link.target)
-                    queue.append(link.target)
-        for task_id in self.topological():
-            if task_id in affected and task_id not in changed:
-                self.align(task_id)
+                # A constrained summary moves as a block, so include siblings
+                # when one member changes, as well as ordinary successors.
+                if members[link.source] & affected or (self.tasks[link.target].kind == "group"
+                                                       and members[link.target] & affected):
+                    affected.update(members[link.target])
+            if len(affected) == before:
+                break
+        order = {key: i for i, key in enumerate(self.topological())}
+
+        def rank(task_id):
+            depth, parent = 0, self.tasks[task_id].parent
+            while parent:
+                depth += 1
+                parent = self.tasks[parent].parent
+            return min(order[key] for key in members[task_id]), depth
+
+        targets = {d.target for d in self.dependencies if members[d.target] & affected}
+        floors: dict[str, datetime] = {}
+        for task_id in sorted(targets, key=rank):
+            if align_changed or task_id not in changed or self.tasks[task_id].kind == "group":
+                self.align(task_id, floors, previous)
 
     def move(self, task_id: str, days: int) -> None:
         if not days:
             return
-        task = self.tasks[task_id]
-        leaves = self.leaves(task_id)
-        moving = {t.id for t in leaves}
-        if any(link.target in moving and link.source not in moving for link in self.dependencies):
-            raise ScheduleError("Нельзя переместить: начало закреплено предшественником. Измените связь или лаг.")
+        moving = self.dependency_members(task_id)
+        if not self.can_move(task_id):
+            raise ScheduleError("Нельзя переместить: даты закреплены предшественником. Измените связь или лаг.")
+        previous = self.group_anchors()
         start, _ = self.span(task_id)
         new_start = self.calendar.shift_date(start, days)
         count = self.calendar.day_distance(start.date(), new_start.date())
-        if leaves:
-            for leaf in leaves:
-                leaf.start = self.calendar.shift_workdays(leaf.start, count)
-        else:
-            task.start = new_start
-        self.propagate(moving)
+        for key in moving:
+            task = self.tasks[key]
+            task.start = self.calendar.shift_workdays(task.start, count)
+        self.propagate(moving, previous)
 
     def resize(self, task_id: str, edge: str, days: int) -> None:
         if not days:
@@ -318,12 +411,15 @@ class Project:
         task = self.tasks[task_id]
         if task.kind != "task":
             raise ScheduleError("Размер меняется только у обычной задачи.")
+        previous = self.group_anchors()
         start, end = self.span(task_id)
         if edge == "start":
-            if self.incoming(task_id):
+            if self.endpoint_locked(task_id, "S"):
                 raise ScheduleError("Начало закреплено предшественником.")
             start = self.calendar.shift_date(start, days)
         elif edge == "end":
+            if self.endpoint_locked(task_id, "F"):
+                raise ScheduleError("Завершение закреплено предшественником.")
             end = self.calendar.shift_date(end, days)
         else:
             raise ScheduleError("Неизвестная граница задачи.")
@@ -331,9 +427,10 @@ class Project:
         if duration <= 0:
             raise ScheduleError("Начало должно быть раньше завершения.")
         task.start, task.duration = start, duration
-        self.propagate({task_id})
+        self.propagate({task_id}, previous)
 
     def add_link(self, source: str, target: str, kind: str = "FS", lag: int = 0) -> str:
+        previous = self.group_anchors()
         link = Dependency(new_id(), source, target, kind, lag)
         self.dependencies.append(link)
         try:
@@ -341,15 +438,24 @@ class Project:
         except (ValueError, KeyError):
             self.dependencies.pop()
             raise
-        self.align(target)
-        self.propagate({target})
+        self.propagate({target}, previous, align_changed=True)
         return link.id
 
+    def hierarchy_changed(self, groups: set[str], previous: GroupAnchors) -> None:
+        linked_groups = {key for d in self.dependencies for key in (d.source, d.target)
+                         if self.tasks[key].kind == "group"}
+        changed = groups & linked_groups
+        if changed:
+            self.validate()
+            self.propagate(changed, previous)
+
     def remove(self, task_id: str) -> None:
+        previous, groups = self.group_anchors(), self.ancestors(task_id)
         deleting = {task_id, *(task.id for task in self.descendants(task_id))}
         self.tasks = {key: task for key, task in self.tasks.items() if key not in deleting}
         self.dependencies = [link for link in self.dependencies
                              if link.source not in deleting and link.target not in deleting]
+        self.hierarchy_changed(groups, previous)
 
     def reorder(self, task_id: str, direction: int) -> None:
         siblings = self.children(self.tasks[task_id].parent)
@@ -363,7 +469,7 @@ class Project:
         self.tasks = {key: self.tasks[key] for key in keys}
 
     def relocate(self, task_id: str, target_id: str, placement: str) -> None:
-        """Reorder/reparent one subtree without modifying any leaf's schedule or links."""
+        """Reparent/reorder a subtree; reschedule only affected summary dependencies."""
         if task_id not in self.tasks or (target_id and target_id not in self.tasks):
             raise ScheduleError("Неизвестная задача для перемещения.")
         if placement not in {"before", "after", "inside", "append"}:
@@ -400,8 +506,17 @@ class Project:
         else:
             index = order.index(parent) + 1 if parent else len(order)
         order.insert(index, task_id)
+        previous, groups = self.group_anchors(), self.ancestors(task_id)
+        old_tasks, old_parent = self.tasks, self.tasks[task_id].parent
         self.tasks[task_id].parent = parent
         self.tasks = {key: self.tasks[key] for key in order}
+        if old_parent != parent:
+            try:
+                self.hierarchy_changed(groups | self.ancestors(task_id), previous)
+            except ScheduleError:
+                self.tasks[task_id].parent = old_parent
+                self.tasks = old_tasks
+                raise
 
     def to_dict(self) -> dict:
         tasks = []

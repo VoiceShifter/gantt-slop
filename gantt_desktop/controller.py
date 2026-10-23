@@ -199,8 +199,7 @@ class Controller(QObject):
         weight = sum(t.duration for t in leaves)
         progress = (sum(t.progress * t.duration for t in leaves) / weight if weight else 0) if summary else task.progress
         status = ("closed" if leaves and all(t.status == "closed" for t in leaves) else status_for_progress(progress)) if summary else task.status
-        moving = {t.id for t in leaves}
-        locked = any(d.target in moving and d.source not in moving for d in self.project.dependencies)
+        locked = not self.project.can_move(task_id)
         return {"taskId": task.id, "rowKind": "task", "parentId": task.parent, "name": task.name,
                 "summary": summary, "milestone": task.kind == "milestone", "color": task.color,
                 "startDay": (start.date() - self._origin).days,
@@ -210,6 +209,8 @@ class Controller(QObject):
                 "duration": duration / 60, "effortHours": effort, "costValue": cost,
                 "effort": f"{effort:g}ч", "cost": f"{cost:,.2f}", "progress": progress,
                 "assignee": task.assignee, "notes": task.notes, "canMove": not locked,
+                "canResizeStart": task.kind == "task" and not self.project.endpoint_locked(task_id, "S"),
+                "canResizeEnd": task.kind == "task" and not self.project.endpoint_locked(task_id, "F"),
                 "status": status, "statusText": STATUS_LABELS[status], "priority": task.priority,
                 "priorityText": "" if summary else PRIORITY_LABELS[task.priority],
                 "hasChildren": bool(self.project.children(task.id)), "kind": task.kind}
@@ -250,7 +251,7 @@ class Controller(QObject):
 
     @Property(list, notify=viewChanged)
     def taskChoices(self):
-        return [{"id": t.id, "name": t.name} for t in self.project.tasks.values() if t.kind != "group"]
+        return [{"id": t.id, "name": t.name} for t in self.project.tasks.values()]
 
     @Property(list, notify=viewChanged)
     def groupChoices(self):
@@ -299,6 +300,9 @@ class Controller(QObject):
             tx = tr["startDay"] + 0.5 if tr["milestone"] else tr["endDay"] if target_finish else tr["startDay"]
             result.append({"id": link.id, "sx": sx, "tx": tx, "sourceRow": si, "targetRow": ti,
                            "sourceFinish": source_finish, "targetFinish": target_finish,
+                           "sourceSummary": sr["summary"], "targetSummary": tr["summary"],
+                           "sourceMilestone": sr["milestone"], "targetMilestone": tr["milestone"],
+                           "sourceSpan": sr["endDay"] - sr["startDay"], "targetSpan": tr["endDay"] - tr["startDay"],
                            "label": f"{self.project.tasks[link.source].name} → {self.project.tasks[link.target].name} ({link.kind}, {link.lag / 60:g}ч)"})
         return result
 
@@ -495,8 +499,10 @@ class Controller(QObject):
         name = {"group": "Новая группа", "milestone": "Новая веха", "task": "Новая задача"}.get(kind, "Новая задача")
 
         def add(project):
+            previous = project.group_anchors()
             project.tasks[task_id] = Task(task_id, name, start, 480 if kind == "task" else 0,
                                           parent, kind, color="#d65ab1" if kind == "milestone" else "#50c7d6")
+            project.hierarchy_changed(project.ancestors(task_id), previous)
         if self.edit("Добавление задачи", add):
             self._collapsed.discard(parent)
             self.refresh()
@@ -509,6 +515,9 @@ class Controller(QObject):
     def editField(self, task_id, field_name, value):
         def update(project):
             task = project.tasks[task_id]
+            date_fields = {"start", "end", "startTime", "endTime", "duration"}
+            previous = project.group_anchors() if field_name in date_fields or field_name == "parent" else {}
+            parents = project.ancestors(task_id) if field_name == "parent" else set()
             if field_name in {"name", "assignee", "notes", "color", "parent"}:
                 if field_name == "parent" and value and value not in project.tasks:
                     raise ScheduleError("Неизвестная группа.")
@@ -555,6 +564,8 @@ class Controller(QObject):
                 elif task.kind != "task":
                     raise ScheduleError("Завершение группы или вехи вычисляется.")
                 else:
+                    if project.endpoint_locked(task_id, "F"):
+                        raise ScheduleError("Завершение закреплено предшественником.")
                     duration = project.calendar.between(start, project.calendar.normalize(changed, False))
                     if duration <= 0:
                         raise ScheduleError("Завершение должно быть позже начала.")
@@ -562,8 +573,10 @@ class Controller(QObject):
             else:
                 raise ScheduleError("Неизвестное поле.")
             project.validate()
-            if field_name in {"start", "end", "startTime", "endTime", "duration"}:
-                project.propagate({task_id})
+            if field_name == "parent":
+                project.hierarchy_changed(parents | project.ancestors(task_id), previous)
+            elif field_name in date_fields:
+                project.propagate({task_id}, previous)
         return self.edit("Изменение задачи", update)
 
     @Slot(str)
@@ -625,8 +638,16 @@ class Controller(QObject):
     @Slot(str, str, str, str, str, result=bool)
     def updateDependency(self, link_id, source, target, kind, lag):
         def update(project):
-            project.dependencies = [d for d in project.dependencies if d.id != link_id]
-            project.add_link(source, target, kind, round(parse_number(lag) * 60))
+            link = next((d for d in project.dependencies if d.id == link_id), None)
+            if link is None:
+                raise ScheduleError("Зависимость не найдена.")
+            values = (source, target, kind, round(parse_number(lag) * 60))
+            if (link.source, link.target, link.kind, link.lag) == values:
+                return
+            previous = project.group_anchors()
+            link.source, link.target, link.kind, link.lag = values
+            project.validate()
+            project.propagate({target}, previous, align_changed=True)
         return self.edit("Изменение зависимости", update)
 
     @Slot(str)
@@ -638,14 +659,20 @@ class Controller(QObject):
         link = next((d for d in self.project.dependencies if d.id == link_id), None)
         return {"id": link.id, "source": link.source, "target": link.target, "kind": link.kind, "lag": link.lag / 60} if link else {}
 
-    @Slot(str, str, float, int, result=bool)
-    def linkAt(self, source, source_end, day, row):
+    @Slot(str, str, float, int, float, result=bool)
+    def linkAt(self, source, source_end, day, row, pixels_per_day=10):
         if not 0 <= row < len(self._rows.records):
             return False
         record = self._rows.records[row]
-        if record["rowKind"] != "task" or record["summary"]:
+        if record["rowKind"] != "task":
             return False
-        target_end = "F" if abs(day - record["endDay"]) < abs(day - record["startDay"]) else "S"
+        left = (record["startDay"] + (0.5 if record["milestone"] else 0)) * pixels_per_day
+        left -= 11 if record["milestone"] else 0
+        right = left + (22 if record["milestone"] else max(6, (record["endDay"] - record["startDay"]) * pixels_per_day))
+        x = day * pixels_per_day
+        if x < left - 22 or x > right + 22:
+            return False
+        target_end = "F" if x > (left + right) / 2 else "S"
         return self.addDependency(source, record["taskId"], source_end + target_end, "0")
 
     @Slot()

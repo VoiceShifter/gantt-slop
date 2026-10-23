@@ -27,6 +27,9 @@ Item {
     readonly property real timelineViewport: Math.max(50, width - gridWidth)
     property alias sceneItem: timelineScene
     property string linkSource: ""
+    property bool linkDragging: false
+    property real linkPointerX: 0
+    property real linkPointerY: 0
     property string sourceEnd: "F"
     property real linkStartX: 0
     property real linkStartY: 0
@@ -34,6 +37,8 @@ Item {
     property real linkMouseY: 0
     property var dayRecords: controller.days
     property var linkRecords: controller.links
+    property string activeLinkId: ""
+    onActiveLinkIdChanged: background.requestPaint()
     signal inspectTask(string taskId)
     signal taskMenuRequested(string taskId)
     signal linkEditRequested(string linkId)
@@ -112,16 +117,25 @@ Item {
     function clampScroll() { scrollX = Math.max(0, Math.min(scrollX, sceneWidth - timelineViewport)) }
     function centerDay(day) { scrollX = Math.max(0, Math.min(sceneWidth - timelineViewport, day * pixelsPerDay - timelineViewport * 0.25)) }
     function beginLink(id, end, x, y) {
-        linkSource = id; sourceEnd = end
-        linkStartX = x; linkStartY = y; linkMouseX = x; linkMouseY = y
+        linkSource = id; sourceEnd = end; linkDragging = true
+        linkStartX = x; linkStartY = y
+        background.hoveredLink = ""
+        updateLink(x, y)
+    }
+    function updateLink(x, y) {
+        linkMouseX = x; linkMouseY = y
+        linkPointerX = gridWidth + x - scrollX
+        linkPointerY = headerHeight + y - body.contentY
         background.requestPaint()
     }
-    function updateLink(x, y) { linkMouseX = x; linkMouseY = y; background.requestPaint() }
-    function cancelLink() { linkSource = ""; background.requestPaint() }
+    function cancelLink() { linkSource = ""; linkDragging = false; background.requestPaint() }
     function finishLink(x, y) {
         const source = linkSource, end = sourceEnd
         cancelLink()
-        controller.linkAt(source, end, x / pixelsPerDay, Math.floor(y / rowHeight))
+        if (x<scrollX || x>scrollX+timelineViewport || y<body.contentY || y>body.contentY+body.height) return
+        const withinRow=y%rowHeight
+        if (withinRow<(rowHeight-22)/2 || withinRow>(rowHeight+22)/2) return
+        controller.linkAt(source, end, x / pixelsPerDay, Math.floor(y / rowHeight), pixelsPerDay)
     }
     function connectTo(target, end) {
         const source = linkSource, kind = sourceEnd + end
@@ -129,6 +143,7 @@ Item {
         controller.addDependency(source, target, kind, "0")
     }
     onPixelsPerDayChanged: {
+        cancelLink()
         const middle = (scrollX + timelineViewport / 2) / previousScale
         scrollX = Math.max(0, middle * pixelsPerDay - timelineViewport / 2)
         previousScale = pixelsPerDay
@@ -139,7 +154,7 @@ Item {
     onWidthChanged: clampScroll()
     Connections {
         target: controller
-        function onViewChanged() { view.cancelRowDrag(); view.clampScroll(); background.requestPaint() }
+        function onViewChanged() { view.cancelLink(); view.cancelRowDrag(); view.clampScroll(); background.hoveredLink=""; background.requestPaint() }
         function onBulkChanged() { if (controller.bulkMode) view.cancelInteractions() }
         function onSelectionChanged() { background.requestPaint() }
         function onFocusRequested(day) { view.centerDay(day) }
@@ -316,6 +331,7 @@ Item {
                                     readOnly: gridRow.rowData.rowKind !== "task" ||
                                               (gridRow.rowData.summary && key !== "start") ||
                                               (key === "start" && !gridRow.rowData.canMove) ||
+                                              (key === "end" && !gridRow.rowData.canResizeEnd) ||
                                               (key === "duration" && gridRow.rowData.milestone)
                                     onActiveFocusChanged: {
                                         if (activeFocus && gridRow.rowData.rowKind === "task") {
@@ -450,8 +466,10 @@ Item {
                         ctx.stroke()
                         let hitPaths = []
                         for (let link of view.linkRecords) {
-                            const sx=link.sx*view.pixelsPerDay, tx=link.tx*view.pixelsPerDay
-                            const sy=(link.sourceRow+0.5)*view.rowHeight, ty=(link.targetRow+0.5)*view.rowHeight
+                            const sx=link.sx*view.pixelsPerDay+(link.sourceMilestone?(link.sourceFinish?14:-14):link.sourceFinish?Math.max(0,6-link.sourceSpan*view.pixelsPerDay):0)
+                            const tx=link.tx*view.pixelsPerDay+(link.targetMilestone?(link.targetFinish?14:-14):link.targetFinish?Math.max(0,6-link.targetSpan*view.pixelsPerDay):0)
+                            const sy=(link.sourceRow+0.5)*view.rowHeight+(link.sourceSummary?8.5:0)
+                            const ty=(link.targetRow+0.5)*view.rowHeight+(link.targetSummary?8.5:0)
                             const stubS=sx+(link.sourceFinish?12:-12), stubT=tx+(link.targetFinish?12:-12)
                             let points
                             if (link.sourceFinish && !link.targetFinish && stubS <= stubT) {
@@ -461,12 +479,14 @@ Item {
                                 const midY=sy+(ty>=sy?view.rowHeight/2:-view.rowHeight/2)
                                 points=[[sx,sy],[stubS,sy],[stubS,midY],[stubT,midY],[stubT,ty],[tx,ty]]
                             }
-                            ctx.strokeStyle="#ffa726"; ctx.lineWidth=hoveredLink===link.id?2.5:1.4
+                            const highlighted=hoveredLink===link.id || view.activeLinkId===link.id
+                            const color=highlighted?"#387dc6":"#ffa726"
+                            ctx.strokeStyle=color; ctx.lineWidth=highlighted?2.5:1.4
                             ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1])
                             for (let p of points.slice(1)) ctx.lineTo(p[0],p[1])
                             ctx.stroke()
                             const direction=link.targetFinish?-1:1
-                            ctx.fillStyle="#ffa726"; ctx.beginPath()
+                            ctx.fillStyle=color; ctx.beginPath()
                             ctx.moveTo(tx,ty); ctx.lineTo(tx-direction*5,ty-3); ctx.lineTo(tx-direction*5,ty+3); ctx.closePath(); ctx.fill()
                             hitPaths.push({id:link.id,points:points,label:link.label})
                         }
@@ -512,6 +532,7 @@ Item {
                                 background.hoveredLink=hit?hit.id:""; hint=hit?hit.label:""; background.requestPaint()
                             }
                         }
+                        onExited: { background.hoveredLink=""; hint=""; background.requestPaint() }
                         onClicked: function(mouse) {
                             if (!panned) {
                                 const hit=background.linkAt(mouse.x,mouse.y)
@@ -532,6 +553,10 @@ Item {
                         ToolTip.text: hint
                         ToolTip.delay: 500
                     }
+                }
+                HoverHandler {
+                    enabled: !!view.linkSource
+                    onPointChanged: if (view.linkSource) view.updateLink(point.position.x, point.position.y)
                 }
                 Repeater {
                     model: controller.model
@@ -555,6 +580,20 @@ Item {
                     }
                 }
             }
+        }
+    }
+    Timer {
+        interval:30; repeat:true; running:view.linkDragging && !!view.linkSource
+        onTriggered: {
+            const x=view.linkPointerX, y=view.linkPointerY
+            if(x<view.gridWidth || x>view.width || y<view.headerHeight || y>view.headerHeight+body.height) return
+            let dx=x<view.gridWidth+24?-12:x>view.width-24?12:0
+            let dy=y<view.headerHeight+24?-12:y>view.headerHeight+body.height-24?12:0
+            view.scrollX=Math.max(0,Math.min(view.sceneWidth-view.timelineViewport,view.scrollX+dx))
+            body.contentY=Math.max(0,Math.min(body.contentHeight-body.height,body.contentY+dy))
+            view.linkMouseX=x-view.gridWidth+view.scrollX
+            view.linkMouseY=y-view.headerHeight+body.contentY
+            background.requestPaint()
         }
     }
     Timer {

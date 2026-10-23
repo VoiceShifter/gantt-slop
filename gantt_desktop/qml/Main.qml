@@ -29,6 +29,7 @@ ApplicationWindow {
     function askDelete(id) { if (!id) return; deleteBulk=false; deleteId=id; deleteDialog.open() }
     function askBulkDelete() { if (controller.bulkDeleteCount>0) { deleteBulk=true; deleteDialog.open() } }
     function showDependency(source,target,kind,id) {
+        gantt.cancelInteractions()
         const detail = id ? controller.linkDetails(id) : ({})
         dependency.linkId=id; dependency.sourceId=source; dependency.targetId=target
         dependency.relation=kind; dependency.lagHours=String(detail.lag || 0)
@@ -40,7 +41,7 @@ ApplicationWindow {
         target: controller
         function onToast(message) { notification.text=message; notice.visible=true; toastTimer.restart() }
         function onInspectRequested() { inspector.open(); controller.focusTask(controller.selectedId) }
-        function onProjectLoaded() { inspector.close(); search.text=""; window.filterCode="all"; gantt.scrollX=0 }
+        function onProjectLoaded() { inspector.close(); dependency.close(); search.text=""; window.filterCode="all"; gantt.scrollX=0 }
         function onBulkChanged() {
             if (controller.bulkMode) {
                 inspector.close()
@@ -82,7 +83,7 @@ ApplicationWindow {
         MenuSeparator {}
         MenuItem { text: "Переместить выше"; onTriggered: controller.reorder(controller.selectedId,-1) }
         MenuItem { text: "Переместить ниже"; onTriggered: controller.reorder(controller.selectedId,1) }
-        MenuItem { text: "Добавить зависимость"; enabled: !controller.selected.summary; onTriggered: window.showDependency("",controller.selectedId,"FS","") }
+        MenuItem { text: "Добавить зависимость"; enabled: !!controller.selectedId; onTriggered: window.showDependency("",controller.selectedId,"FS","") }
         MenuSeparator {}
         MenuItem { text: "Удалить"; onTriggered: window.askDelete(controller.selectedId) }
     }
@@ -263,6 +264,7 @@ ApplicationWindow {
                 id:gantt
                 Layout.fillWidth:true; Layout.fillHeight:true
                 pixelsPerDay:[52,26,10,4,2,1][Math.round(zoom.value)]
+                activeLinkId:dependency.visible?dependency.linkId:""
                 onInspectTask:function(id){window.inspectTask(id)}
                 onTaskMenuRequested:function(id){window.showTaskMenu(id)}
                 onLinkEditRequested:function(id){const d=controller.linkDetails(id);window.showDependency(d.source,d.target,d.kind,id)}

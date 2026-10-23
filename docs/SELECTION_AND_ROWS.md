@@ -1,5 +1,7 @@
 # Task selection and row movement — 0.2
 
+Historical 0.2 verification. In 0.3, [summary dependency links](DEPENDENCY_ARROWS.md) were added: reparenting/creating/deleting children can now reschedule a linked summary and its successors when necessary to honor those constraints. Unconstrained row reordering retains the behavior below.
+
 Follow-up to baseline **`cc77fec92`**, committed before this work. Only the standalone application was changed; unrelated staged legacy work was preserved.
 
 ## What the live reference actually does

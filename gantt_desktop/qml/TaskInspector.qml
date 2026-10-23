@@ -106,7 +106,7 @@ Drawer {
                     Item { Layout.fillWidth: true }
                     ActionButton {
                         text: "＋  Добавить зависимость"
-                        enabled: !!controller.selectedId && !controller.selected.summary
+                        enabled: !!controller.selectedId
                         onClicked: drawer.dependencyRequested("", controller.selectedId, "FS", "")
                     }
                 }
@@ -124,10 +124,10 @@ Drawer {
                     CellEditor { Layout.preferredWidth: 64; text: controller.selected.startTime || ""; enabled: (controller.selected.canMove || false) && !controller.selected.summary; onEditingFinished: if(text!==controller.selected.startTime) controller.editField(controller.selectedId,"startTime",text) }
                     CellEditor {
                         objectName: "inspectorEnd"
-                        Layout.fillWidth: true; text: controller.selected.end || ""; enabled: !controller.selected.summary && !controller.selected.milestone
+                        Layout.fillWidth: true; text: controller.selected.end || ""; enabled: controller.selected.canResizeEnd || false
                         onEditingFinished: if(text!==controller.selected.end) controller.editField(controller.selectedId,"end",text)
                     }
-                    CellEditor { Layout.preferredWidth: 64; text: controller.selected.endTime || ""; enabled: !controller.selected.summary && !controller.selected.milestone; onEditingFinished: if(text!==controller.selected.endTime) controller.editField(controller.selectedId,"endTime",text) }
+                    CellEditor { Layout.preferredWidth: 64; text: controller.selected.endTime || ""; enabled: controller.selected.canResizeEnd || false; onEditingFinished: if(text!==controller.selected.endTime) controller.editField(controller.selectedId,"endTime",text) }
                     Label { text: "Длительность, ч"; color: "#999999"; Layout.columnSpan: 2; font.pixelSize: 12 }
                     Label { text: "Трудозатраты, ч"; color: "#999999"; Layout.columnSpan: 2; font.pixelSize: 12 }
                     CellEditor {
@@ -159,7 +159,7 @@ Drawer {
                 Label {
                     Layout.leftMargin: 40; Layout.rightMargin: 40; Layout.fillWidth: true
                     visible: !!controller.selectedId && !controller.selected.canMove
-                    text: "Начало закреплено предшественником. Чтобы сдвинуть задачу, измените связь или её лаг."
+                    text: "Даты закреплены зависимостями. Чтобы сдвинуть задачу, измените связь или её лаг."
                     color: "#7c8c9b"; font.pixelSize: 12; wrapMode: Text.WordWrap
                 }
                 ColumnLayout {

@@ -2,7 +2,7 @@
 
 The reference is the already-authorized, synthetic device-planning project in the GanttPRO browser application. Only its **Diagram/tasks** UI was explored. No application source, private JavaScript state, or implementation assets were read/copied. The old GanttProject source was not used for this application.
 
-The follow-up [selection, status/progress and row-drag observations](SELECTION_AND_ROWS.md) record the additional live research for 0.2.
+The follow-up [selection, status/progress and row-drag observations](SELECTION_AND_ROWS.md) record the additional live research for 0.2. [Dependency arrows](DEPENDENCY_ARROWS.md) records the 0.3 task/group-link experiments and native verification.
 
 ## Appearance
 
