@@ -17,6 +17,10 @@ Item {
     property bool showEnd: false
     property bool showDuration: false
     property bool showProgress: false
+    property bool showStatus: false
+    property bool showPriority: false
+    property var checkStates: controller.checkStates
+    property var checkedIds: controller.checkedIds
     readonly property int rowHeight: 30
     readonly property int headerHeight: 44
     readonly property real sceneWidth: Math.max(width - gridWidth, controller.dayCount * pixelsPerDay)
@@ -36,7 +40,50 @@ Item {
     signal zoomRequested(int change)
     signal cancelDrags()
 
-    function cancelInteractions() { cancelLink(); cancelDrags() }
+    property string rowDragId: ""
+    property string rowDragLabel: ""
+    property bool rowDragging: false
+    property real rowPressX: 0
+    property real rowPressY: 0
+    property real rowPointerX: 0
+    property real rowPointerY: 0
+    property string rowPlanKey: ""
+    property var rowPlan: ({})
+
+    function cancelInteractions() { cancelLink(); cancelDrags(); cancelRowDrag() }
+    function beginRowDrag(id, label, x, y) {
+        controller.select(id)
+        rowDragId=id; rowDragLabel=label; rowPressX=x; rowPressY=y
+        rowPointerX=x; rowPointerY=y; rowDragging=false; rowPlanKey=""; rowPlan=({})
+    }
+    function updateRowDrag(x,y) {
+        if (!rowDragId) return
+        rowPointerX=x; rowPointerY=y
+        if (Math.abs(x-rowPressX)+Math.abs(y-rowPressY)>=3) rowDragging=true
+        if (rowDragging) updateRowPlan()
+    }
+    function updateRowPlan() {
+        if (rowPointerX<0 || rowPointerX>gridWidth || rowPointerY<headerHeight || rowPointerY>headerHeight+body.height) {
+            rowPlanKey=""; rowPlan=({valid:false,hint:"Отпустите строку в таблице."}); return
+        }
+        const offset=(rowPointerY-headerHeight+body.contentY)/rowHeight
+        const row=Math.floor(offset), fraction=offset-row, inside=rowPointerX+gridScroll>=114
+        const zone=fraction<0.25?0:fraction>0.75?3:fraction<0.5?1:2
+        const key=row+":"+zone+":"+inside
+        if (key!==rowPlanKey) {
+            rowPlanKey=key
+            rowPlan=controller.rowDropPreview(rowDragId,row,fraction,inside)
+        }
+    }
+    function cancelRowDrag() { rowDragId=""; rowDragging=false; rowPlanKey=""; rowPlan=({}) }
+    function finishRowDrag() {
+        if (!rowDragId) return
+        const id=rowDragId, plan=rowPlan, moved=rowDragging
+        cancelRowDrag()
+        if (!moved) return
+        if (plan.valid) controller.relocateRow(id,plan.target,plan.placement)
+        else controller.toast(plan.hint || "Нельзя переместить строку.")
+    }
 
     property var columns: {
         let cols = []
@@ -47,6 +94,8 @@ Item {
         if (showEnd) cols.push({key:"end", title:"Завершение", width:100})
         if (showDuration) cols.push({key:"duration", title:"Длительность", width:100})
         if (showProgress) cols.push({key:"progress", title:"Прогресс", width:85})
+        if (showStatus) cols.push({key:"status", title:"Статус", width:120})
+        if (showPriority) cols.push({key:"priority", title:"Приоритет", width:125})
         let used = 0
         for (let c of cols) used += c.width
         cols.unshift({key:"name", title:"Задача", width:Math.max(250, gridWidth - used - 46)})
@@ -90,7 +139,8 @@ Item {
     onWidthChanged: clampScroll()
     Connections {
         target: controller
-        function onViewChanged() { view.clampScroll(); background.requestPaint() }
+        function onViewChanged() { view.cancelRowDrag(); view.clampScroll(); background.requestPaint() }
+        function onBulkChanged() { if (controller.bulkMode) view.cancelInteractions() }
         function onSelectionChanged() { background.requestPaint() }
         function onFocusRequested(day) { view.centerDay(day) }
     }
@@ -173,9 +223,12 @@ Item {
                         id: gridRow
                         required property var rowData
                         required property int index
+                        readonly property bool marked: view.checkedIds.indexOf(rowData.taskId)>=0
+                        readonly property real textOpacity: controller.bulkMode && !marked ? 0.45 : rowData.status==="closed" ? 0.55 : 1
+                        objectName: "task-row-" + (rowData.taskId || "add")
                         x: 0; y: index * view.rowHeight
                         width: view.gridContentWidth; height: view.rowHeight
-                        color: rowData.taskId && controller.selectedId === rowData.taskId ? "#e3f2fc" : view.hoverRow === index ? "#f3f3f3" : "white"
+                        color: controller.bulkMode ? (marked?"#f1f1f1":"white") : rowData.taskId && controller.selectedId === rowData.taskId ? "#e3f2fc" : view.hoverRow === index ? "#f3f3f3" : "white"
                         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#e6e6e6" }
                         MouseArea {
                             anchors.fill: parent
@@ -192,10 +245,12 @@ Item {
                         }
                         Item {
                             visible: gridRow.rowData.rowKind === "task"
+                            opacity: gridRow.textOpacity
                             width: view.columns[0].width; height: parent.height
                             Text {
                                 x: 30; width: 54; height: parent.height
                                 text: gridRow.rowData.outline || ""
+                                visible: !controller.bulkMode
                                 color: "#252525"; font.pixelSize: 12
                                 font.bold: gridRow.rowData.summary || false
                                 verticalAlignment: Text.AlignVCenter
@@ -214,6 +269,7 @@ Item {
                                 width: Math.max(60, parent.width - x - 5); height: parent.height
                                 text: gridRow.rowData.name || ""
                                 font.bold: gridRow.rowData.summary || false
+                                font.strikeout: gridRow.rowData.status === "closed"
                                 onActiveFocusChanged: if (activeFocus && gridRow.rowData.rowKind === "task") controller.select(gridRow.rowData.taskId)
                                 onEditingFinished: {
                                     if (gridRow.rowData.rowKind === "task" && text !== gridRow.rowData.name) {
@@ -227,7 +283,9 @@ Item {
                             delegate: Item {
                                 id: columnCell
                                 required property var modelData
+                                readonly property bool metadata: ["status","priority"].indexOf(modelData.key)>=0 && gridRow.rowData.rowKind==="task" && !gridRow.rowData.summary
                                 x: modelData.offset; width: modelData.width; height: view.rowHeight
+                                opacity: gridRow.textOpacity
                                 Rectangle { width: 1; height: parent.height; color: "#e6e6e6" }
                                 Rectangle {
                                     x: 9; y: 6; width: 18; height: 18; radius: 9
@@ -243,14 +301,18 @@ Item {
                                         if (value === undefined) return ""
                                         if (key === "duration") return value + "ч"
                                         if (key === "progress") return Math.round(value) + "%"
+                                        if (key === "status") return gridRow.rowData.statusText || ""
+                                        if (key === "priority") return gridRow.rowData.priorityText || ""
                                         return String(value)
                                     }
                                     x: key === "assignee" && !!gridRow.rowData.assignee ? 26 : 0
                                     width: parent.width - x; height: parent.height
                                     text: displayValue()
+                                    visible: !columnCell.metadata
                                     horizontalAlignment: ["cost","effort","duration","progress"].indexOf(key) >= 0 ? Text.AlignRight : Text.AlignLeft
                                     color: gridRow.rowData.rowKind === "total" ? "#8b8b8b" : "#333333"
                                     font.bold: gridRow.rowData.summary || false
+                                    font.strikeout: gridRow.rowData.status === "closed"
                                     readOnly: gridRow.rowData.rowKind !== "task" ||
                                               (gridRow.rowData.summary && key !== "start") ||
                                               (key === "start" && !gridRow.rowData.canMove) ||
@@ -269,17 +331,78 @@ Item {
                                         }
                                     }
                                 }
+                                MetadataChoice {
+                                    x:1; y:1; width:parent.width-2; height:28
+                                    visible: columnCell.metadata
+                                    enabled: !controller.bulkMode
+                                    compact:true
+                                    model: columnCell.metadata ? (columnCell.modelData.key==="status"?controller.statusChoices:controller.priorityChoices) : []
+                                    currentIndex: indexOfValue(gridRow.rowData[columnCell.modelData.key] || "")
+                                    onActivated: controller.editField(gridRow.rowData.taskId,columnCell.modelData.key,currentValue)
+                                }
                             }
                         }
                         ActionButton {
                             x: view.gridContentWidth - 43; width: 40; height: view.rowHeight
                             text: "⋯"; font.pixelSize: 17
-                            visible: gridRow.rowData.rowKind === "task" && (view.hoverRow === gridRow.index || controller.selectedId === gridRow.rowData.taskId)
+                            visible: !controller.bulkMode && gridRow.rowData.rowKind === "task" && (view.hoverRow === gridRow.index || controller.selectedId === gridRow.rowData.taskId)
                             hint: "Действия с задачей"
                             onClicked: view.taskMenuRequested(gridRow.rowData.taskId)
                         }
+                        Item {
+                            x:4; width:24; height:view.rowHeight
+                            visible: !controller.bulkMode && gridRow.rowData.rowKind==="task"
+                            opacity: view.hoverRow===gridRow.index || view.rowDragId===gridRow.rowData.taskId ? 1 : 0
+                            Repeater {
+                                model:6
+                                delegate:Rectangle {
+                                    required property int index
+                                    x:8+(index%2)*4; y:10+Math.floor(index/2)*4
+                                    width:2; height:2; radius:1; color:"#92979c"
+                                }
+                            }
+                            MouseArea {
+                                id:rowGrip
+                                objectName:"row-grip-"+(gridRow.rowData.taskId||"")
+                                anchors.fill:parent; hoverEnabled:true; preventStealing:true
+                                cursorShape: view.rowDragging?Qt.ClosedHandCursor:Qt.SizeVerCursor
+                                onEntered:view.hoverRow=gridRow.index
+                                onPressed:function(mouse){const p=mapToItem(view,mouse.x,mouse.y);view.beginRowDrag(gridRow.rowData.taskId,gridRow.rowData.name,p.x,p.y)}
+                                onPositionChanged:function(mouse){if(pressed){const p=mapToItem(view,mouse.x,mouse.y);view.updateRowDrag(p.x,p.y)}}
+                                onReleased:function(mouse){const p=mapToItem(view,mouse.x,mouse.y);view.updateRowDrag(p.x,p.y);view.finishRowDrag()}
+                                onCanceled:view.cancelRowDrag()
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill:parent; z:3; hoverEnabled:true
+                            visible:controller.bulkMode && gridRow.rowData.rowKind==="task"
+                            acceptedButtons:Qt.LeftButton|Qt.RightButton
+                            onEntered:view.hoverRow=gridRow.index
+                            onClicked:function(mouse){if(mouse.button===Qt.LeftButton)controller.toggleChecked(gridRow.rowData.taskId)}
+                        }
+                        CheckBox {
+                            objectName:"bulk-check-"+(gridRow.rowData.taskId||"")
+                            x:4; width:24; height:view.rowHeight; z:4
+                            visible:controller.bulkMode && gridRow.rowData.rowKind!=="add"
+                            enabled:gridRow.rowData.rowKind==="task" || controller.taskCount>0
+                            tristate:true
+                            checkState:view.checkStates[gridRow.rowData.taskId]||0
+                            nextCheckState:function(){return checkState}
+                            onClicked: {
+                                if(gridRow.rowData.rowKind==="total")controller.setAllChecked((view.checkStates.__total__||0)!==Qt.Checked)
+                                else controller.toggleChecked(gridRow.rowData.taskId)
+                            }
+                            indicator:Rectangle {
+                                x:3; anchors.verticalCenter:parent.verticalCenter
+                                width:17; height:17; radius:1
+                                color:parent.checkState===Qt.Checked?"#1766cb":parent.checkState===Qt.PartiallyChecked?"#777777":"white"
+                                border.color:parent.checkState===Qt.Unchecked?"#b9bec3":color
+                                Text { anchors.centerIn:parent; text:parent.parent.checkState===Qt.Checked?"✓":parent.parent.checkState===Qt.PartiallyChecked?"−":"";color:"white";font.pixelSize:13 }
+                            }
+                        }
                         Row {
                             visible: gridRow.rowData.rowKind === "add"
+                            enabled: !controller.bulkMode
                             x: 114 + (gridRow.rowData.level || 0) * 14; height: parent.height
                             ActionButton { text: "⊕  Добавить задачу"; palette.buttonText: "#1876dc"; onClicked: controller.addTask(gridRow.rowData.parentId, "task") }
                             Text { height: parent.height; text: " | "; color: "#b4b4b4"; verticalAlignment: Text.AlignVCenter }
@@ -432,6 +555,40 @@ Item {
                     }
                 }
             }
+        }
+    }
+    Timer {
+        interval:30; repeat:true; running:view.rowDragging
+        onTriggered: {
+            let next=body.contentY
+            if(view.rowPointerY<view.headerHeight+24)next-=12
+            else if(view.rowPointerY>view.headerHeight+body.height-24)next+=12
+            next=Math.max(0,Math.min(body.contentHeight-body.height,next))
+            if(next!==body.contentY){body.contentY=next;view.updateRowPlan()}
+        }
+    }
+    Item {
+        x:0; y:view.headerHeight; width:view.gridWidth; height:body.height; clip:true; z:20
+        Rectangle {
+            visible:view.rowDragging && !!view.rowPlan.valid
+            x:30
+            y:(view.rowPlan.row||0)*view.rowHeight-body.contentY+(view.rowPlan.edge>0?view.rowHeight:0)
+            width:parent.width-x; height:view.rowPlan.edge===0?view.rowHeight:2
+            color:view.rowPlan.edge===0?"#18287dd1":"#287dd1"
+            border.width:view.rowPlan.edge===0?1:0; border.color:"#287dd1"
+        }
+    }
+    Rectangle {
+        objectName:"rowDragGhost"
+        visible:view.rowDragging
+        x:Math.max(10,Math.min(view.gridWidth-270,view.rowPointerX+12))
+        y:Math.max(view.headerHeight,Math.min(view.height-60,view.rowPointerY+14))
+        z:30; width:260; height:48; radius:4; color:"white"
+        border.color:view.rowPlan.valid?"#287dd1":"#dd7278"
+        Column {
+            x:10; y:7; width:parent.width-20; spacing:5
+            Text { width:parent.width; text:view.rowDragLabel; textFormat:Text.PlainText; font.bold:true; font.pixelSize:12; elide:Text.ElideRight; color:"#353c43" }
+            Text { width:parent.width; text:view.rowPlan.hint||"";textFormat:Text.PlainText;font.pixelSize:11;elide:Text.ElideRight;color:"#81909d" }
         }
     }
     Rectangle { x: view.gridWidth-1; width: 2; height: parent.height; color: "#dedede" }

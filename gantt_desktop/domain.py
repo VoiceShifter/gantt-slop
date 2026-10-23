@@ -13,6 +13,15 @@ class ScheduleError(ValueError):
     """An edit would violate a task, hierarchy, or dependency constraint."""
 
 
+STATUS_LABELS = {"open": "Открыт", "in_progress": "В работе", "completed": "Выполнено", "closed": "Закрыт"}
+PRIORITY_LABELS = {"highest": "Самый высокий", "high": "Высокий", "medium": "Средний",
+                   "low": "Низкий", "lowest": "Самый низкий"}
+
+
+def status_for_progress(progress: float) -> str:
+    return "completed" if progress >= 100 else "in_progress" if progress > 0 else "open"
+
+
 @dataclass
 class WorkCalendar:
     """Local project time: Monday–Friday, 09–13 and 14–18 (eight working hours)."""
@@ -116,6 +125,28 @@ class Task:
     cost: float = 0
     color: str = "#50c7d6"
     notes: str = ""
+    status: str = "open"
+    priority: str = "medium"
+
+    def set_progress(self, value: float) -> None:
+        if self.kind == "group":
+            raise ScheduleError("Прогресс группы вычисляется из её задач.")
+        if not math.isfinite(value) or not 0 <= value <= 100:
+            raise ScheduleError("Прогресс должен быть от 0 до 100%.")
+        if value == self.progress:
+            return
+        self.progress = value
+        self.status = status_for_progress(value)
+
+    def set_status(self, value: str) -> None:
+        if self.kind == "group":
+            raise ScheduleError("Статус группы вычисляется из её задач.")
+        if value not in STATUS_LABELS:
+            raise ScheduleError("Неизвестный статус задачи.")
+        if value == self.status:
+            return
+        self.status = value
+        self.progress = {"open": 0, "in_progress": 50, "completed": 100, "closed": 100}[value]
 
 
 @dataclass
@@ -202,6 +233,8 @@ class Project:
                 raise ScheduleError("Длительность группы вычисляется, а длительность вехи равна нулю.")
             if not math.isfinite(task.progress) or not 0 <= task.progress <= 100:
                 raise ScheduleError("Прогресс должен быть от 0 до 100%.")
+            if task.status not in STATUS_LABELS or task.priority not in PRIORITY_LABELS:
+                raise ScheduleError("Неизвестный статус или приоритет задачи.")
             if not all(math.isfinite(x) and x >= 0 for x in (task.effort, task.cost)):
                 raise ScheduleError("Трудозатраты и стоимость должны быть неотрицательными числами.")
             if not re.fullmatch(r"#[0-9a-fA-F]{6}", task.color):
@@ -329,23 +362,66 @@ class Project:
         keys[a], keys[b] = keys[b], keys[a]
         self.tasks = {key: self.tasks[key] for key in keys}
 
+    def relocate(self, task_id: str, target_id: str, placement: str) -> None:
+        """Reorder/reparent one subtree without modifying any leaf's schedule or links."""
+        if task_id not in self.tasks or (target_id and target_id not in self.tasks):
+            raise ScheduleError("Неизвестная задача для перемещения.")
+        if placement not in {"before", "after", "inside", "append"}:
+            raise ScheduleError("Неизвестное положение строки.")
+        if task_id == target_id and placement in {"before", "after"}:
+            return
+        target = self.tasks.get(target_id)
+        if placement in {"inside", "append"}:
+            if target is not None and target.kind != "group":
+                raise ScheduleError("Вложить задачу можно только в группу.")
+            if target is None and placement == "inside":
+                raise ScheduleError("Выберите группу для вложения.")
+            parent = target_id
+        else:
+            if target is None:
+                raise ScheduleError("Выберите строку назначения.")
+            parent = target.parent
+        subtree = {task_id, *(t.id for t in self.descendants(task_id))}
+        if parent in subtree or target_id in subtree:
+            raise ScheduleError("Нельзя переместить группу в неё саму или в её подзадачу.")
+        current_siblings = [t.id for t in self.children(parent)]
+        siblings = [key for key in current_siblings if key != task_id]
+        sibling_index = siblings.index(target_id) + (placement == "after") if placement in {"before", "after"} else 0 if placement == "inside" else len(siblings)
+        desired_siblings = siblings[:sibling_index] + [task_id] + siblings[sibling_index:]
+        if self.tasks[task_id].parent == parent and desired_siblings == current_siblings:
+            return
+        order = [key for key in self.tasks if key != task_id]
+        if placement in {"before", "after"}:
+            index = order.index(target_id) + (placement == "after")
+        elif placement == "inside":
+            index = order.index(siblings[0]) if siblings else order.index(parent) + 1
+        elif siblings:
+            index = order.index(siblings[-1]) + 1
+        else:
+            index = order.index(parent) + 1 if parent else len(order)
+        order.insert(index, task_id)
+        self.tasks[task_id].parent = parent
+        self.tasks = {key: self.tasks[key] for key in order}
+
     def to_dict(self) -> dict:
         tasks = []
         for task in self.tasks.values():
             item = asdict(task)
             item["start"] = task.start.isoformat(timespec="minutes")
             tasks.append(item)
-        return {"version": 1, "name": self.name, "tasks": tasks,
+        return {"version": 2, "name": self.name, "tasks": tasks,
                 "dependencies": [asdict(link) for link in self.dependencies],
                 "holidays": sorted(day.isoformat() for day in self.calendar.holidays)}
 
     @classmethod
     def from_dict(cls, value: dict) -> Project:
-        if value.get("version") != 1:
+        if value.get("version") not in (1, 2):
             raise ScheduleError("Неподдерживаемая версия файла проекта.")
         tasks = {}
         for item in value["tasks"]:
-            task = Task(**{**item, "start": datetime.fromisoformat(item["start"])})
+            record = {**item}
+            record.setdefault("status", status_for_progress(record.get("progress", 0)))
+            task = Task(**{**record, "start": datetime.fromisoformat(item["start"])})
             if task.id in tasks:
                 raise ScheduleError("Повторяющийся идентификатор задачи.")
             tasks[task.id] = task

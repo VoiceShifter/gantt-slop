@@ -1,5 +1,7 @@
 # Verification of the first working implementation
 
+Historical baseline **`cc77fec92` / 0.1**. Its 55-test results and captures are retained below. For the current 0.2 implementation, 106-test result and new native evidence, see [Task selection and row movement](SELECTION_AND_ROWS.md).
+
 ## Environment and automated checks
 
 - Linux; Python **3.12.3**, PySide6/Qt **6.11.1**, pytest **9.1.1**.

@@ -19,13 +19,15 @@ ApplicationWindow {
     property bool sidebarVisible: true
     property string filterCode: "all"
     property string deleteId: ""
+    property bool deleteBulk: false
     readonly property bool editingText: activeFocusItem && activeFocusItem.cursorPosition !== undefined
     onClosing: function(event) { if (!allowClose) event.accepted = controller.confirmClose() }
 
-    function inspectTask(id) { controller.select(id); inspector.open() }
+    function inspectTask(id) { if (!controller.bulkMode) { controller.select(id); inspector.open() } }
     function selectedParent() { return controller.selected.summary ? controller.selectedId : (controller.selected.parentId || "") }
-    function showTaskMenu(id) { controller.select(id); taskMenu.popup() }
-    function askDelete(id) { if (!id) return; deleteId=id; deleteDialog.open() }
+    function showTaskMenu(id) { if (!controller.bulkMode) { controller.select(id); taskMenu.popup() } }
+    function askDelete(id) { if (!id) return; deleteBulk=false; deleteId=id; deleteDialog.open() }
+    function askBulkDelete() { if (controller.bulkDeleteCount>0) { deleteBulk=true; deleteDialog.open() } }
     function showDependency(source,target,kind,id) {
         const detail = id ? controller.linkDetails(id) : ({})
         dependency.linkId=id; dependency.sourceId=source; dependency.targetId=target
@@ -39,6 +41,12 @@ ApplicationWindow {
         function onToast(message) { notification.text=message; notice.visible=true; toastTimer.restart() }
         function onInspectRequested() { inspector.open(); controller.focusTask(controller.selectedId) }
         function onProjectLoaded() { inspector.close(); search.text=""; window.filterCode="all"; gantt.scrollX=0 }
+        function onBulkChanged() {
+            if (controller.bulkMode) {
+                inspector.close()
+                if (!bulkEditor.visible) bulkEditor.open()
+            } else if (bulkEditor.visible) bulkEditor.close()
+        }
     }
     Shortcut { sequences: [StandardKey.Save]; onActivated: window.saveProject() }
     Shortcut { sequence: "Ctrl+Shift+S"; onActivated: controller.saveAs() }
@@ -46,9 +54,11 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.New]; onActivated: controller.newProject() }
     Shortcut { sequences: [StandardKey.Undo]; enabled: !window.editingText; onActivated: controller.undo() }
     Shortcut { sequences: [StandardKey.Redo]; enabled: !window.editingText; onActivated: controller.redo() }
-    Shortcut { sequence: "Delete"; enabled: !window.editingText && !!controller.selectedId; onActivated: window.askDelete(controller.selectedId) }
-    Shortcut { sequence: "Escape"; onActivated: { gantt.cancelInteractions(); if (inspector.opened) inspector.close(); contentItem.forceActiveFocus() } }
-    Shortcut { sequence: "Return"; enabled: !window.editingText && !!controller.selectedId && !inspector.opened; onActivated: window.inspectTask(controller.selectedId) }
+    Shortcut { sequence: "Delete"; enabled: !window.editingText && !controller.bulkMode && !!controller.selectedId; onActivated: window.askDelete(controller.selectedId) }
+    Shortcut { sequence: "Delete"; enabled: !window.editingText && controller.bulkMode && controller.bulkDeleteCount>0; onActivated: window.askBulkDelete() }
+    Shortcut { sequences: [StandardKey.SelectAll]; enabled: controller.bulkMode && !window.editingText; onActivated: controller.setAllChecked(true) }
+    Shortcut { sequence: "Escape"; onActivated: { gantt.cancelInteractions(); if (controller.bulkMode) controller.setBulkMode(false); if (inspector.opened) inspector.close(); contentItem.forceActiveFocus() } }
+    Shortcut { sequence: "Return"; enabled: !controller.bulkMode && !window.editingText && !!controller.selectedId && !inspector.opened; onActivated: window.inspectTask(controller.selectedId) }
     Shortcut { sequence: "Ctrl+F"; onActivated: { search.forceActiveFocus(); search.selectAll() } }
 
     Menu {
@@ -87,6 +97,8 @@ ApplicationWindow {
         MenuItem { text: "Завершение"; checkable:true; checked:gantt.showEnd; onTriggered:gantt.showEnd=checked }
         MenuItem { text: "Длительность"; checkable:true; checked:gantt.showDuration; onTriggered:gantt.showDuration=checked }
         MenuItem { text: "Прогресс"; checkable:true; checked:gantt.showProgress; onTriggered:gantt.showProgress=checked }
+        MenuItem { text: "Статус"; checkable:true; checked:gantt.showStatus; onTriggered:gantt.showStatus=checked }
+        MenuItem { text: "Приоритет"; checkable:true; checked:gantt.showPriority; onTriggered:gantt.showPriority=checked }
     }
     Menu {
         id: filterMenu
@@ -110,12 +122,14 @@ ApplicationWindow {
     }
     Dialog {
         id: deleteDialog
+        objectName: "deleteDialog"
+        width: Math.min(560, window.width-80)
         anchors.centerIn: parent
-        title: "Удалить задачу?"
+        title: window.deleteBulk ? "Удалить задач: " + controller.bulkDeleteCount + "?" : "Удалить задачу?"
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
-        Label { text:"Задача, её подзадачи и связанные зависимости будут удалены.\nДействие можно отменить через Undo."; wrapMode:Text.WordWrap }
-        onAccepted:controller.deleteTask(window.deleteId)
+        Label { width:parent.width; text:window.deleteBulk ? "Удалятся только полностью выбранные задачи и группы.\nСнятые отметки сохраняются. Действие можно отменить через Undo." : "Задача, её подзадачи и связанные зависимости будут удалены.\nДействие можно отменить через Undo."; wrapMode:Text.WordWrap }
+        onAccepted: { if (window.deleteBulk) controller.deleteChecked(); else controller.deleteTask(window.deleteId) }
     }
     Dialog {
         id: help
@@ -132,6 +146,7 @@ ApplicationWindow {
         }
     }
     DependencyDialog { id: dependency; parent: Overlay.overlay }
+    BulkEditor { id: bulkEditor; parent: Overlay.overlay; onDeleteRequested: window.askBulkDelete() }
     TaskInspector {
         id: inspector
         parent: Overlay.overlay
@@ -214,10 +229,11 @@ ApplicationWindow {
                     anchors.fill:parent; anchors.leftMargin:9; anchors.rightMargin:10; spacing:2
                     ActionButton { objectName:"undoButton"; text:"↶"; font.pixelSize:21; hint:"Отменить · Ctrl+Z"; enabled:controller.canUndo; onClicked:{window.contentItem.forceActiveFocus();controller.undo()} }
                     ActionButton { objectName:"redoButton"; text:"↷"; font.pixelSize:21; hint:"Повторить · Ctrl+Shift+Z"; enabled:controller.canRedo; onClicked:controller.redo() }
+                    ActionButton { objectName:"bulkModeButton"; text:"☑"; font.pixelSize:18; hint:"Массовое изменение задач"; checked:controller.bulkMode; onClicked:{window.contentItem.forceActiveFocus();gantt.cancelInteractions();controller.setBulkMode(!controller.bulkMode)} }
                     Rectangle { width:1; height:20; color:"#e3e3e3"; Layout.leftMargin:7; Layout.rightMargin:7 }
-                    ActionButton { objectName:"addTaskButton"; text:"＋"; font.pixelSize:21; hint:"Добавить задачу"; onClicked:controller.addTask(window.selectedParent(),"task") }
-                    ActionButton { text:"◇"; font.pixelSize:20; hint:"Добавить веху"; onClicked:controller.addTask(window.selectedParent(),"milestone") }
-                    ActionButton { text:"⊞"; font.pixelSize:18; hint:"Добавить группу"; onClicked:controller.addTask("","group") }
+                    ActionButton { objectName:"addTaskButton"; text:"＋"; font.pixelSize:21; hint:"Добавить задачу"; enabled:!controller.bulkMode; onClicked:controller.addTask(window.selectedParent(),"task") }
+                    ActionButton { text:"◇"; font.pixelSize:20; hint:"Добавить веху"; enabled:!controller.bulkMode; onClicked:controller.addTask(window.selectedParent(),"milestone") }
+                    ActionButton { text:"⊞"; font.pixelSize:18; hint:"Добавить группу"; enabled:!controller.bulkMode; onClicked:controller.addTask("","group") }
                     ActionButton { text:"⌃ Развернуть все"; visible:toolbar.width>1100; onClicked:controller.expandAll(true) }
                     ActionButton { text:"⌄ Свернуть все"; visible:toolbar.width>1100; onClicked:controller.expandAll(false) }
                     Item { Layout.fillWidth:true }

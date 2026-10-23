@@ -58,12 +58,51 @@ Drawer {
                         id: completion
                         objectName: "inspectorProgress"
                         from: 0; to: 100; stepSize: 1
-                        Layout.preferredWidth: 180
+                        Layout.preferredWidth: 120
+                        Layout.preferredHeight: 26
+                        padding: 0
                         value: controller.selected.progress || 0
                         enabled: !controller.selected.summary
+                        background: Rectangle {
+                            implicitWidth: 120; implicitHeight: 24
+                            x:completion.leftPadding; y:(completion.height-height)/2
+                            width:completion.availableWidth; height:24; radius:3; color:"#e5e5e5"
+                            Rectangle { width:parent.width*completion.visualPosition; height:parent.height; radius:3; color:completion.enabled?"#4787d6":"#bbbbbb" }
+                        }
+                        handle: Rectangle {
+                            width:3; height:22; radius:1
+                            x:completion.leftPadding+completion.visualPosition*(completion.availableWidth-width)
+                            y:(completion.height-height)/2
+                            color:completion.enabled?"#377aca":"#bbbbbb"
+                        }
                         onPressedChanged: if (!pressed && controller.selectedId && enabled && Math.round(value)!==Math.round(controller.selected.progress)) controller.editField(controller.selectedId, "progress", String(Math.round(value)))
                     }
-                    Label { text: Math.round(completion.value) + "%"; color: "#333333" }
+                    CellEditor {
+                        objectName:"inspectorProgressValue"
+                        Layout.preferredWidth:36; Layout.preferredHeight:26
+                        text:String(Math.round(controller.selected.progress||0))
+                        horizontalAlignment:Text.AlignRight
+                        enabled:!controller.selected.summary
+                        validator:IntValidator { bottom:0; top:100 }
+                        onEditingFinished:if(controller.selectedId && text!==String(Math.round(controller.selected.progress)))controller.editField(controller.selectedId,"progress",text)
+                    }
+                    Label { text: "%"; color: "#333333" }
+                    MetadataChoice {
+                        objectName: "inspectorStatus"
+                        compact: true; Layout.preferredWidth: 118
+                        visible: !controller.selected.summary
+                        model: controller.statusChoices
+                        currentIndex: indexOfValue(controller.selected.status || "open")
+                        onActivated: controller.editField(controller.selectedId, "status", currentValue)
+                    }
+                    MetadataChoice {
+                        objectName: "inspectorPriority"
+                        compact: true; Layout.preferredWidth: 150
+                        visible: !controller.selected.summary
+                        model: controller.priorityChoices
+                        currentIndex: indexOfValue(controller.selected.priority || "medium")
+                        onActivated: controller.editField(controller.selectedId, "priority", currentValue)
+                    }
                     Item { Layout.fillWidth: true }
                     ActionButton {
                         text: "＋  Добавить зависимость"

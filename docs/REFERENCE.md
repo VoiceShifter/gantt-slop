@@ -2,6 +2,8 @@
 
 The reference is the already-authorized, synthetic device-planning project in the GanttPRO browser application. Only its **Diagram/tasks** UI was explored. No application source, private JavaScript state, or implementation assets were read/copied. The old GanttProject source was not used for this application.
 
+The follow-up [selection, status/progress and row-drag observations](SELECTION_AND_ROWS.md) record the additional live research for 0.2.
+
 ## Appearance
 
 The inspected light view has a white task tree and timeline, thin gray cell dividers, a compact project header/toolbar, blue active accents and assignee circles, cyan task/summary bars, orange orthogonal dependency arrows and a magenta milestone. Rendered bar styles were read from visible DOM elements: **RGB(80,199,214), #50c7d6**, 22px high, 2px corners, Arial 12px white text. Summary bars are thin lines with bold name/date captions above them. The new app uses its own text branding and native Qt primitives, not the site's marks/assets.

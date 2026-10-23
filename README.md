@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks and Gantt only.** No Board, account system, comments service, portfolios, or resource-workload application.
 
+**0.2 adds checkbox bulk editing, status/priority controls and grip-based task-row reordering/nesting.** [Current overview](docs/screenshots/overview-current.png) · [Interaction details and verification](docs/SELECTION_AND_ROWS.md).
+
 ## Run
 
 Python **3.11+** is required. From this directory:
@@ -33,8 +35,9 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 ## Implemented
 
 - White split grid/timeline, cyan **#50c7d6** task/summary bars, orange connectors, magenta milestones, blue assignee badges, compact toolbar, and a right-side task editor.
-- Nested groups and tasks, milestones, collapse/expand, inline table editing, per-group creation, deletion with confirmation, sibling ordering, and reparenting through the editor.
-- Dates/times, working duration, separate effort, cost, assignee text, notes, progress, and task colors.
+- Nested groups and tasks, milestones, collapse/expand, inline table editing, per-group creation, deletion with confirmation, and grip-based row reordering/nesting with preview, Escape and auto-scroll.
+- Dates/times, working duration, separate effort, cost, assignee text, notes, synchronized status/progress, five priority levels and task colors.
+- Checkbox/group/select-all bulk editing with explicit Apply/Cancel and one-step Undo; protected deletion never removes an unchecked child through a partially selected parent.
 - Body movement for unconstrained tasks and groups; dependency-anchored tasks give an explanatory message instead of silently breaking their links.
 - Edge resizing, progress-handle dragging, live non-mutating date previews, three-pixel drag threshold, rapid select-then-drag, double-click inspection, and Escape cancellation.
 - Endpoint-to-endpoint dependency dragging, FS/SS/FF/SF relationships, positive/negative working-time lag, multiple predecessors, dependency editing/deletion, and cycle rejection.
@@ -48,6 +51,8 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Action | Input |
 |---|---|
 | Select | Click a row/bar |
+| Bulk edit | Toolbar ☑, then row/group checkboxes; Ctrl+A selects the current filter; Apply commits |
+| Reorder/nest rows | Drag the six-dot left grip; use row edges or a group's name area |
 | Edit name/field | Click the table cell |
 | Inspect task | Double-click bar; or select then Enter |
 | Move free task/group | Drag the body |
@@ -62,6 +67,10 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Undo / redo | Toolbar or platform-standard shortcuts |
 
 The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00. Task times are local civil/project times, not UTC timestamps. JSON can persist explicit holiday dates; a calendar-settings UI is not implemented yet.
+
+### Project-file compatibility
+
+New saves use **schema 2** for status/priority metadata. Schema-1 projects from the 0.1 baseline remain importable, with status derived from progress and priority defaulting to Medium. The old baseline cannot read schema 2; keep a separate copy if you still need its format.
 
 ## Tests and native screenshots
 
@@ -79,12 +88,12 @@ xvfb-run -a -s '-screen 0 1920x1080x24 -nolisten tcp' \
 xvfb-run -a -s '-screen 0 1920x1080x24 -nolisten tcp' \
   env QT_QUICK_BACKEND=software QT_QPA_PLATFORMTHEME=generic \
   python -m gantt_desktop --size 1920x960 \
-  --screenshot docs/screenshots/overview-1920.png
+  --screenshot docs/screenshots/overview-current.png
 ```
 
 Qt tests use an offscreen platform when Linux has no display; Xvfb is preferred for real-window/input checks. A desktop user does **not** need Xvfb to run the application.
 
-See [reference observations](docs/REFERENCE.md) and [verification/limits](docs/VERIFICATION.md).
+The current suite has **106 passing tests**, including 25 native input tests. See [current interaction verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
@@ -96,6 +105,6 @@ See [reference observations](docs/REFERENCE.md) and [verification/limits](docs/V
 
 ## Parity boundary
 
-This is a functional first implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-selection/bulk drag, drag-and-drop row reordering (menu-based sibling moves already work), summary-task dependency links, calendar configuration UI, baselines/critical-path UI, richer scheduling modes/constraints, full date-scale/header parity, full-project PDF/printing, large-project virtualization, and comprehensive accessibility/high-DPI QA. Less-common dependency editing behaviors still need further live-reference parity testing.
+This is a working implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-row dragging, arbitrary multi-bar date gestures, summary-task dependency links, calendar configuration UI, baselines/critical-path UI, richer scheduling modes/constraints, full date-scale/header parity, full-project PDF/printing, large-project virtualization, and comprehensive accessibility/high-DPI QA. The inspected reference checkbox mode edits bulk properties, not task dates. Less-common dependency editing behaviors still need further live-reference parity testing.
 
 Qt supports Windows, macOS and Linux, but this checkout has only been run and tested on **Linux**. Windows/macOS installation bundles, signing and platform QA have not been produced. When distributing the app, observe PySide6/Qt and other dependency licensing requirements.

@@ -22,7 +22,15 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-from .domain import Project, ScheduleError, Task, new_id
+from .domain import (
+    PRIORITY_LABELS,
+    STATUS_LABELS,
+    Project,
+    ScheduleError,
+    Task,
+    new_id,
+    status_for_progress,
+)
 from .sample import sample_project
 
 MONTHS = ("Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -71,6 +79,7 @@ class TaskRows(QAbstractListModel):
 class Controller(QObject):
     viewChanged = Signal()
     selectionChanged = Signal()
+    bulkChanged = Signal()
     historyChanged = Signal()
     fileChanged = Signal()
     projectLoaded = Signal()
@@ -84,6 +93,8 @@ class Controller(QObject):
         self.project = project or sample_project()
         self._rows = TaskRows(self)
         self._selected = ""
+        self._bulk_mode = False
+        self._checked: set[str] = set()
         self._collapsed: set[str] = set()
         self._query = ""
         self._filter = "all"
@@ -98,6 +109,11 @@ class Controller(QObject):
 
     model = Property(QObject, lambda self: self._rows, constant=True)
     selectedId = Property(str, lambda self: self._selected, notify=selectionChanged)
+    bulkMode = Property(bool, lambda self: self._bulk_mode, notify=bulkChanged)
+    checkedIds = Property(list, lambda self: [key for key in self.project.tasks if key in self._checked], notify=bulkChanged)
+    checkedCount = Property(int, lambda self: len(self._checked), notify=bulkChanged)
+    checkedLeafCount = Property(int, lambda self: sum(self.project.tasks[key].kind != "group" for key in self._checked), notify=bulkChanged)
+    bulkDeleteCount = Property(int, lambda self: len(self._bulk_delete_ids()), notify=bulkChanged)
     projectName = Property(str, lambda self: self.project.name, notify=viewChanged)
     rowCount = Property(int, lambda self: len(self._rows.records), notify=viewChanged)
     dayCount = Property(int, lambda self: self._day_count, notify=viewChanged)
@@ -163,11 +179,14 @@ class Controller(QObject):
         visit("", 0, "")
         if not active_filter:
             records.append({"taskId": "", "parentId": "", "rowKind": "add", "level": 0})
+        self._checked.intersection_update(project.tasks)
         self._rows.replace(records)
+        self._checked.intersection_update(self._selection_scope())
         if self._selected not in project.tasks:
             self._selected = ""
         self.viewChanged.emit()
         self.selectionChanged.emit()
+        self.bulkChanged.emit()
 
     def record(self, task_id: str) -> dict:
         task = self.project.tasks[task_id]
@@ -179,6 +198,7 @@ class Controller(QObject):
         cost = sum(t.cost for t in leaves) if summary else task.cost
         weight = sum(t.duration for t in leaves)
         progress = (sum(t.progress * t.duration for t in leaves) / weight if weight else 0) if summary else task.progress
+        status = ("closed" if leaves and all(t.status == "closed" for t in leaves) else status_for_progress(progress)) if summary else task.status
         moving = {t.id for t in leaves}
         locked = any(d.target in moving and d.source not in moving for d in self.project.dependencies)
         return {"taskId": task.id, "rowKind": "task", "parentId": task.parent, "name": task.name,
@@ -190,6 +210,8 @@ class Controller(QObject):
                 "duration": duration / 60, "effortHours": effort, "costValue": cost,
                 "effort": f"{effort:g}ч", "cost": f"{cost:,.2f}", "progress": progress,
                 "assignee": task.assignee, "notes": task.notes, "canMove": not locked,
+                "status": status, "statusText": STATUS_LABELS[status], "priority": task.priority,
+                "priorityText": "" if summary else PRIORITY_LABELS[task.priority],
                 "hasChildren": bool(self.project.children(task.id)), "kind": task.kind}
 
     @Property(dict, notify=selectionChanged)
@@ -205,6 +227,26 @@ class Controller(QObject):
                                    for d in self.project.dependencies
                                    if self._selected in (d.source, d.target)]
         return result
+
+    @Property(list, constant=True)
+    def statusChoices(self):
+        colors = {"open": "#999999", "in_progress": "#ff9800", "completed": "#50c7d6", "closed": "#13b64b"}
+        return [{"value": key, "label": label, "color": colors[key], "symbol": ""} for key, label in STATUS_LABELS.items()]
+
+    @Property(list, constant=True)
+    def priorityChoices(self):
+        colors = ("#e84a4a", "#ffa726", "#4f9347", "#777777", "#aaaaaa")
+        symbols = ("↑", "↑", "↑", "↓", "↓")
+        return [{"value": key, "label": label, "color": color, "symbol": symbol}
+                for (key, label), color, symbol in zip(PRIORITY_LABELS.items(), colors, symbols, strict=True)]
+
+    @Property(dict, notify=bulkChanged)
+    def checkStates(self):
+        states = {}
+        for task_id in [*self.project.tasks, "__total__"]:
+            members = self._check_members(task_id)
+            states[task_id] = 2 if members and members <= self._checked else 1 if members & self._checked else 0
+        return states
 
     @Property(list, notify=viewChanged)
     def taskChoices(self):
@@ -286,8 +328,104 @@ class Controller(QObject):
 
     @Slot(str)
     def select(self, task_id):
+        if self._bulk_mode:
+            if task_id in self.project.tasks:
+                self.toggleChecked(task_id)
+            return
         self._selected = task_id if task_id in self.project.tasks else ""
         self.selectionChanged.emit()
+
+    def _selection_scope(self) -> set[str]:
+        visible = {r["taskId"] for r in self._rows.records if r["rowKind"] == "task"}
+        if not self._query and self._filter == "all":
+            for task_id in list(visible):
+                visible.update(t.id for t in self.project.descendants(task_id))
+        return visible
+
+    def _check_members(self, task_id: str) -> set[str]:
+        if task_id == "__total__":
+            return self._selection_scope()
+        if task_id not in self.project.tasks:
+            return set()
+        members = {task_id, *(t.id for t in self.project.descendants(task_id))}
+        return members & self._selection_scope() if self._query or self._filter != "all" else members
+
+    @Slot(bool)
+    def setBulkMode(self, enabled):
+        if enabled == self._bulk_mode:
+            return
+        self._bulk_mode = enabled
+        self._checked.clear()
+        self._selected = ""
+        self.selectionChanged.emit()
+        self.bulkChanged.emit()
+
+    @Slot(str)
+    def toggleChecked(self, task_id):
+        if not self._bulk_mode:
+            return
+        members = self._check_members(task_id)
+        if members <= self._checked:
+            self._checked.difference_update(members)
+        else:
+            self._checked.update(members)
+        self.bulkChanged.emit()
+
+    @Slot(bool)
+    def setAllChecked(self, checked):
+        if not self._bulk_mode:
+            return
+        members = self._selection_scope()
+        if checked:
+            self._checked.update(members)
+        else:
+            self._checked.difference_update(members)
+        self.bulkChanged.emit()
+
+    @Slot(dict, result=bool)
+    def applyBulk(self, changes):
+        if not self._bulk_mode or not self._checked or not changes:
+            return False
+        allowed = {"assignee", "status", "priority", "color"}
+        if set(changes) - allowed or any(not isinstance(value, str) for value in changes.values()):
+            self.toast.emit("Некорректные поля массового изменения.")
+            return False
+        targets = set(self._checked)
+
+        def apply(project):
+            for task_id in targets:
+                task = project.tasks[task_id]
+                for field_name, value in changes.items():
+                    if task.kind == "group" and field_name != "color":
+                        continue
+                    if field_name == "status":
+                        task.set_status(value)
+                    else:
+                        setattr(task, field_name, value)
+        return self.edit("Массовое изменение задач", apply)
+
+    def _bulk_delete_ids(self) -> set[str]:
+        deleting = set()
+        for task_id in self._checked:
+            if task_id not in self.project.tasks:
+                continue
+            subtree = {task_id, *(t.id for t in self.project.descendants(task_id))}
+            # A partial parent selection must never delete an unchecked child.
+            if subtree <= self._checked:
+                deleting.update(subtree)
+        return deleting
+
+    @Slot(result=bool)
+    def deleteChecked(self):
+        deleting = self._bulk_delete_ids()
+        if not self._bulk_mode or not deleting:
+            return False
+        roots = [key for key in deleting if self.project.tasks[key].parent not in deleting]
+
+        def remove(project):
+            for task_id in roots:
+                project.remove(task_id)
+        return self.edit("Удаление выбранных задач", remove)
 
     @Slot(str)
     def toggleGroup(self, task_id):
@@ -304,21 +442,30 @@ class Controller(QObject):
 
     @Slot(str)
     def search(self, query):
-        self._query = query.strip().casefold()
+        query = query.strip().casefold()
+        if query != self._query:
+            self._checked.clear()
+        self._query = query
         self.refresh()
 
     @Slot(str)
     def setFilter(self, value):
         if value in {"all", "incomplete", "complete", "overdue"}:
+            if value != self._filter:
+                self._checked.clear()
             self._filter = value
             self.refresh()
 
     @Slot(str, int, result=bool)
     def moveTask(self, task_id, days):
+        if self._bulk_mode:
+            return False
         return self.edit("Перемещение задачи", lambda p: p.move(task_id, days))
 
     @Slot(str, str, int, result=bool)
     def resizeTask(self, task_id, edge, days):
+        if self._bulk_mode:
+            return False
         return self.edit("Изменение длительности", lambda p: p.resize(task_id, edge, days))
 
     @Slot(str, str, int, result="QVariantMap")
@@ -338,6 +485,8 @@ class Controller(QObject):
 
     @Slot(str, str, result=str)
     def addTask(self, parent, kind):
+        if self._bulk_mode:
+            return ""
         task_id = new_id()
         start = self.project.span(parent)[0] if parent in self.project.tasks else datetime.combine(self._origin + timedelta(days=7), time(9))
         selected = self.project.tasks.get(self._selected)
@@ -364,6 +513,13 @@ class Controller(QObject):
                 if field_name == "parent" and value and value not in project.tasks:
                     raise ScheduleError("Неизвестная группа.")
                 setattr(task, field_name, value)
+            elif field_name in {"status", "priority"}:
+                if task.kind == "group":
+                    raise ScheduleError("Это поле редактируется у задач, не у группы.")
+                if field_name == "status":
+                    task.set_status(value)
+                else:
+                    task.priority = value
             elif field_name in {"effort", "cost", "progress", "duration"}:
                 number = parse_number(value)
                 if task.kind == "group":
@@ -373,6 +529,8 @@ class Controller(QObject):
                         raise ScheduleError("Длительность обычной задачи должна быть больше нуля.")
                     task.duration = round(number * 60)
                     project.align(task_id)
+                elif field_name == "progress":
+                    task.set_progress(number)
                 else:
                     setattr(task, field_name, number)
             elif field_name in {"start", "end", "startTime", "endTime"}:
@@ -417,6 +575,41 @@ class Controller(QObject):
     def reorder(self, task_id, direction):
         if task_id in self.project.tasks and direction in {-1, 1}:
             self.edit("Порядок задач", lambda p: p.reorder(task_id, direction))
+
+    @Slot(str, int, float, bool, result=dict)
+    def rowDropPreview(self, task_id, row, fraction, allow_inside):
+        if self._bulk_mode or not 0 <= row < len(self._rows.records):
+            return {"valid": False, "hint": "Отпустите на строке таблицы."}
+        target = self._rows.records[row]
+        if target["rowKind"] == "total":
+            return {"valid": False, "hint": "Итоговая строка не перемещается."}
+        if target["rowKind"] == "add":
+            target_id, placement = target["parentId"], "append"
+        else:
+            target_id = target["taskId"]
+            placement = "inside" if target["summary"] and allow_inside and 0.25 <= fraction <= 0.75 else "before" if fraction < 0.5 else "after"
+        project = Project.from_dict(self.project.to_dict())
+        try:
+            project.relocate(task_id, target_id, placement)
+        except ScheduleError as error:
+            return {"valid": False, "hint": str(error)}
+        label = self.project.tasks[target_id].name if target_id else "верхний уровень"
+        verb = {"before": "Перед", "after": "После", "inside": "В начало группы", "append": "В конец"}[placement]
+        return {"valid": True, "target": target_id, "placement": placement, "row": row,
+                "edge": -1 if placement == "before" else 0 if placement == "inside" else 1,
+                "hint": f"{verb}: {label}"}
+
+    @Slot(str, str, str, result=bool)
+    def relocateRow(self, task_id, target_id, placement):
+        if self._bulk_mode:
+            return False
+        if not self.edit("Перемещение строки", lambda p: p.relocate(task_id, target_id, placement)):
+            return False
+        if placement in {"inside", "append"} and target_id in self._collapsed:
+            self._collapsed.discard(target_id)
+            self.refresh()
+        self.select(task_id)
+        return True
 
     @Slot(str)
     def renameProject(self, name):
@@ -505,6 +698,8 @@ class Controller(QObject):
         self.project = project
         self._path = path
         self._selected = ""
+        self._bulk_mode = False
+        self._checked.clear()
         self._collapsed.clear()
         self._query, self._filter = "", "all"
         self._history = [("", project.to_dict())]
@@ -563,10 +758,10 @@ class Controller(QObject):
         try:
             with Path(path).open("w", encoding="utf-8-sig", newline="") as stream:
                 writer = csv.writer(stream)
-                writer.writerow(["Задача", "Начало", "Завершение", "Длительность (ч)", "Трудозатраты (ч)", "Стоимость", "Прогресс", "Исполнитель"])
+                writer.writerow(["Задача", "Начало", "Завершение", "Длительность (ч)", "Трудозатраты (ч)", "Стоимость", "Прогресс", "Исполнитель", "Статус", "Приоритет"])
                 for task in self.project.tasks.values():
                     record = self.record(task.id)
-                    writer.writerow([task.name, record["start"], record["end"], record["duration"], record["effortHours"], record["costValue"], record["progress"], task.assignee])
+                    writer.writerow([task.name, record["start"], record["end"], record["duration"], record["effortHours"], record["costValue"], record["progress"], task.assignee, record["statusText"], record["priorityText"]])
         except OSError as error:
             self.toast.emit(str(error))
 

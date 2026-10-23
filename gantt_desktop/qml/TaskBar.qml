@@ -25,7 +25,7 @@ Item {
     width: task.milestone ? 22 : Math.max(6, (shown.endDay - shown.startDay) * workspace.pixelsPerDay)
     height: 22
     z: dragging || over ? 5 : 2
-    opacity: dragging ? 0.65 : 1
+    opacity: dragging ? 0.65 : task.status === "closed" ? 0.45 : 1
     Accessible.role: Accessible.Graphic
     Accessible.name: task.name + ", " + task.start + " — " + task.end
     Connections {
@@ -107,6 +107,7 @@ Item {
         font.family: "Arial"
         font.pixelSize: 12
         font.bold: task.summary
+        font.strikeout: task.status === "closed"
         color: task.summary ? "#125360" : "white"
         elide: Text.ElideRight
         verticalAlignment: Text.AlignVCenter
@@ -125,17 +126,21 @@ Item {
         hoverEnabled: true
         preventStealing: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        cursorShape: bar.dragging ? Qt.ClosedHandCursor : task.canMove ? Qt.OpenHandCursor : Qt.ArrowCursor
+        cursorShape: controller.bulkMode ? Qt.PointingHandCursor : bar.dragging ? Qt.ClosedHandCursor : task.canMove ? Qt.OpenHandCursor : Qt.ArrowCursor
         onContainsMouseChanged: {
             if (containsMouse) workspace.hoverRow = rowIndex
             else if (workspace.hoverRow === rowIndex) workspace.hoverRow = -1
         }
         onPressed: function(mouse) {
+            if (controller.bulkMode) {
+                if (mouse.button === Qt.LeftButton) controller.toggleChecked(task.taskId)
+                return
+            }
             if (mouse.button === Qt.RightButton) { workspace.taskMenuRequested(task.taskId); return }
             bar.begin("move", body, mouse)
         }
-        onPositionChanged: function(mouse) { if (pressed && pressedButtons & Qt.LeftButton) bar.update(body, mouse) }
-        onReleased: function(mouse) { if (mouse.button === Qt.LeftButton) bar.finish() }
+        onPositionChanged: function(mouse) { if (!controller.bulkMode && pressed && pressedButtons & Qt.LeftButton) bar.update(body, mouse) }
+        onReleased: function(mouse) { if (!controller.bulkMode && mouse.button === Qt.LeftButton) bar.finish() }
         onCanceled: { bar.dragging = false; bar.preview = ({}) }
     }
     MouseArea {
@@ -143,7 +148,7 @@ Item {
         objectName: "resize-start-" + task.taskId
         width: 8; height: parent.height
         anchors.left: parent.left
-        visible: !task.summary && !task.milestone
+        visible: !controller.bulkMode && !task.summary && !task.milestone
         hoverEnabled: true
         preventStealing: true
         cursorShape: task.canMove ? Qt.SizeHorCursor : Qt.ForbiddenCursor
@@ -157,7 +162,7 @@ Item {
         objectName: "resize-end-" + task.taskId
         width: 8; height: parent.height
         anchors.right: parent.right
-        visible: !task.summary && !task.milestone
+        visible: !controller.bulkMode && !task.summary && !task.milestone
         hoverEnabled: true
         preventStealing: true
         cursorShape: Qt.SizeHorCursor
@@ -173,7 +178,7 @@ Item {
             x: modelData === "S" ? -18 : bar.width + 5
             y: 5; width: 12; height: 12; radius: 6
             color: "#f4f4f4"; border.color: "#898f95"
-            visible: bar.over || workspace.linkSource !== ""
+            visible: !controller.bulkMode && (bar.over || workspace.linkSource !== "")
             MouseArea {
                 id: linkArea
                 objectName: "link-" + modelData + "-" + task.taskId
@@ -217,7 +222,7 @@ Item {
         objectName: "progress-" + task.taskId
         x: Math.max(0, bar.width * bar.completion / 100 - 5)
         y: 18; width: 12; height: 11
-        visible: !task.summary && !task.milestone && (bar.over || pressed)
+        visible: !controller.bulkMode && !task.summary && !task.milestone && (bar.over || pressed)
         hoverEnabled: true
         preventStealing: true
         cursorShape: Qt.SizeHorCursor
