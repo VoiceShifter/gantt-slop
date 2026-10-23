@@ -2,9 +2,11 @@
 
 An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. This is a new application, not a patch, port, or wrapper around GanttProject. Its visual/interaction reference is the user-provided synthetic GanttPRO diagram, inspected through the browser. No GanttPRO application code, logos, fonts, or other downloaded assets are included.
 
-**Scope: tasks and Gantt only.** No Board, account system, comments service, portfolios, or resource-workload application.
+**Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
-**0.3 fixes dependency-handle interaction and adds summary-group arrows, anchored endpoint resizing and drag auto-scroll.** [Arrow overview](docs/screenshots/dependency-arrows.png) · [Arrow controls and verification](docs/DEPENDENCY_ARROWS.md).
+**0.4 adds people as persistent entities and the bottom “Загрузка ресурсов” panel:** multi-person assignments, daily capacity, overload/weekend warnings and working-day settings. [Resource usage and verification](docs/RESOURCES.md).
+
+0.3 introduced [task/summary dependency arrows and anchored resizing](docs/DEPENDENCY_ARROWS.md).
 
 0.2 introduced [checkbox bulk editing, status/priority and row reordering/nesting](docs/SELECTION_AND_ROWS.md).
 
@@ -38,7 +40,9 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 
 - White split grid/timeline, cyan **#50c7d6** task/summary bars, orange connectors, magenta milestones, blue assignee badges, compact toolbar, and a right-side task editor.
 - Nested groups and tasks, milestones, collapse/expand, inline table editing, per-group creation, deletion with confirmation, and grip-based row reordering/nesting with preview, Escape and auto-scroll.
-- Dates/times, working duration, separate effort, cost, assignee text, notes, synchronized status/progress, five priority levels and task colors.
+- Dates/times, working duration, separate effort, cost, resource assignments, notes, synchronized status/progress, five priority levels and task colors.
+- Project-local people with stable IDs, create/rename/delete, individual capacity/workdays, multi-person effort allocation and migration of existing assignee names.
+- Collapsible/resizable workload below the Gantt, synchronized zoom/panning, green normal load, red overload, weekend/nonworking warnings, Hours/Percent/Tasks modes and expandable assigned-task bars.
 - Checkbox/group/select-all bulk editing with explicit Apply/Cancel and one-step Undo; protected deletion never removes an unchecked child through a partially selected parent.
 - Body movement for unconstrained tasks and groups; dependency-anchored tasks give an explanatory message instead of silently breaking their links.
 - Edge resizing, progress-handle dragging, live non-mutating date previews, three-pixel drag threshold, rapid select-then-drag, double-click inspection, and Escape cancellation.
@@ -55,6 +59,9 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 |---|---|
 | Select | Click a row/bar |
 | Bulk edit | Toolbar ☑, then row/group checkboxes; Ctrl+A selects the current filter; Apply commits |
+| Resource workload | Click “Загрузка ресурсов” in the bottom bar; drag its top divider to resize |
+| People and calendars | Bottom “Люди…” or a person's workload calendar button |
+| Multiple assignees | Task properties → ⋯ beside the assignee; choose people and hours |
 | Reorder/nest rows | Drag the six-dot left grip; use row edges or a group's name area |
 | Edit name/field | Click the table cell |
 | Inspect task | Double-click bar; or select then Enter |
@@ -70,11 +77,11 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Cancel gesture | Escape |
 | Undo / redo | Toolbar or platform-standard shortcuts |
 
-The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00. Task times are local civil/project times, not UTC timestamps. JSON can persist explicit holiday dates; a calendar-settings UI is not implemented yet.
+The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00. Task times are local civil/project times, not UTC timestamps. Project working weekdays and each person's availability are editable through “Люди…”. JSON also persists project holidays; a full holiday/exception calendar editor remains pending. Workload warnings are diagnostic and do not silently move tasks to resolve conflicts.
 
 ### Project-file compatibility
 
-New saves use **schema 2** for status/priority metadata. Schema-1 projects from the 0.1 baseline remain importable, with status derived from progress and priority defaulting to Medium. The old baseline cannot read schema 2; keep a separate copy if you still need its format. Summary dependencies require application 0.3 or later; the JSON structure remains schema 2.
+New saves use **schema 3** for resource entities, assignment IDs/shares and project/resource workdays. Schema-1/2 files remain importable: existing assignee names are migrated to shared resource records, while dates, effort, status and priority are retained. Older app versions cannot read schema 3; keep a separate copy if needed.
 
 ## Tests and native screenshots
 
@@ -85,30 +92,27 @@ python -m pytest -q
 For isolated Linux GUI automation (no interaction with the physical desktop):
 
 ```sh
-xvfb-run -a -s '-screen 0 1920x1080x24 -nolisten tcp' \
-  env QT_QUICK_BACKEND=software QT_QPA_PLATFORMTHEME=generic \
-  python -m pytest -q
+./tools/isolated-gui.sh python3 -m pytest -q
 
-xvfb-run -a -s '-screen 0 1920x1080x24 -nolisten tcp' \
-  env QT_QUICK_BACKEND=software QT_QPA_PLATFORMTHEME=generic \
-  python -m gantt_desktop --size 1920x960 \
+./tools/isolated-gui.sh python3 -m gantt_desktop --size 1920x960 \
   --screenshot docs/screenshots/overview-current.png
 ```
 
-Qt tests use an offscreen platform when Linux has no display; Xvfb is preferred for real-window/input checks. A desktop user does **not** need Xvfb to run the application.
+The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **158 passing tests**, including 45 native input tests. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **200 passing tests**, including 53 native Qt input tests. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
 - `gantt_desktop/domain.py`: Qt-independent calendar, hierarchy, dependencies and mutations.
 - `gantt_desktop/controller.py`: Qt list model, atomic edits, Python snapshot history, filtering and file operations.
+- `gantt_desktop/workload.py`: working-time effort distribution and daily resource availability/warnings.
 - `gantt_desktop/qml/`: native Qt Quick interface and direct manipulation.
 - `gantt_desktop/sample.py`: independent synthetic fixture based on visible sample labels/dates.
 - `tests/`: scheduling, transaction, persistence and real Qt mouse/keyboard regressions.
 
 ## Parity boundary
 
-This is a working implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-row dragging, arbitrary multi-bar date gestures, calendar configuration UI, baselines/critical-path UI, richer scheduling modes/constraints, full date-scale/header parity, full-project PDF/printing, large-project virtualization, and comprehensive accessibility/high-DPI QA. The inspected reference checkbox mode edits bulk properties, not task dates. Less-common dependency editing behaviors still need further live-reference parity testing.
+This is a working implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-row dragging, arbitrary multi-bar date gestures, full calendar exception/holiday editing, baselines/critical-path UI, richer scheduling modes/constraints, full date-scale/header parity, full-project PDF/printing, large-project virtualization, and comprehensive accessibility/high-DPI QA. The inspected reference checkbox mode edits bulk properties, not task dates. Less-common dependency editing behaviors still need further live-reference parity testing.
 
 Qt supports Windows, macOS and Linux, but this checkout has only been run and tested on **Linux**. Windows/macOS installation bundles, signing and platform QA have not been produced. When distributing the app, observe PySide6/Qt and other dependency licensing requirements.

@@ -20,6 +20,8 @@ ApplicationWindow {
     property string filterCode: "all"
     property string deleteId: ""
     property bool deleteBulk: false
+    property bool workloadVisible: false
+    property real workloadHeight: 230
     readonly property bool editingText: activeFocusItem && activeFocusItem.cursorPosition !== undefined
     onClosing: function(event) { if (!allowClose) event.accepted = controller.confirmClose() }
 
@@ -35,13 +37,15 @@ ApplicationWindow {
         dependency.relation=kind; dependency.lagHours=String(detail.lag || 0)
         dependency.open()
     }
+    function showResources(id) { gantt.cancelInteractions(); resources.resourceId=id; resources.open() }
+    function showAssignments(id) { gantt.cancelInteractions(); controller.select(id); assignments.taskId=id; assignments.open() }
     function saveProject() { contentItem.forceActiveFocus(); controller.save() }
 
     Connections {
         target: controller
         function onToast(message) { notification.text=message; notice.visible=true; toastTimer.restart() }
         function onInspectRequested() { inspector.open(); controller.focusTask(controller.selectedId) }
-        function onProjectLoaded() { inspector.close(); dependency.close(); search.text=""; window.filterCode="all"; gantt.scrollX=0 }
+        function onProjectLoaded() { inspector.close(); dependency.close(); resources.close(); assignments.close(); search.text=""; window.filterCode="all"; gantt.scrollX=0 }
         function onBulkChanged() {
             if (controller.bulkMode) {
                 inspector.close()
@@ -148,11 +152,14 @@ ApplicationWindow {
     }
     DependencyDialog { id: dependency; parent: Overlay.overlay }
     BulkEditor { id: bulkEditor; parent: Overlay.overlay; onDeleteRequested: window.askBulkDelete() }
+    ResourceManager { id: resources; parent: Overlay.overlay }
+    ResourcePicker { id: assignments; parent: Overlay.overlay; onManageRequested: window.showResources("") }
     TaskInspector {
         id: inspector
         parent: Overlay.overlay
         onDependencyRequested: function(source,target,kind,id) { window.showDependency(source,target,kind,id) }
         onDeleteRequested: function(id) { window.askDelete(id) }
+        onAssignmentRequested: function(id) { window.showAssignments(id) }
     }
 
     RowLayout {
@@ -271,12 +278,38 @@ ApplicationWindow {
                 onZoomRequested:function(change){zoom.value=Math.max(0,Math.min(5,zoom.value+change))}
             }
             Rectangle {
+                visible:window.workloadVisible
+                Layout.fillWidth:true; Layout.preferredHeight:5
+                color:"#e5e8ec"
+                MouseArea {
+                    objectName:"workloadSplitter"
+                    anchors.fill:parent; cursorShape:Qt.SplitVCursor; preventStealing:true
+                    property real downY:0
+                    property real oldHeight:0
+                    onPressed:function(mouse){downY=mapToItem(window.contentItem,mouse.x,mouse.y).y;oldHeight=window.workloadHeight}
+                    onPositionChanged:function(mouse){if(pressed)window.workloadHeight=Math.max(130,Math.min(window.height*0.55,oldHeight-(mapToItem(window.contentItem,mouse.x,mouse.y).y-downY)))}
+                }
+            }
+            ResourceWorkload {
+                id:workloadView
+                visible:window.workloadVisible
+                Layout.fillWidth:true; Layout.preferredHeight:window.workloadHeight
+                gridWidth:gantt.gridWidth; pixelsPerDay:gantt.pixelsPerDay; scrollX:gantt.scrollX; sceneWidth:gantt.sceneWidth
+                onManageResource:function(id){window.showResources(id)}
+                onInspectTask:function(id){window.inspectTask(id)}
+                onCloseRequested:window.workloadVisible=false
+                onHorizontalScroll:function(delta){gantt.scrollX+=delta;gantt.clampScroll()}
+                onZoomRequested:function(change){zoom.value=Math.max(0,Math.min(5,zoom.value+change))}
+            }
+            Rectangle {
                 Layout.fillWidth:true; Layout.preferredHeight:26
                 color:"#fafbfc"
                 Rectangle { width:parent.width; height:1; color:"#e9ebee" }
                 RowLayout {
                     anchors.fill:parent; anchors.leftMargin:14; anchors.rightMargin:14
-                    Text { text:controller.taskCount+" задач · Пн–Пт · 8ч/день"; font.pixelSize:11; color:"#83909b" }
+                    ActionButton { objectName:"workloadToggle"; text:"Загрузка ресурсов"; implicitHeight:24; font.pixelSize:11; checked:window.workloadVisible; onClicked:window.workloadVisible=!window.workloadVisible }
+                    ActionButton { objectName:"resourcesButton"; text:"Люди…"; implicitHeight:24; font.pixelSize:11; onClicked:window.showResources("") }
+                    Text { text:controller.taskCount+" задач · "+controller.calendarLabel; font.pixelSize:11; color:"#83909b" }
                     Item { Layout.fillWidth:true }
                     Text { text:controller.selectedId?(controller.selected.start+" — "+controller.selected.end):"Двойной щелчок — свойства задачи"; font.pixelSize:11; color:"#83909b" }
                 }

@@ -305,7 +305,7 @@ Item {
                                 Rectangle {
                                     x: 9; y: 6; width: 18; height: 18; radius: 9
                                     visible: columnCell.modelData.key === "assignee" && !!gridRow.rowData.assignee
-                                    color: gridRow.rowData.assignee === "Клиент" ? "#2683ed" : "#829da7"
+                                    color: gridRow.rowData.assigneeColor || "#829da7"
                                     Text { anchors.centerIn: parent; text: (gridRow.rowData.assignee || "").slice(0,1).toUpperCase(); color: "white"; font.pixelSize: 10 }
                                 }
                                 CellEditor {

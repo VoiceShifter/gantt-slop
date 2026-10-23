@@ -32,6 +32,7 @@ from .domain import (
     status_for_progress,
 )
 from .sample import sample_project
+from .workload import workload_rows
 
 MONTHS = ("Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
           "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь")
@@ -208,7 +209,10 @@ class Controller(QObject):
                 "startTime": start.strftime("%H:%M"), "endTime": end.strftime("%H:%M"),
                 "duration": duration / 60, "effortHours": effort, "costValue": cost,
                 "effort": f"{effort:g}ч", "cost": f"{cost:,.2f}", "progress": progress,
-                "assignee": task.assignee, "notes": task.notes, "canMove": not locked,
+                "assignee": task.assignee, "resourceIds": task.resource_ids,
+                "resourceShares": task.resource_shares,
+                "assigneeColor": self.project.resources[task.resource_ids[0]].color if task.resource_ids else "#829da7",
+                "notes": task.notes, "canMove": not locked,
                 "canResizeStart": task.kind == "task" and not self.project.endpoint_locked(task_id, "S"),
                 "canResizeEnd": task.kind == "task" and not self.project.endpoint_locked(task_id, "F"),
                 "status": status, "statusText": STATUS_LABELS[status], "priority": task.priority,
@@ -248,6 +252,57 @@ class Controller(QObject):
             members = self._check_members(task_id)
             states[task_id] = 2 if members and members <= self._checked else 1 if members & self._checked else 0
         return states
+
+    @Property(list, notify=viewChanged)
+    def resourceCatalog(self):
+        return [{"id": r.id, "name": r.name, "capacity": r.capacity, "workdays": sorted(r.workdays),
+                 "color": r.color, "taskCount": sum(r.id in t.resource_ids for t in self.project.tasks.values())}
+                for r in self.project.resources.values()]
+
+    @Property(list, notify=viewChanged)
+    def workloadRows(self):
+        return workload_rows(self.project, self._origin, self._day_count)
+
+    @Property(list, notify=viewChanged)
+    def projectWorkdays(self):
+        return sorted(self.project.calendar.workdays)
+
+    @Property(str, notify=viewChanged)
+    def calendarLabel(self):
+        return "Пн–Пт · 8ч/день" if self.project.calendar.workdays == set(range(5)) else f"{len(self.project.calendar.workdays)} дн/нед · 8ч/день"
+
+    @Slot(str, result=str)
+    def createResource(self, name):
+        return self.saveResource("", name, "8", list(range(5)))
+
+    @Slot(str, str, str, "QVariantList", result=str)
+    def saveResource(self, resource_id, name, capacity, workdays):
+        result = []
+        def save(project):
+            key = resource_id
+            if not key:
+                if any(r.name.casefold() == name.strip().casefold() for r in project.resources.values()):
+                    raise ScheduleError("Ресурс с таким именем уже существует.")
+                key = project.ensure_resource(name).id
+            project.update_resource(key, name, parse_number(capacity), set(workdays))
+            result.append(key)
+        return result[0] if self.edit("Сохранение ресурса", save) else ""
+
+    @Slot(str, str, str, "QVariantList", result=bool)
+    def updateResource(self, resource_id, name, capacity, workdays):
+        return self.edit("Изменение ресурса", lambda p: p.update_resource(resource_id, name, parse_number(capacity), set(workdays)))
+
+    @Slot(str, result=bool)
+    def removeResource(self, resource_id):
+        return self.edit("Удаление ресурса", lambda p: p.remove_resource(resource_id))
+
+    @Slot(str, "QVariantList", "QVariantList", result=bool)
+    def assignResources(self, task_id, ids, hours):
+        return self.edit("Назначение ресурсов", lambda p: p.assign_resources(task_id, list(ids), [parse_number(str(h)) for h in hours]))
+
+    @Slot("QVariantList", result=bool)
+    def setProjectWorkdays(self, days):
+        return self.edit("Рабочие дни проекта", lambda p: p.set_workdays(set(days)))
 
     @Property(list, notify=viewChanged)
     def taskChoices(self):
@@ -404,6 +459,8 @@ class Controller(QObject):
                         continue
                     if field_name == "status":
                         task.set_status(value)
+                    elif field_name == "assignee":
+                        project.assign_name(task_id, value)
                     else:
                         setattr(task, field_name, value)
         return self.edit("Массовое изменение задач", apply)
@@ -518,7 +575,9 @@ class Controller(QObject):
             date_fields = {"start", "end", "startTime", "endTime", "duration"}
             previous = project.group_anchors() if field_name in date_fields or field_name == "parent" else {}
             parents = project.ancestors(task_id) if field_name == "parent" else set()
-            if field_name in {"name", "assignee", "notes", "color", "parent"}:
+            if field_name == "assignee":
+                project.assign_name(task_id, value)
+            elif field_name in {"name", "notes", "color", "parent"}:
                 if field_name == "parent" and value and value not in project.tasks:
                     raise ScheduleError("Неизвестная группа.")
                 setattr(task, field_name, value)

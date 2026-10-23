@@ -117,7 +117,7 @@ Item {
         visible: !task.summary && task.assignee.length > 0 && !bar.dragging
         x: parent.width + 21; y: 2
         width: 19; height: 19; radius: 10
-        color: task.assignee === "Клиент" ? "#2683ed" : "#829da7"
+        color: task.assigneeColor
         Text { anchors.centerIn: parent; text: task.assignee.slice(0, 1).toUpperCase(); color: "white"; font.pixelSize: 10 }
     }
     MouseArea {

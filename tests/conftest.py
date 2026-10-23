@@ -1,6 +1,5 @@
 import gc
 import os
-import sys
 import time
 
 import pytest
@@ -13,18 +12,21 @@ from PySide6.QtWidgets import QApplication
 from gantt_desktop.app import create_window
 from gantt_desktop.controller import Controller
 
+# Tests must never create windows on the developer's desktop, including when
+# invoked by a background runner without our Xvfb wrapper.
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["QT_QUICK_BACKEND"] = "software"
+
 
 @pytest.fixture(scope="session")
 def qapp():
-    os.environ.setdefault("QT_QUICK_BACKEND", "software")
-    if not os.environ.get("DISPLAY") and os.name != "nt" and sys.platform != "darwin":
-        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     instance = QApplication.instance()
     if instance is None:
         app = QApplication([])
     else:
         assert isinstance(instance, QApplication)
         app = instance
+    assert app.platformName() == "offscreen", "GUI tests must use Qt offscreen, never the desktop."
     app.setFont(QFont("Arial", 9))
     QQuickStyle.setStyle("Basic")
     yield app

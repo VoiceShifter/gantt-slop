@@ -27,9 +27,10 @@ class WorkCalendar:
     """Local project time: Monday–Friday, 09–13 and 14–18 (eight working hours)."""
 
     holidays: set[date] = field(default_factory=set)
+    workdays: set[int] = field(default_factory=lambda: set(range(5)))
 
     def working_day(self, day: date) -> bool:
-        return day.weekday() < 5 and day not in self.holidays
+        return day.weekday() in self.workdays and day not in self.holidays
 
     def segments(self, day: date) -> list[tuple[datetime, datetime]]:
         if not self.working_day(day):
@@ -112,6 +113,28 @@ class WorkCalendar:
 
 
 @dataclass
+class Resource:
+    id: str
+    name: str
+    capacity: float = 8
+    workdays: set[int] = field(default_factory=lambda: set(range(5)))
+    color: str = "#2683ed"
+
+    def available(self, day: date) -> float:
+        return self.capacity if day.weekday() in self.workdays else 0
+
+    def validate(self) -> None:
+        if not self.id or not isinstance(self.name, str) or not self.name.strip():
+            raise ScheduleError("Укажите имя ресурса.")
+        if not math.isfinite(self.capacity) or not 0 <= self.capacity <= 24:
+            raise ScheduleError("Доступность ресурса должна быть от 0 до 24 часов в день.")
+        if any(type(day) is not int or not 0 <= day <= 6 for day in self.workdays):
+            raise ScheduleError("Некорректные рабочие дни ресурса.")
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", self.color):
+            raise ScheduleError("Цвет должен иметь формат #RRGGBB.")
+
+
+@dataclass
 class Task:
     id: str
     name: str
@@ -127,6 +150,9 @@ class Task:
     notes: str = ""
     status: str = "open"
     priority: str = "medium"
+    resource_ids: list[str] = field(default_factory=list)
+    resource_shares: list[float] = field(default_factory=list)
+    # assignee is a legacy-constructor/display cache; JSON stores resource IDs.
 
     def set_progress(self, value: float) -> None:
         if self.kind == "group":
@@ -171,6 +197,86 @@ class Project:
     tasks: dict[str, Task] = field(default_factory=dict)
     dependencies: list[Dependency] = field(default_factory=list)
     calendar: WorkCalendar = field(default_factory=WorkCalendar)
+    resources: dict[str, Resource] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for task in self.tasks.values():
+            if not task.resource_ids and task.assignee.strip():
+                task.resource_ids = [self.ensure_resource(task.assignee).id]
+            if task.resource_ids and len(task.resource_shares) == len(task.resource_ids) and all(
+                    math.isclose(s, 1 / len(task.resource_ids)) for s in task.resource_shares):
+                task.resource_shares = []
+        self.sync_resource_names()
+
+    def sync_resource_names(self) -> None:
+        for task in self.tasks.values():
+            task.assignee = ", ".join(self.resources[key].name for key in task.resource_ids if key in self.resources)
+
+    def ensure_resource(self, name: str) -> Resource:
+        name = name.strip()
+        existing = next((r for r in self.resources.values() if r.name.casefold() == name.casefold()), None)
+        if existing is not None:
+            return existing
+        resource = Resource(new_id(), name, color="#2683ed" if not self.resources else "#829da7")
+        resource.validate()
+        self.resources[resource.id] = resource
+        return resource
+
+    def assign_resources(self, task_id: str, ids: list[str], hours: list[float] | None = None) -> None:
+        task = self.tasks[task_id]
+        if task.kind == "group":
+            raise ScheduleError("Назначайте ресурсы задачам, а не сводной группе.")
+        if len(set(ids)) != len(ids) or any(key not in self.resources for key in ids):
+            raise ScheduleError("Некорректное назначение ресурсов.")
+        if hours is not None and (len(hours) != len(ids) or any(not math.isfinite(h) or h < 0 for h in hours)):
+            raise ScheduleError("Трудозатраты назначений должны быть неотрицательными числами.")
+        task.resource_ids = list(ids)
+        task.resource_shares = []
+        if hours is not None and ids:
+            task.effort = sum(hours)
+            if task.effort:
+                shares = [h / task.effort for h in hours]
+                task.resource_shares = [] if all(math.isclose(s, 1 / len(ids)) for s in shares) else shares
+        self.sync_resource_names()
+
+    def assign_name(self, task_id: str, name: str) -> None:
+        task = self.tasks[task_id]
+        if name == task.assignee:
+            return
+        self.assign_resources(task_id, [self.ensure_resource(name).id] if name.strip() else [])
+
+    def update_resource(self, resource_id: str, name: str, capacity: float, workdays: set[int]) -> None:
+        resource = self.resources[resource_id]
+        candidate = Resource(resource_id, name.strip(), capacity, workdays, resource.color)
+        candidate.validate()
+        if any(r.id != resource_id and r.name.casefold() == candidate.name.casefold() for r in self.resources.values()):
+            raise ScheduleError("Ресурс с таким именем уже существует.")
+        self.resources[resource_id] = candidate
+        self.sync_resource_names()
+
+    def remove_resource(self, resource_id: str) -> None:
+        del self.resources[resource_id]
+        for task in self.tasks.values():
+            if resource_id in task.resource_ids:
+                index = task.resource_ids.index(resource_id)
+                task.resource_ids.pop(index)
+                if task.resource_shares:
+                    task.resource_shares.pop(index)
+                    total = sum(task.resource_shares)
+                    shares = [s / total for s in task.resource_shares] if total else []
+                    task.resource_shares = [] if shares and all(math.isclose(s, 1 / len(shares)) for s in shares) else shares
+        self.sync_resource_names()
+
+    def set_workdays(self, days: set[int]) -> None:
+        if not days or any(type(day) is not int or not 0 <= day <= 6 for day in days):
+            raise ScheduleError("Выберите хотя бы один рабочий день проекта.")
+        if days == self.calendar.workdays:
+            return
+        self.calendar.workdays = days
+        for task in self.tasks.values():
+            if task.kind != "group":
+                task.start = self.calendar.normalize(task.start)
+        self.propagate(set(self.tasks), {}, align_changed=True)
 
     def children(self, task_id: str = "") -> list[Task]:
         return [task for task in self.tasks.values() if task.parent == task_id]
@@ -250,7 +356,21 @@ class Project:
     def validate(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
             raise ScheduleError("Укажите название проекта.")
+        if not self.calendar.workdays or any(type(day) is not int or not 0 <= day <= 6 for day in self.calendar.workdays):
+            raise ScheduleError("Некорректные рабочие дни проекта.")
+        names = set()
+        for resource in self.resources.values():
+            resource.validate()
+            if resource.name.casefold() in names:
+                raise ScheduleError("Ресурс с таким именем уже существует.")
+            names.add(resource.name.casefold())
         for task in self.tasks.values():
+            if len(set(task.resource_ids)) != len(task.resource_ids) or any(key not in self.resources for key in task.resource_ids):
+                raise ScheduleError("Назначение ссылается на неизвестный ресурс.")
+            if task.resource_shares and (len(task.resource_shares) != len(task.resource_ids)
+                                        or any(not math.isfinite(s) or s < 0 for s in task.resource_shares)
+                                        or not math.isclose(sum(task.resource_shares), 1, abs_tol=1e-9)):
+                raise ScheduleError("Некорректное распределение трудозатрат.")
             if not task.id or not task.name.strip():
                 raise ScheduleError("Укажите название задачи.")
             if task.kind not in {"task", "group", "milestone"}:
@@ -523,25 +643,36 @@ class Project:
         for task in self.tasks.values():
             item = asdict(task)
             item["start"] = task.start.isoformat(timespec="minutes")
+            item.pop("assignee")
             tasks.append(item)
-        return {"version": 2, "name": self.name, "tasks": tasks,
+        resources = [{**asdict(r), "workdays": sorted(r.workdays)} for r in self.resources.values()]
+        return {"version": 3, "name": self.name, "tasks": tasks, "resources": resources,
                 "dependencies": [asdict(link) for link in self.dependencies],
+                "workdays": sorted(self.calendar.workdays),
                 "holidays": sorted(day.isoformat() for day in self.calendar.holidays)}
 
     @classmethod
     def from_dict(cls, value: dict) -> Project:
-        if value.get("version") not in (1, 2):
+        if value.get("version") not in (1, 2, 3):
             raise ScheduleError("Неподдерживаемая версия файла проекта.")
         tasks = {}
         for item in value["tasks"]:
-            record = {**item}
+            record = {**item, "resource_ids": list(item.get("resource_ids", [])),
+                      "resource_shares": list(item.get("resource_shares", []))}
             record.setdefault("status", status_for_progress(record.get("progress", 0)))
             task = Task(**{**record, "start": datetime.fromisoformat(item["start"])})
             if task.id in tasks:
                 raise ScheduleError("Повторяющийся идентификатор задачи.")
             tasks[task.id] = task
+        resources = {}
+        for item in value.get("resources", []):
+            resource = Resource(**{**item, "workdays": set(item.get("workdays", range(5)))})
+            if resource.id in resources:
+                raise ScheduleError("Повторяющийся идентификатор ресурса.")
+            resources[resource.id] = resource
         project = cls(value["name"], tasks,
                       [Dependency(**item) for item in value["dependencies"]],
-                      WorkCalendar({date.fromisoformat(day) for day in value.get("holidays", [])}))
+                      WorkCalendar({date.fromisoformat(day) for day in value.get("holidays", [])},
+                                   set(value.get("workdays", range(5)))), resources)
         project.validate()
         return project

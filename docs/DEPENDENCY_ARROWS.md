@@ -1,5 +1,7 @@
 # Dependency arrows — 0.3
 
+Historical 0.3 verification. [Version 0.4](RESOURCES.md) adds resource entities/schema 3, working-day controls and an always-headless test harness; the numbers and package details below describe the 0.3 checkpoint.
+
 Follow-up to checkpoint `7565bc50b`. Only `gantt-desktop/` was changed; the legacy application source and unrelated staged changes were not used or modified.
 
 ## Using arrows

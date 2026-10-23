@@ -37,6 +37,7 @@ def sample_project() -> Project:
             task_id, name, datetime.fromisoformat(start), int(hours * 60), parent,
             "milestone" if not hours else "task", assignee=assignee, effort=effort, cost=cost,
             color="#d65ab1" if not hours else "#50c7d6",
+            resource_ids=[project.ensure_resource(assignee).id],
         )
     pairs = [("sensor", "controller"), ("controller", "protocol"), ("protocol", "router"),
              ("router", "supplier"), ("supplier", "supplier-control"),

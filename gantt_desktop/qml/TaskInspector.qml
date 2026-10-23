@@ -15,6 +15,7 @@ Drawer {
     interactive: false
     signal dependencyRequested(string source, string target, string kind, string linkId)
     signal deleteRequested(string taskId)
+    signal assignmentRequested(string taskId)
     background: Rectangle { color: "white"; border.color: "#e2e5e9" }
     Connections {
         target: controller
@@ -144,11 +145,16 @@ Drawer {
                     }
                     Label { text: "Исполнитель"; color: "#999999"; Layout.columnSpan: 2; font.pixelSize: 12 }
                     Label { text: "Стоимость"; color: "#999999"; Layout.columnSpan: 2; font.pixelSize: 12 }
-                    CellEditor {
-                        Layout.columnSpan: 2; Layout.fillWidth: true
-                        text: controller.selected.assignee || ""; enabled: !controller.selected.summary
-                        placeholderText: "Не назначен"
-                        onEditingFinished: if(text!==controller.selected.assignee) controller.editField(controller.selectedId,"assignee",text)
+                    RowLayout {
+                        Layout.columnSpan:2; Layout.fillWidth:true
+                        CellEditor {
+                            objectName:"inspectorAssignee"
+                            Layout.fillWidth:true
+                            text:controller.selected.assignee||""; enabled:!controller.selected.summary
+                            placeholderText:"Имя ресурса или новое имя"
+                            onEditingFinished:if(text!==controller.selected.assignee)controller.editField(controller.selectedId,"assignee",text)
+                        }
+                        ActionButton { objectName:"chooseResourcesButton"; text:"⋯"; hint:"Выбрать ресурсы и распределить часы"; enabled:!!controller.selectedId&&!controller.selected.summary; onClicked:drawer.assignmentRequested(controller.selectedId) }
                     }
                     CellEditor {
                         Layout.columnSpan: 2; Layout.fillWidth: true
