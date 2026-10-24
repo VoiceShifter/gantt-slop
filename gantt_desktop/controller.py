@@ -7,6 +7,7 @@ import math
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import (
     Property,
@@ -34,6 +35,9 @@ from .domain import (
 )
 from .sample import sample_project
 from .workload import workload_rows
+
+if TYPE_CHECKING:
+    from .theme import AppTheme
 
 MONTHS = ("Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
           "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь")
@@ -94,6 +98,7 @@ class Controller(QObject):
         super().__init__()
         self.project = project or sample_project()
         self.dialogs = NativeDialogs(self)
+        self.theme: AppTheme | None = None
         self._rows = TaskRows(self)
         self._selected = ""
         self._bulk_mode = False

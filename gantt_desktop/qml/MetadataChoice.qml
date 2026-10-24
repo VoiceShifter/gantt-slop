@@ -17,9 +17,9 @@ ComboBox {
     font.pixelSize: 12
     background: Rectangle {
         radius: 3
-        color: control.compact ? "#f3f3f3" : "white"
+        color: control.compact ? appTheme.colors.panel : appTheme.colors.input
         border.width: control.compact && !control.activeFocus ? 0 : 1
-        border.color: control.activeFocus ? "#247edc" : "#cdd1d6"
+        border.color: control.activeFocus ? appTheme.colors.link : appTheme.colors.border
         opacity: control.enabled ? 1 : 0.45
     }
     contentItem: Item {
@@ -28,12 +28,12 @@ ComboBox {
             x: 9; anchors.verticalCenter: parent.verticalCenter
             width: 7; height: 7; radius: 4
             visible: !!control.entry.value && !control.entry.symbol
-            color: control.entry.color || "#999999"
+            color: control.entry.color || appTheme.colors.muted
         }
         Text {
             x: 8; anchors.verticalCenter: parent.verticalCenter
             text: control.entry.symbol || ""
-            color: control.entry.color || "#777777"
+            color: control.entry.color || appTheme.colors.secondary
             font.pixelSize: 16
         }
         Text {
@@ -42,14 +42,14 @@ ComboBox {
             width: parent.width - x - 8
             anchors.verticalCenter: parent.verticalCenter
             text: control.compact ? control.displayText.toUpperCase() : control.displayText
-            color: control.enabled ? "#444444" : "#aaaaaa"
+            color: control.enabled ? appTheme.colors.text : appTheme.colors.disabled
             font.pixelSize: control.compact ? 11 : 12
             elide: Text.ElideRight
         }
     }
     indicator: Text {
         x: control.width - width - 8; anchors.verticalCenter: parent.verticalCenter
-        text: "⌄"; color: "#999999"; visible: !control.compact
+        text: "⌄"; color: appTheme.colors.muted; visible: !control.compact
     }
     delegate: ItemDelegate {
         required property var modelData
@@ -59,8 +59,8 @@ ComboBox {
         highlighted: control.highlightedIndex === index
         contentItem: Row {
             spacing: 8
-            Text { text: modelData.symbol || "●"; color: modelData.color || "#999999"; font.pixelSize: modelData.symbol ? 16 : 11; anchors.verticalCenter: parent.verticalCenter; visible: !!modelData.value }
-            Text { text: modelData.label; color: "#303438"; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+            Text { text: modelData.symbol || "●"; color: modelData.color || appTheme.colors.muted; font.pixelSize: modelData.symbol ? 16 : 11; anchors.verticalCenter: parent.verticalCenter; visible: !!modelData.value }
+            Text { text: modelData.label; color: appTheme.colors.text; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
         }
     }
 }

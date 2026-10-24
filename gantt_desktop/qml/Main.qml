@@ -12,7 +12,19 @@ ApplicationWindow {
     minimumHeight: 650
     visible: true
     title: controller.projectName + (controller.dirty ? " *" : "") + " — Gantt Desktop"
-    color: "white"
+    color: appTheme.colors.surface
+    palette.window: appTheme.colors.surface
+    palette.windowText: appTheme.colors.text
+    palette.base: appTheme.colors.input
+    palette.alternateBase: appTheme.colors.panel
+    palette.text: appTheme.colors.text
+    palette.button: appTheme.colors.panel
+    palette.buttonText: appTheme.colors.text
+    palette.highlight: appTheme.colors.accent
+    palette.highlightedText: "white"
+    palette.placeholderText: appTheme.colors.muted
+    palette.toolTipBase: appTheme.colors.raised
+    palette.toolTipText: appTheme.colors.text
     font.family: "Arial"
     font.pixelSize: 13
     property bool allowClose: false
@@ -21,6 +33,7 @@ ApplicationWindow {
     property bool workloadVisible: false
     property real workloadHeight: 230
     readonly property bool editingText: activeFocusItem && activeFocusItem.cursorPosition !== undefined
+    readonly property bool modalBlocked: nativeDialogs.modalOpen || settings.visible
     onClosing: function(event) { if (!allowClose) event.accepted = controller.confirmClose() }
 
     function inspectTask(id) { if (!controller.bulkMode) { controller.select(id); inspector.open() } }
@@ -45,18 +58,18 @@ ApplicationWindow {
             } else if (bulkEditor.visible) bulkEditor.close()
         }
     }
-    Shortcut { sequences: [StandardKey.Save]; enabled:!nativeDialogs.modalOpen; onActivated: window.saveProject() }
-    Shortcut { sequence: "Ctrl+Shift+S"; enabled:!nativeDialogs.modalOpen; onActivated: controller.saveAs() }
-    Shortcut { sequences: [StandardKey.Open]; enabled:!nativeDialogs.modalOpen; onActivated: controller.openProject() }
-    Shortcut { sequences: [StandardKey.New]; enabled:!nativeDialogs.modalOpen; onActivated: controller.newProject() }
-    Shortcut { sequences: [StandardKey.Undo]; enabled:!nativeDialogs.modalOpen && !window.editingText; onActivated: controller.undo() }
-    Shortcut { sequences: [StandardKey.Redo]; enabled:!nativeDialogs.modalOpen && !window.editingText; onActivated: controller.redo() }
-    Shortcut { sequence: "Delete"; enabled:!nativeDialogs.modalOpen && !window.editingText && !controller.bulkMode && !!controller.selectedId; onActivated: window.askDelete(controller.selectedId) }
-    Shortcut { sequence: "Delete"; enabled:!nativeDialogs.modalOpen && !window.editingText && controller.bulkMode && controller.bulkDeleteCount>0; onActivated: window.askBulkDelete() }
-    Shortcut { sequences: [StandardKey.SelectAll]; enabled:!nativeDialogs.modalOpen && controller.bulkMode && !window.editingText; onActivated: controller.setAllChecked(true) }
-    Shortcut { sequence: "Escape"; enabled:!nativeDialogs.modalOpen; onActivated: { gantt.cancelInteractions(); if (controller.bulkMode) controller.setBulkMode(false); if (inspector.opened) inspector.close(); contentItem.forceActiveFocus() } }
-    Shortcut { sequence: "Return"; enabled:!nativeDialogs.modalOpen && !controller.bulkMode && !window.editingText && !!controller.selectedId && !inspector.opened; onActivated: window.inspectTask(controller.selectedId) }
-    Shortcut { sequence: "Ctrl+F"; enabled:!nativeDialogs.modalOpen; onActivated: { search.forceActiveFocus(); search.selectAll() } }
+    Shortcut { sequences: [StandardKey.Save]; enabled:!window.modalBlocked; onActivated: window.saveProject() }
+    Shortcut { sequence: "Ctrl+Shift+S"; enabled:!window.modalBlocked; onActivated: controller.saveAs() }
+    Shortcut { sequences: [StandardKey.Open]; enabled:!window.modalBlocked; onActivated: controller.openProject() }
+    Shortcut { sequences: [StandardKey.New]; enabled:!window.modalBlocked; onActivated: controller.newProject() }
+    Shortcut { sequences: [StandardKey.Undo]; enabled:!window.modalBlocked && !window.editingText; onActivated: controller.undo() }
+    Shortcut { sequences: [StandardKey.Redo]; enabled:!window.modalBlocked && !window.editingText; onActivated: controller.redo() }
+    Shortcut { sequence: "Delete"; enabled:!window.modalBlocked && !window.editingText && !controller.bulkMode && !!controller.selectedId; onActivated: window.askDelete(controller.selectedId) }
+    Shortcut { sequence: "Delete"; enabled:!window.modalBlocked && !window.editingText && controller.bulkMode && controller.bulkDeleteCount>0; onActivated: window.askBulkDelete() }
+    Shortcut { sequences: [StandardKey.SelectAll]; enabled:!window.modalBlocked && controller.bulkMode && !window.editingText; onActivated: controller.setAllChecked(true) }
+    Shortcut { sequence: "Escape"; enabled:!window.modalBlocked; onActivated: { gantt.cancelInteractions(); if (controller.bulkMode) controller.setBulkMode(false); if (inspector.opened) inspector.close(); contentItem.forceActiveFocus() } }
+    Shortcut { sequence: "Return"; enabled:!window.modalBlocked && !controller.bulkMode && !window.editingText && !!controller.selectedId && !inspector.opened; onActivated: window.inspectTask(controller.selectedId) }
+    Shortcut { sequence: "Ctrl+F"; enabled:!window.modalBlocked; onActivated: { search.forceActiveFocus(); search.selectAll() } }
 
     Menu {
         id: fileMenu
@@ -117,6 +130,7 @@ ApplicationWindow {
         MenuItem { text:window.sidebarVisible?"Скрыть боковую панель":"Показать боковую панель"; onTriggered:window.sidebarVisible=!window.sidebarVisible }
         MenuItem { text:"Сбросить ширину таблицы"; onTriggered:gantt.gridWidth=Math.min(716,Math.max(450,gantt.width*0.48)) }
     }
+    Settings { id: settings; parent: Overlay.overlay }
     BulkEditor { id: bulkEditor; parent: Overlay.overlay; onDeleteRequested: window.askBulkDelete() }
     TaskInspector {
         id: inspector
@@ -135,23 +149,23 @@ ApplicationWindow {
             Layout.fillHeight: true
             visible: window.sidebarVisible
             clip: true
-            color: "white"
-            Rectangle { anchors.right:parent.right; width:1; height:parent.height; color:"#eeeeee" }
+            color: appTheme.colors.surface
+            Rectangle { anchors.right:parent.right; width:1; height:parent.height; color:appTheme.colors.border }
             ColumnLayout {
                 anchors.fill:parent
                 anchors.margins:12
                 spacing:14
                 RowLayout {
                     Layout.fillWidth:true
-                    Label { text:"GANTT DESKTOP"; color:"#00564f"; font.bold:true; font.pixelSize:21 }
+                    Label { text:"GANTT DESKTOP"; color:appTheme.colors.brand; font.bold:true; font.pixelSize:21 }
                     Item { Layout.fillWidth:true }
                     ActionButton { text:"⇤"; hint:"Скрыть панель проектов"; onClicked:window.sidebarVisible=false }
                 }
-                Label { text:"Локальные проекты"; font.bold:true; font.pixelSize:15; color:"#292929" }
+                Label { text:"Локальные проекты"; font.bold:true; font.pixelSize:15; color:appTheme.colors.text }
                 ActionButton { text:"＋  Создать новый проект"; primary:true; Layout.fillWidth:true; implicitHeight:33; onClicked:controller.newProject() }
                 Rectangle {
-                    Layout.fillWidth:true; height:32; color:"#e8eff6"; radius:3
-                    Label { x:14; anchors.verticalCenter:parent.verticalCenter; text:"□   Текущий проект"; color:"#252f37"; font.bold:true }
+                    Layout.fillWidth:true; height:32; color:appTheme.colors.selection; radius:3
+                    Label { x:14; anchors.verticalCenter:parent.verticalCenter; text:"□   Текущий проект"; color:appTheme.colors.text; font.bold:true }
                     MouseArea { anchors.fill:parent; onClicked:{inspector.close();gantt.centerDay(7)} }
                 }
                 ActionButton { text:"Открыть проект…"; Layout.fillWidth:true; onClicked:controller.openProject() }
@@ -159,12 +173,12 @@ ApplicationWindow {
                 ActionButton { text:"Демонстрационный проект"; Layout.fillWidth:true; onClicked:controller.loadExample() }
                 Item { Layout.fillHeight:true }
                 Rectangle {
-                    Layout.fillWidth:true; height:88; color:"#f8f9fa"; radius:4
+                    Layout.fillWidth:true; height:88; color:appTheme.colors.panel; radius:4
                     Column {
                         x:14; y:15; width:parent.width-28; spacing:9
-                        Text { text:controller.fileName; width:parent.width; elide:Text.ElideMiddle; color:"#44505b"; font.pixelSize:12 }
-                        Text { text:controller.dirty?"Есть несохранённые изменения":"Изменения сохранены"; color:controller.dirty?"#a57a20":"#7d8b95"; font.pixelSize:11 }
-                        Text { text:"Локальный файл · Без аккаунта"; color:"#9aa1a7"; font.pixelSize:11 }
+                        Text { text:controller.fileName; width:parent.width; elide:Text.ElideMiddle; color:appTheme.colors.secondary; font.pixelSize:12 }
+                        Text { text:controller.dirty?"Есть несохранённые изменения":"Изменения сохранены"; color:controller.dirty?appTheme.colors.warning:appTheme.colors.muted; font.pixelSize:11 }
+                        Text { text:"Локальный файл · Без аккаунта"; color:appTheme.colors.muted; font.pixelSize:11 }
                     }
                 }
                 ActionButton { objectName:"helpButton"; text:"?  Помощь"; onClicked:nativeDialogs.showHelp() }
@@ -181,28 +195,29 @@ ApplicationWindow {
                     ActionButton { text:"Файл ⌄"; onClicked:fileMenu.popup() }
                     CellEditor { text:controller.projectName; font.bold:true; font.pixelSize:15; Layout.preferredWidth:280; onEditingFinished:if(text!==controller.projectName)controller.renameProject(text) }
                     Item { Layout.fillWidth:true }
-                    Text { text:"Локальный проект"; color:"#7b858e"; font.pixelSize:12 }
+                    Text { visible:window.width>=1200; text:"Локальный проект"; color:appTheme.colors.muted; font.pixelSize:12 }
+                    ActionButton { objectName:"settingsButton"; text:"⚙ Настройки"; hint:"Настройки приложения"; onClicked:{gantt.cancelInteractions();settings.open()} }
                     ActionButton { text:"Сохранить"; hint:"Сохранить · Ctrl+S"; onClicked:window.saveProject() }
                 }
             }
             Item {
                 Layout.fillWidth:true; Layout.preferredHeight:30
-                Rectangle { anchors.bottom:parent.bottom; width:parent.width; height:1; color:"#eeeeee" }
-                Text { x:14; y:4; text:"Диаграмма"; color:"#176dce"; font.bold:true; font.pixelSize:14 }
-                Rectangle { x:14; anchors.bottom:parent.bottom; width:78; height:2; color:"#246dc2" }
+                Rectangle { anchors.bottom:parent.bottom; width:parent.width; height:1; color:appTheme.colors.border }
+                Text { x:14; y:4; text:"Диаграмма"; color:appTheme.colors.link; font.bold:true; font.pixelSize:14 }
+                Rectangle { x:14; anchors.bottom:parent.bottom; width:78; height:2; color:appTheme.colors.accent }
                 ActionButton { anchors.right:parent.right; anchors.rightMargin:12; text:"▷  Как использовать"; onClicked:nativeDialogs.showHelp() }
             }
             Rectangle {
                 id: toolbar
                 Layout.fillWidth:true; Layout.preferredHeight:40
-                color:"white"
-                Rectangle { anchors.bottom:parent.bottom; width:parent.width; height:1; color:"#e5e5e5" }
+                color:appTheme.colors.surface
+                Rectangle { anchors.bottom:parent.bottom; width:parent.width; height:1; color:appTheme.colors.border }
                 RowLayout {
                     anchors.fill:parent; anchors.leftMargin:9; anchors.rightMargin:10; spacing:2
                     ActionButton { objectName:"undoButton"; text:"↶"; font.pixelSize:21; hint:"Отменить · Ctrl+Z"; enabled:controller.canUndo; onClicked:{window.contentItem.forceActiveFocus();controller.undo()} }
                     ActionButton { objectName:"redoButton"; text:"↷"; font.pixelSize:21; hint:"Повторить · Ctrl+Shift+Z"; enabled:controller.canRedo; onClicked:controller.redo() }
                     ActionButton { objectName:"bulkModeButton"; text:"☑"; font.pixelSize:18; hint:"Массовое изменение задач"; checked:controller.bulkMode; onClicked:{window.contentItem.forceActiveFocus();gantt.cancelInteractions();controller.setBulkMode(!controller.bulkMode)} }
-                    Rectangle { width:1; height:20; color:"#e3e3e3"; Layout.leftMargin:7; Layout.rightMargin:7 }
+                    Rectangle { width:1; height:20; color:appTheme.colors.border; Layout.leftMargin:7; Layout.rightMargin:7 }
                     ActionButton { objectName:"addTaskButton"; text:"＋"; font.pixelSize:21; hint:"Добавить задачу"; enabled:!controller.bulkMode; onClicked:controller.addTask(window.selectedParent(),"task") }
                     ActionButton { text:"◇"; font.pixelSize:20; hint:"Добавить веху"; enabled:!controller.bulkMode; onClicked:controller.addTask(window.selectedParent(),"milestone") }
                     ActionButton { text:"⊞"; font.pixelSize:18; hint:"Добавить группу"; enabled:!controller.bulkMode; onClicked:controller.addTask("","group") }
@@ -215,7 +230,7 @@ ApplicationWindow {
                         Layout.preferredWidth:toolbar.width>1100?190:130
                         placeholderText:"Поиск по имени задачи"
                         onTextChanged:controller.search(text)
-                        background:Rectangle { color:search.activeFocus?"white":"#fafbfc"; radius:3; border.color:search.activeFocus?"#2482e8":"#ebedf0" }
+                        background:Rectangle { color:search.activeFocus?appTheme.colors.input:appTheme.colors.raised; radius:3; border.color:search.activeFocus?appTheme.colors.link:appTheme.colors.border }
                     }
                     ActionButton { text:"Поля"; objectName:"fieldsButton"; onClicked:fieldsMenu.popup() }
                     ActionButton { text:"Фильтр"; objectName:"filterButton"; checked:window.filterCode!=="all"; onClicked:filterMenu.popup() }
@@ -226,7 +241,7 @@ ApplicationWindow {
                         from:0; to:5; value:2; stepSize:1; snapMode:Slider.SnapAlways
                         Accessible.name:"Масштаб времени"
                     }
-                    Text { text:["Дни","Дни","Недели","Месяцы","Кварталы","Годы"][Math.round(zoom.value)]; font.pixelSize:12; color:"#777777"; Layout.preferredWidth:58 }
+                    Text { text:["Дни","Дни","Недели","Месяцы","Кварталы","Годы"][Math.round(zoom.value)]; font.pixelSize:12; color:appTheme.colors.secondary; Layout.preferredWidth:58 }
                     ActionButton { text:"Экспорт"; onClicked:exportMenu.popup() }
                     ActionButton { text:"Вид ⌄"; onClicked:viewMenu.popup() }
                 }
@@ -244,7 +259,7 @@ ApplicationWindow {
             Rectangle {
                 visible:window.workloadVisible
                 Layout.fillWidth:true; Layout.preferredHeight:5
-                color:"#e5e8ec"
+                color:appTheme.colors.border
                 MouseArea {
                     objectName:"workloadSplitter"
                     anchors.fill:parent; cursorShape:Qt.SplitVCursor; preventStealing:true
@@ -267,15 +282,15 @@ ApplicationWindow {
             }
             Rectangle {
                 Layout.fillWidth:true; Layout.preferredHeight:26
-                color:"#fafbfc"
-                Rectangle { width:parent.width; height:1; color:"#e9ebee" }
+                color:appTheme.colors.raised
+                Rectangle { width:parent.width; height:1; color:appTheme.colors.border }
                 RowLayout {
                     anchors.fill:parent; anchors.leftMargin:14; anchors.rightMargin:14
                     ActionButton { objectName:"workloadToggle"; text:"Загрузка ресурсов"; implicitHeight:24; font.pixelSize:11; checked:window.workloadVisible; onClicked:window.workloadVisible=!window.workloadVisible }
                     ActionButton { objectName:"resourcesButton"; text:"Люди…"; implicitHeight:24; font.pixelSize:11; onClicked:window.showResources("") }
-                    Text { text:controller.taskCount+" задач · "+controller.calendarLabel; font.pixelSize:11; color:"#83909b" }
+                    Text { text:controller.taskCount+" задач · "+controller.calendarLabel; font.pixelSize:11; color:appTheme.colors.muted }
                     Item { Layout.fillWidth:true }
-                    Text { text:controller.selectedId?(controller.selected.start+" — "+controller.selected.end):"Двойной щелчок — свойства задачи"; font.pixelSize:11; color:"#83909b" }
+                    Text { text:controller.selectedId?(controller.selected.start+" — "+controller.selected.end):"Двойной щелчок — свойства задачи"; font.pixelSize:11; color:appTheme.colors.muted }
                 }
             }
         }
@@ -286,9 +301,9 @@ ApplicationWindow {
         anchors.right:parent.right; anchors.top:parent.top
         anchors.margins:14
         width:Math.min(560,window.width-40); height:notification.implicitHeight+28
-        color:"white"; radius:5; border.color:"#dfe5ed"; z:100
-        Rectangle { width:4; height:parent.height; color:"#2479d7"; radius:2 }
-        Text { id:notification; x:18; y:14; width:parent.width-34; wrapMode:Text.WordWrap; color:"#35414b"; font.pixelSize:12 }
+        color:appTheme.colors.raised; radius:5; border.color:appTheme.colors.border; z:100
+        Rectangle { width:4; height:parent.height; color:appTheme.colors.accent; radius:2 }
+        Text { id:notification; x:18; y:14; width:parent.width-34; wrapMode:Text.WordWrap; color:appTheme.colors.text; font.pixelSize:12 }
         Timer { id:toastTimer; interval:4500; onTriggered:notice.visible=false }
         MouseArea { anchors.fill:parent; onClicked:notice.visible=false }
     }

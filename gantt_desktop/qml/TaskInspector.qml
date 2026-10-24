@@ -16,7 +16,7 @@ Drawer {
     signal dependencyRequested(string source, string target, string kind, string linkId)
     signal deleteRequested(string taskId)
     signal assignmentRequested(string taskId)
-    background: Rectangle { color: "white"; border.color: "#e2e5e9" }
+    background: Rectangle { color: appTheme.colors.surface; border.color: appTheme.colors.border }
     Connections {
         target: controller
         function onSelectionChanged() { if (!controller.selectedId) drawer.close() }
@@ -30,7 +30,7 @@ Drawer {
         spacing: 0
         Item {
             Layout.fillWidth: true; Layout.preferredHeight: 120
-            Text { x: 32; y: 27; text: controller.projectName; color: "#999999"; font.pixelSize: 12 }
+            Text { x: 32; y: 27; text: controller.projectName; color: appTheme.colors.muted; font.pixelSize: 12 }
             ActionButton { anchors.right: parent.right; anchors.rightMargin: 22; y: 21; text: "×"; font.pixelSize: 21; hint: "Закрыть"; onClicked: drawer.close() }
             Rectangle {
                 x: 34; y: 65; width: 23; height: 23; radius: 3
@@ -45,7 +45,7 @@ Drawer {
                 onEditingFinished: if (controller.selectedId && text !== controller.selected.name) controller.editField(controller.selectedId, "name", text)
             }
         }
-        Rectangle { Layout.fillWidth: true; height: 1; color: "#e9e9e9" }
+        Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.colors.border }
         ScrollView {
             Layout.fillWidth: true; Layout.fillHeight: true
             contentWidth: availableWidth
@@ -67,14 +67,14 @@ Drawer {
                         background: Rectangle {
                             implicitWidth: 120; implicitHeight: 24
                             x:completion.leftPadding; y:(completion.height-height)/2
-                            width:completion.availableWidth; height:24; radius:3; color:"#e5e5e5"
-                            Rectangle { width:parent.width*completion.visualPosition; height:parent.height; radius:3; color:completion.enabled?"#4787d6":"#bbbbbb" }
+                            width:completion.availableWidth; height:24; radius:3; color:appTheme.colors.border
+                            Rectangle { width:parent.width*completion.visualPosition; height:parent.height; radius:3; color:completion.enabled?appTheme.colors.accent:appTheme.colors.disabled }
                         }
                         handle: Rectangle {
                             width:3; height:22; radius:1
                             x:completion.leftPadding+completion.visualPosition*(completion.availableWidth-width)
                             y:(completion.height-height)/2
-                            color:completion.enabled?"#377aca":"#bbbbbb"
+                            color:completion.enabled?appTheme.colors.link:appTheme.colors.disabled
                         }
                         onPressedChanged: if (!pressed && controller.selectedId && enabled && Math.round(value)!==Math.round(controller.selected.progress)) controller.editField(controller.selectedId, "progress", String(Math.round(value)))
                     }
@@ -87,7 +87,7 @@ Drawer {
                         validator:IntValidator { bottom:0; top:100 }
                         onEditingFinished:if(controller.selectedId && text!==String(Math.round(controller.selected.progress)))controller.editField(controller.selectedId,"progress",text)
                     }
-                    Label { text: "%"; color: "#333333" }
+                    Label { text: "%"; color: appTheme.colors.text }
                     MetadataChoice {
                         objectName: "inspectorStatus"
                         compact: true; Layout.preferredWidth: 118
@@ -115,8 +115,8 @@ Drawer {
                     columns: 4
                     columnSpacing: 12; rowSpacing: 9
                     Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
-                    Label { text: "Начало"; color: "#999999"; font.pixelSize: 12; Layout.columnSpan: 2 }
-                    Label { text: "Завершение"; color: "#999999"; font.pixelSize: 12; Layout.columnSpan: 2 }
+                    Label { text: "Начало"; color: appTheme.colors.muted; font.pixelSize: 12; Layout.columnSpan: 2 }
+                    Label { text: "Завершение"; color: appTheme.colors.muted; font.pixelSize: 12; Layout.columnSpan: 2 }
                     CellEditor {
                         objectName: "inspectorStart"
                         Layout.fillWidth: true; text: controller.selected.start || ""; enabled: controller.selected.canMove || false
@@ -129,8 +129,8 @@ Drawer {
                         onEditingFinished: if(text!==controller.selected.end) controller.editField(controller.selectedId,"end",text)
                     }
                     CellEditor { Layout.preferredWidth: 64; text: controller.selected.endTime || ""; enabled: controller.selected.canResizeEnd || false; onEditingFinished: if(text!==controller.selected.endTime) controller.editField(controller.selectedId,"endTime",text) }
-                    Label { text: "Длительность, ч"; color: "#999999"; Layout.columnSpan: 2; font.pixelSize: 12 }
-                    Label { text: "Трудозатраты, ч"; color: "#999999"; Layout.columnSpan: 2; font.pixelSize: 12 }
+                    Label { text: "Длительность, ч"; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
+                    Label { text: "Трудозатраты, ч"; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
                     CellEditor {
                         objectName: "inspectorDuration"
                         Layout.columnSpan: 2; Layout.fillWidth: true
@@ -143,8 +143,8 @@ Drawer {
                         text: String(controller.selected.effortHours || 0); enabled: !controller.selected.summary
                         onEditingFinished: if(text!==String(controller.selected.effortHours)) controller.editField(controller.selectedId,"effort",text)
                     }
-                    Label { text: "Исполнитель"; color: "#999999"; Layout.columnSpan: 2; font.pixelSize: 12 }
-                    Label { text: "Стоимость"; color: "#999999"; Layout.columnSpan: 2; font.pixelSize: 12 }
+                    Label { text: "Исполнитель"; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
+                    Label { text: "Стоимость"; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
                     RowLayout {
                         Layout.columnSpan:2; Layout.fillWidth:true
                         CellEditor {
@@ -166,11 +166,11 @@ Drawer {
                     Layout.leftMargin: 40; Layout.rightMargin: 40; Layout.fillWidth: true
                     visible: !!controller.selectedId && !controller.selected.canMove
                     text: "Даты закреплены зависимостями. Чтобы сдвинуть задачу, измените связь или её лаг."
-                    color: "#7c8c9b"; font.pixelSize: 12; wrapMode: Text.WordWrap
+                    color: appTheme.colors.secondary; font.pixelSize: 12; wrapMode: Text.WordWrap
                 }
                 ColumnLayout {
                     Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
-                    Label { text: "Группа"; color: "#999999"; font.pixelSize: 12 }
+                    Label { text: "Группа"; color: appTheme.colors.muted; font.pixelSize: 12 }
                     ComboBox {
                         Layout.fillWidth: true
                         model: controller.groupChoices; textRole: "name"; valueRole: "id"
@@ -178,28 +178,31 @@ Drawer {
                         onActivated: controller.editField(controller.selectedId,"parent",currentValue)
                     }
                 }
-                Rectangle { Layout.fillWidth: true; height: 1; color: "#eeeeee" }
+                Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.colors.border }
                 TextArea {
                     Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
                     Layout.preferredHeight: 150
                     text: controller.selected.notes || ""
                     placeholderText: "Добавить описание задачи"
                     wrapMode: TextEdit.Wrap
-                    font.pixelSize: 14; color: "#444444"
-                    background: Rectangle { color: "white" }
+                    font.pixelSize: 14; color: appTheme.colors.text
+                    placeholderTextColor: appTheme.colors.muted
+                    selectionColor: appTheme.colors.accent
+                    selectedTextColor: "white"
+                    background: Rectangle { color: appTheme.colors.input }
                     onActiveFocusChanged: if (!activeFocus && controller.selectedId && text!==controller.selected.notes) controller.editField(controller.selectedId,"notes",text)
                 }
-                Label { Layout.leftMargin: 32; text: "Зависимости между задачами"; font.bold: true; color: "#333333" }
+                Label { Layout.leftMargin: 32; text: "Зависимости между задачами"; font.bold: true; color: appTheme.colors.text }
                 Repeater {
                     model: controller.selected.dependencies || []
                     delegate: RowLayout {
                         required property var modelData
                         Layout.leftMargin: 32; Layout.rightMargin: 24; Layout.fillWidth: true
-                        Label { text: modelData.incoming ? "←" : "→"; font.pixelSize: 20; color: "#b2b7bb" }
+                        Label { text: modelData.incoming ? "←" : "→"; font.pixelSize: 20; color: appTheme.colors.muted }
                         ColumnLayout {
                             Layout.fillWidth: true
-                            Label { text: modelData.incoming ? modelData.sourceName : modelData.targetName; elide: Text.ElideRight; Layout.fillWidth: true; color: "#333333" }
-                            Label { text: modelData.incoming ? "ПРЕДШЕСТВЕННИК" : "ПОСЛЕДОВАТЕЛЬ"; color: "#999999"; font.pixelSize: 10 }
+                            Label { text: modelData.incoming ? modelData.sourceName : modelData.targetName; elide: Text.ElideRight; Layout.fillWidth: true; color: appTheme.colors.text }
+                            Label { text: modelData.incoming ? "ПРЕДШЕСТВЕННИК" : "ПОСЛЕДОВАТЕЛЬ"; color: appTheme.colors.muted; font.pixelSize: 10 }
                         }
                         ActionButton { text: modelData.kind + " · Лаг: " + modelData.lag + "ч"; onClicked: drawer.dependencyRequested(modelData.source,modelData.target,modelData.kind,modelData.id) }
                         ActionButton { text: "×"; hint: "Удалить связь (можно отменить)"; onClicked: controller.removeDependency(modelData.id) }
@@ -208,7 +211,7 @@ Drawer {
                 Item { height: 20; Layout.fillWidth: true }
             }
         }
-        Rectangle { Layout.fillWidth: true; height: 1; color: "#e9e9e9" }
+        Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.colors.border }
         RowLayout {
             Layout.fillWidth: true; Layout.margins: 20
             ActionButton { text: "Показать на диаграмме"; onClicked: { controller.focusTask(controller.selectedId); drawer.close() } }

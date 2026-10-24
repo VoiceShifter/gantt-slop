@@ -17,6 +17,8 @@ The old three QML modal components were removed rather than leaving unused dupli
 
 ## Appearance
 
+**Update in 0.5:** [Settings and themes](THEMES.md) now apply one explicit light/dark palette to both QML and these QWidget dialogs. The default is light; the saved switch overrides the system color scheme. The simulated captures and palette behavior below describe the original 0.4.1 checkpoint.
+
 Actual default style depends on the OS and available Qt platform-theme integration. Linux may use Qt's fallback style when desktop-theme plugins are unavailable; no particular GTK theme is forced. Windows/macOS native style/runtime QA remains pending.
 
 Offscreen captures show the **widget client area**; the title bar/window decorations are supplied by the operating system in a normal desktop run. The dark example simulates a dark application palette, and production code does not force either palette:

@@ -108,7 +108,7 @@ Item {
         font.pixelSize: 12
         font.bold: task.summary
         font.strikeout: task.status === "closed"
-        color: task.summary ? "#125360" : "white"
+        color: task.summary ? appTheme.colors.summary : "white"
         elide: Text.ElideRight
         verticalAlignment: Text.AlignVCenter
         visible: !task.milestone
@@ -182,7 +182,7 @@ Item {
                 anchors.centerIn: parent
                 width: 12; height: 12; radius: 6
                 readonly property bool origin: workspace.linkSource === task.taskId && workspace.sourceEnd === modelData
-                color: origin ? "#dceeff" : "#f4f4f4"; border.color: origin ? "#2387df" : "#898f95"
+                color: origin ? appTheme.colors.selection : appTheme.colors.raised; border.color: origin ? appTheme.colors.link : appTheme.colors.strongBorder
             }
             MouseArea {
                 id: linkArea
@@ -233,7 +233,7 @@ Item {
         hoverEnabled: true
         preventStealing: true
         cursorShape: Qt.SizeHorCursor
-        Rectangle { anchors.centerIn: parent; width: 7; height: 7; rotation: 45; color: "#a5a9ab"; border.color: "#8c9195" }
+        Rectangle { anchors.centerIn: parent; width: 7; height: 7; rotation: 45; color: appTheme.colors.muted; border.color: appTheme.colors.strongBorder }
         onPressed: function(mouse) { bar.cancelled = false; bar.progressPreview = task.progress }
         onPositionChanged: function(mouse) {
             if (pressed) bar.progressPreview = Math.max(0, Math.min(100, mapToItem(bar, mouse.x, mouse.y).x / bar.width * 100))

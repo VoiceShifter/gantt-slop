@@ -12,21 +12,21 @@ Button {
     hoverEnabled: true
     font.family: "Arial"
     font.pixelSize: 12
-    palette.buttonText: "#30363b"
+    palette.buttonText: appTheme.colors.text
     Accessible.name: hint || text
     background: Rectangle {
         radius: 3
-        color: control.primary ? (control.down ? "#1055b0" : "#1766cb")
-                               : control.checked ? "#deecfa" : control.hovered ? "#edf2f7" : "transparent"
+        color: control.primary ? (control.down ? appTheme.colors.accentPressed : appTheme.colors.accent)
+                               : control.checked ? appTheme.colors.selection : control.hovered ? appTheme.colors.hover : "transparent"
         border.width: control.activeFocus ? 1 : 0
-        border.color: "#1876dd"
+        border.color: appTheme.colors.link
         opacity: control.enabled ? 1 : 0.4
     }
     contentItem: Text {
         id: label
         text: control.text
         font: control.font
-        color: control.primary ? "white" : !control.enabled ? "#bfc2c5" : control.palette.buttonText
+        color: control.primary ? "white" : !control.enabled ? appTheme.colors.disabled : control.palette.buttonText
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
     }

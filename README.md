@@ -4,7 +4,9 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
-**0.4.1 uses system-styled `QDialog`/`QMessageBox` windows** for modal editors, confirmations and help, with platform fonts/palettes and light/dark support. [Native dialogs](docs/NATIVE_DIALOGS.md).
+**0.5 adds Settings → “Тёмная тема”:** one saved light/dark choice for the workspace, panels, menus and QWidget dialogs. Light is the default; switching is immediate and never modifies the project. [Themes and settings](docs/THEMES.md).
+
+0.4.1 introduced platform-styled `QDialog`/`QMessageBox` editors, confirmations and help, with standard controls/system fonts. [Native dialogs](docs/NATIVE_DIALOGS.md).
 
 **0.4 adds people as persistent entities and the bottom “Загрузка ресурсов” panel:** multi-person assignments, daily capacity, overload/weekend warnings and working-day settings. [Resource usage and verification](docs/RESOURCES.md).
 
@@ -40,11 +42,12 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 
 ## Implemented
 
-- White split grid/timeline, cyan **#50c7d6** task/summary bars, orange connectors, magenta milestones, blue assignee badges, compact toolbar, and a right-side task editor.
+- Light/dark split grid/timeline, cyan **#50c7d6** task/summary bars, orange connectors, magenta milestones, blue assignee badges, compact toolbar, and a right-side task editor.
+- “⚙ Настройки” in the top bar opens an appearance panel with a real Light/Dark switch; the local preference is restored on startup.
 - Nested groups and tasks, milestones, collapse/expand, inline table editing, per-group creation, deletion with confirmation, and grip-based row reordering/nesting with preview, Escape and auto-scroll.
 - Dates/times, working duration, separate effort, cost, resource assignments, notes, synchronized status/progress, five priority levels and task colors.
 - Project-local people with stable IDs, create/rename/delete, individual capacity/workdays, multi-person effort allocation and migration of existing assignee names.
-- System-themed Qt Widgets modal dialogs with standard input controls, window decorations, keyboard handling and parent-window modality; Gantt styling remains unchanged.
+- Platform-styled Qt Widgets modal dialogs with standard input controls, system fonts, window decorations, keyboard handling and parent-window modality; their palette follows the same app theme as the Gantt.
 - Collapsible/resizable workload below the Gantt, synchronized zoom/panning, green normal load, red overload, weekend/nonworking warnings, Hours/Percent/Tasks modes and expandable assigned-task bars.
 - Checkbox/group/select-all bulk editing with explicit Apply/Cancel and one-step Undo; protected deletion never removes an unchecked child through a partially selected parent.
 - Body movement for unconstrained tasks and groups; dependency-anchored tasks give an explanatory message instead of silently breaking their links.
@@ -61,6 +64,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Action | Input |
 |---|---|
 | Select | Click a row/bar |
+| Appearance | Top “⚙ Настройки” → “Тёмная тема”; applies immediately and persists locally |
 | Bulk edit | Toolbar ☑, then row/group checkboxes; Ctrl+A selects the current filter; Apply commits |
 | Resource workload | Click “Загрузка ресурсов” in the bottom bar; drag its top divider to resize |
 | People and calendars | Bottom “Люди…” or a person's workload calendar button |
@@ -103,7 +107,7 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **210 passing tests**, including 63 native Qt input/theme/lifecycle tests. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **232 passing tests**, including 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
@@ -111,6 +115,7 @@ The current suite has **210 passing tests**, including 63 native Qt input/theme/
 - `gantt_desktop/controller.py`: Qt list model, atomic edits, Python snapshot history, filtering and file operations.
 - `gantt_desktop/workload.py`: working-time effort distribution and daily resource availability/warnings.
 - `gantt_desktop/dialogs.py`: platform-styled QWidget dialogs and QML/window lifecycle bridge.
+- `gantt_desktop/theme.py`: shared light/dark tokens, application/widget palette and local `QSettings` preference.
 - `gantt_desktop/qml/`: native Qt Quick interface and direct manipulation.
 - `gantt_desktop/sample.py`: independent synthetic fixture based on visible sample labels/dates.
 - `tests/`: scheduling, transaction, persistence and real Qt mouse/keyboard regressions.

@@ -160,10 +160,12 @@ Item {
         function onFocusRequested(day) { view.centerDay(day) }
     }
 
-    Rectangle { anchors.fill: parent; color: "white" }
+    Connections { target: appTheme; function onChanged() { background.requestPaint() } }
+
+    Rectangle { anchors.fill: parent; color: appTheme.colors.surface }
     Item {
         width: view.gridWidth; height: view.headerHeight; clip: true
-        Rectangle { anchors.fill: parent; color: "#f8f8f8" }
+        Rectangle { anchors.fill: parent; color: appTheme.colors.panel }
         Item {
             x: -view.gridScroll; width: view.gridContentWidth; height: parent.height
             Repeater {
@@ -171,16 +173,16 @@ Item {
                 delegate: Rectangle {
                     required property var modelData
                     x: modelData.offset; width: modelData.width; height: view.headerHeight
-                    color: "#f8f8f8"; border.color: "#e4e4e4"
-                    Text { anchors.centerIn: parent; text: modelData.title; font.family: "Arial"; font.pixelSize: 12; color: "#353535" }
+                    color: appTheme.colors.panel; border.color: appTheme.colors.border
+                    Text { anchors.centerIn: parent; text: modelData.title; font.family: "Arial"; font.pixelSize: 12; color: appTheme.colors.text }
                 }
             }
-            Text { x: view.gridContentWidth - 40; width: 34; height: parent.height; text: "＋"; color: "#9a9a9a"; font.pixelSize: 22; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+            Text { x: view.gridContentWidth - 40; width: 34; height: parent.height; text: "＋"; color: appTheme.colors.muted; font.pixelSize: 22; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
         }
     }
     Item {
         x: view.gridWidth; width: view.timelineViewport; height: view.headerHeight; clip: true
-        Rectangle { anchors.fill: parent; color: "#f8f8f8" }
+        Rectangle { anchors.fill: parent; color: appTheme.colors.panel }
         Item {
             x: -view.scrollX; width: view.sceneWidth; height: parent.height
             Repeater {
@@ -189,8 +191,8 @@ Item {
                     required property var modelData
                     x: modelData.offset * view.pixelsPerDay
                     width: modelData.length * view.pixelsPerDay; height: 20
-                    color: "#f8f8f8"; border.color: "#e5e5e5"; clip: true
-                    Text { anchors.centerIn: parent; text: modelData.label; color: "#333333"; font.pixelSize: 12 }
+                    color: appTheme.colors.panel; border.color: appTheme.colors.border; clip: true
+                    Text { anchors.centerIn: parent; text: modelData.label; color: appTheme.colors.text; font.pixelSize: 12 }
                 }
             }
             Repeater {
@@ -201,13 +203,13 @@ Item {
                     visible: daily || (view.pixelsPerDay >= 6 && modelData.monday)
                     x: modelData.offset * view.pixelsPerDay; y: 20
                     width: (daily ? 1 : 7) * view.pixelsPerDay; height: 24
-                    color: daily && modelData.weekend ? "#f5faff" : "#f8f8f8"
-                    border.color: "#e8e8e8"
+                    color: daily && modelData.weekend ? appTheme.colors.weekend : appTheme.colors.panel
+                    border.color: appTheme.colors.border
                     Text {
                         anchors.centerIn: parent
                         text: parent.daily ? String(modelData.number).padStart(2,"0") + "\n" + modelData.weekday
                               : modelData.number + "–" + view.dayRecords[Math.min(modelData.offset + 6, view.dayRecords.length - 1)].number + " (" + modelData.week + "н)"
-                        color: parent.daily && modelData.weekend ? "#167ef5" : "#454545"
+                        color: parent.daily && modelData.weekend ? appTheme.colors.link : appTheme.colors.text
                         font.pixelSize: parent.daily ? 10 : 11
                         horizontalAlignment: Text.AlignHCenter
                         lineHeight: 0.9
@@ -229,7 +231,7 @@ Item {
 
         Item {
             width: view.gridWidth; height: body.contentHeight; clip: true
-            Rectangle { anchors.fill: parent; color: "white" }
+            Rectangle { anchors.fill: parent; color: appTheme.colors.surface }
             Item {
                 x: -view.gridScroll; width: view.gridContentWidth; height: body.contentHeight
                 Repeater {
@@ -243,8 +245,8 @@ Item {
                         objectName: "task-row-" + (rowData.taskId || "add")
                         x: 0; y: index * view.rowHeight
                         width: view.gridContentWidth; height: view.rowHeight
-                        color: controller.bulkMode ? (marked?"#f1f1f1":"white") : rowData.taskId && controller.selectedId === rowData.taskId ? "#e3f2fc" : view.hoverRow === index ? "#f3f3f3" : "white"
-                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#e6e6e6" }
+                        color: controller.bulkMode ? (marked?appTheme.colors.bulkSelection:appTheme.colors.surface) : rowData.taskId && controller.selectedId === rowData.taskId ? appTheme.colors.selection : view.hoverRow === index ? appTheme.colors.hover : appTheme.colors.surface
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: appTheme.colors.grid }
                         MouseArea {
                             anchors.fill: parent
                             hoverEnabled: true
@@ -266,16 +268,16 @@ Item {
                                 x: 30; width: 54; height: parent.height
                                 text: gridRow.rowData.outline || ""
                                 visible: !controller.bulkMode
-                                color: "#252525"; font.pixelSize: 12
+                                color: appTheme.colors.text; font.pixelSize: 12
                                 font.bold: gridRow.rowData.summary || false
                                 verticalAlignment: Text.AlignVCenter
                             }
                             Rectangle {
                                 x: 94 + (gridRow.rowData.level || 0) * 14; y: 11; width: 9; height: 9
                                 visible: gridRow.rowData.summary || false
-                                color: "white"; border.color: "#747474"; radius: 1
-                                Rectangle { x: 2; y: 4; width: 5; height: 1; color: "#747474" }
-                                Rectangle { x: 4; y: 2; width: 1; height: 5; color: "#747474"; visible: !gridRow.rowData.expanded }
+                                color: appTheme.colors.input; border.color: appTheme.colors.secondary; radius: 1
+                                Rectangle { x: 2; y: 4; width: 5; height: 1; color: appTheme.colors.secondary }
+                                Rectangle { x: 4; y: 2; width: 1; height: 5; color: appTheme.colors.secondary; visible: !gridRow.rowData.expanded }
                                 MouseArea { anchors.fill: parent; anchors.margins: -7; onClicked: controller.toggleGroup(gridRow.rowData.taskId) }
                             }
                             CellEditor {
@@ -301,7 +303,7 @@ Item {
                                 readonly property bool metadata: ["status","priority"].indexOf(modelData.key)>=0 && gridRow.rowData.rowKind==="task" && !gridRow.rowData.summary
                                 x: modelData.offset; width: modelData.width; height: view.rowHeight
                                 opacity: gridRow.textOpacity
-                                Rectangle { width: 1; height: parent.height; color: "#e6e6e6" }
+                                Rectangle { width: 1; height: parent.height; color: appTheme.colors.grid }
                                 Rectangle {
                                     x: 9; y: 6; width: 18; height: 18; radius: 9
                                     visible: columnCell.modelData.key === "assignee" && !!gridRow.rowData.assignee
@@ -325,7 +327,7 @@ Item {
                                     text: displayValue()
                                     visible: !columnCell.metadata
                                     horizontalAlignment: ["cost","effort","duration","progress"].indexOf(key) >= 0 ? Text.AlignRight : Text.AlignLeft
-                                    color: gridRow.rowData.rowKind === "total" ? "#8b8b8b" : "#333333"
+                                    color: gridRow.rowData.rowKind === "total" ? appTheme.colors.muted : appTheme.colors.text
                                     font.bold: gridRow.rowData.summary || false
                                     font.strikeout: gridRow.rowData.status === "closed"
                                     readOnly: gridRow.rowData.rowKind !== "task" ||
@@ -374,7 +376,7 @@ Item {
                                 delegate:Rectangle {
                                     required property int index
                                     x:8+(index%2)*4; y:10+Math.floor(index/2)*4
-                                    width:2; height:2; radius:1; color:"#92979c"
+                                    width:2; height:2; radius:1; color:appTheme.colors.muted
                                 }
                             }
                             MouseArea {
@@ -411,8 +413,8 @@ Item {
                             indicator:Rectangle {
                                 x:3; anchors.verticalCenter:parent.verticalCenter
                                 width:17; height:17; radius:1
-                                color:parent.checkState===Qt.Checked?"#1766cb":parent.checkState===Qt.PartiallyChecked?"#777777":"white"
-                                border.color:parent.checkState===Qt.Unchecked?"#b9bec3":color
+                                color:parent.checkState===Qt.Checked?appTheme.colors.accent:parent.checkState===Qt.PartiallyChecked?appTheme.colors.secondary:appTheme.colors.input
+                                border.color:parent.checkState===Qt.Unchecked?appTheme.colors.strongBorder:color
                                 Text { anchors.centerIn:parent; text:parent.parent.checkState===Qt.Checked?"✓":parent.parent.checkState===Qt.PartiallyChecked?"−":"";color:"white";font.pixelSize:13 }
                             }
                         }
@@ -420,9 +422,9 @@ Item {
                             visible: gridRow.rowData.rowKind === "add"
                             enabled: !controller.bulkMode
                             x: 114 + (gridRow.rowData.level || 0) * 14; height: parent.height
-                            ActionButton { text: "⊕  Добавить задачу"; palette.buttonText: "#1876dc"; onClicked: controller.addTask(gridRow.rowData.parentId, "task") }
-                            Text { height: parent.height; text: " | "; color: "#b4b4b4"; verticalAlignment: Text.AlignVCenter }
-                            ActionButton { text: "Добавить веху"; palette.buttonText: "#1876dc"; onClicked: controller.addTask(gridRow.rowData.parentId, "milestone") }
+                            ActionButton { text: "⊕  Добавить задачу"; palette.buttonText: appTheme.colors.link; onClicked: controller.addTask(gridRow.rowData.parentId, "task") }
+                            Text { height: parent.height; text: " | "; color: appTheme.colors.muted; verticalAlignment: Text.AlignVCenter }
+                            ActionButton { text: "Добавить веху"; palette.buttonText: appTheme.colors.link; onClicked: controller.addTask(gridRow.rowData.parentId, "milestone") }
                         }
                     }
                 }
@@ -444,23 +446,23 @@ Item {
                     onPaint: {
                         const ctx = getContext("2d")
                         ctx.clearRect(0,0,width,height)
-                        ctx.fillStyle = "white"; ctx.fillRect(0,0,width,height)
+                        ctx.fillStyle = appTheme.colors.surface; ctx.fillRect(0,0,width,height)
                         if (view.pixelsPerDay >= 18) {
-                            ctx.fillStyle = "#f3faff"
+                            ctx.fillStyle = appTheme.colors.weekend
                             for (let d of view.dayRecords) if (d.weekend) ctx.fillRect(d.offset * view.pixelsPerDay,0,view.pixelsPerDay,height)
                         }
                         const selected = controller.selectedId
                         for (let i = 0; i < controller.rowCount; i++) {
-                            if (i === view.hoverRow) { ctx.fillStyle = "#f3f3f3"; ctx.fillRect(0,i*view.rowHeight,width,view.rowHeight) }
+                            if (i === view.hoverRow) { ctx.fillStyle = appTheme.colors.hover; ctx.fillRect(0,i*view.rowHeight,width,view.rowHeight) }
                         }
-                        ctx.strokeStyle = "#ededed"; ctx.lineWidth = 1
+                        ctx.strokeStyle = appTheme.colors.grid; ctx.lineWidth = 1
                         ctx.beginPath()
                         for (let d of view.dayRecords) {
                             if (view.pixelsPerDay >= 18 || (view.pixelsPerDay >= 6 && d.monday)) {
                                 const x = Math.round(d.offset * view.pixelsPerDay) + 0.5
                                 ctx.moveTo(x,0); ctx.lineTo(x,height)
                             }
-                            if (d.today) { ctx.fillStyle = "#2486ed"; ctx.fillRect(d.offset * view.pixelsPerDay,0,1,height) }
+                            if (d.today) { ctx.fillStyle = appTheme.colors.accent; ctx.fillRect(d.offset * view.pixelsPerDay,0,1,height) }
                         }
                         for (let i=0; i<=controller.rowCount; i++) { ctx.moveTo(0,i*view.rowHeight+0.5); ctx.lineTo(width,i*view.rowHeight+0.5) }
                         ctx.stroke()
@@ -480,7 +482,7 @@ Item {
                                 points=[[sx,sy],[stubS,sy],[stubS,midY],[stubT,midY],[stubT,ty],[tx,ty]]
                             }
                             const highlighted=hoveredLink===link.id || view.activeLinkId===link.id
-                            const color=highlighted?"#387dc6":"#ffa726"
+                            const color=highlighted?appTheme.colors.link:"#ffa726"
                             ctx.strokeStyle=color; ctx.lineWidth=highlighted?2.5:1.4
                             ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1])
                             for (let p of points.slice(1)) ctx.lineTo(p[0],p[1])
@@ -492,7 +494,7 @@ Item {
                         }
                         paths=hitPaths
                         if (view.linkSource) {
-                            ctx.strokeStyle="#2387df"; ctx.lineWidth=1.5; ctx.setLineDash([5,3])
+                            ctx.strokeStyle=appTheme.colors.link; ctx.lineWidth=1.5; ctx.setLineDash([5,3])
                             ctx.beginPath(); ctx.moveTo(view.linkStartX,view.linkStartY); ctx.lineTo(view.linkMouseX,view.linkMouseY); ctx.stroke(); ctx.setLineDash([])
                         }
                     }
@@ -573,7 +575,7 @@ Item {
                             x: (barRow.rowData.startDay || 0)*view.pixelsPerDay
                             y: barRow.index*view.rowHeight+13
                             width: Math.max(0,((barRow.rowData.endDay||0)-(barRow.rowData.startDay||0))*view.pixelsPerDay)
-                            height: 5; color: "#999999"
+                            height: 5; color: appTheme.colors.muted
                             Rectangle { x:0; y:-3; width:2; height:11; color:parent.color }
                             Rectangle { anchors.right:parent.right; y:-3; width:2; height:11; color:parent.color }
                         }
@@ -613,8 +615,8 @@ Item {
             x:30
             y:(view.rowPlan.row||0)*view.rowHeight-body.contentY+(view.rowPlan.edge>0?view.rowHeight:0)
             width:parent.width-x; height:view.rowPlan.edge===0?view.rowHeight:2
-            color:view.rowPlan.edge===0?"#18287dd1":"#287dd1"
-            border.width:view.rowPlan.edge===0?1:0; border.color:"#287dd1"
+            color:view.rowPlan.edge===0?appTheme.colors.selectionTint:appTheme.colors.link
+            border.width:view.rowPlan.edge===0?1:0; border.color:appTheme.colors.link
         }
     }
     Rectangle {
@@ -622,15 +624,15 @@ Item {
         visible:view.rowDragging
         x:Math.max(10,Math.min(view.gridWidth-270,view.rowPointerX+12))
         y:Math.max(view.headerHeight,Math.min(view.height-60,view.rowPointerY+14))
-        z:30; width:260; height:48; radius:4; color:"white"
-        border.color:view.rowPlan.valid?"#287dd1":"#dd7278"
+        z:30; width:260; height:48; radius:4; color:appTheme.colors.raised
+        border.color:view.rowPlan.valid?appTheme.colors.link:appTheme.colors.danger
         Column {
             x:10; y:7; width:parent.width-20; spacing:5
-            Text { width:parent.width; text:view.rowDragLabel; textFormat:Text.PlainText; font.bold:true; font.pixelSize:12; elide:Text.ElideRight; color:"#353c43" }
-            Text { width:parent.width; text:view.rowPlan.hint||"";textFormat:Text.PlainText;font.pixelSize:11;elide:Text.ElideRight;color:"#81909d" }
+            Text { width:parent.width; text:view.rowDragLabel; textFormat:Text.PlainText; font.bold:true; font.pixelSize:12; elide:Text.ElideRight; color:appTheme.colors.text }
+            Text { width:parent.width; text:view.rowPlan.hint||"";textFormat:Text.PlainText;font.pixelSize:11;elide:Text.ElideRight;color:appTheme.colors.secondary }
         }
     }
-    Rectangle { x: view.gridWidth-1; width: 2; height: parent.height; color: "#dedede" }
+    Rectangle { x: view.gridWidth-1; width: 2; height: parent.height; color: appTheme.colors.border }
     MouseArea {
         objectName: "gridDivider"
         x: view.gridWidth-4; width: 8; height: parent.height
@@ -662,7 +664,7 @@ Item {
         anchors.centerIn: body
         visible: controller.taskCount===0 || controller.rowCount<=1
         text: controller.taskCount===0 ? "Начните с задачи или группы\nПеретащите блок, чтобы изменить даты" : "Нет задач по заданному фильтру"
-        color:"#a3a9af"; font.pixelSize:16; lineHeight:1.6
+        color:appTheme.colors.muted; font.pixelSize:16; lineHeight:1.6
         horizontalAlignment:Text.AlignHCenter
     }
 }

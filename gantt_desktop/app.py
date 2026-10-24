@@ -3,19 +3,23 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, Qt, QTimer, QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QSettings, Qt, QTimer, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
 from .controller import Controller
+from .theme import AppTheme
 
 
-def create_window(controller: Controller) -> tuple[QQmlApplicationEngine, QQuickWindow]:
+def create_window(controller: Controller, theme: AppTheme | None = None) -> tuple[QQmlApplicationEngine, QQuickWindow]:
+    controller.theme = theme if theme is not None else AppTheme()
+    controller.theme.setParent(controller)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("controller", controller)
     engine.rootContext().setContextProperty("nativeDialogs", controller.dialogs)
+    engine.rootContext().setContextProperty("appTheme", controller.theme)
     engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / "qml" / "Main.qml")))
     objects = engine.rootObjects()
     if not objects or not isinstance(objects[0], QQuickWindow):
@@ -49,7 +53,7 @@ def main() -> int:
         print(f"Could not open {args.project}", file=sys.stderr)
         return 2
     try:
-        engine, window = create_window(controller)
+        engine, window = create_window(controller, AppTheme(QSettings()))
     except RuntimeError as error:
         print(error, file=sys.stderr)
         return 1

@@ -66,17 +66,17 @@ Item {
         indicator:Rectangle {
             implicitWidth:13; implicitHeight:13; radius:7
             y:(choice.height-height)/2
-            color:choice.checked?"#005c51":"#eeeeee"
-            border.color:choice.checked?color:"#cccccc"
-            Rectangle { anchors.centerIn:parent; width:5; height:5; radius:3; color:"white"; visible:choice.checked }
+            color:choice.checked?appTheme.colors.brand:appTheme.colors.panel
+            border.color:choice.checked?color:appTheme.colors.strongBorder
+            Rectangle { anchors.centerIn:parent; width:5; height:5; radius:3; color:appTheme.colors.surface; visible:choice.checked }
         }
-        contentItem:Text { text:choice.text; leftPadding:choice.indicator.width+choice.spacing; color:"#555555"; font.pixelSize:11; verticalAlignment:Text.AlignVCenter }
+        contentItem:Text { text:choice.text; leftPadding:choice.indicator.width+choice.spacing; color:appTheme.colors.text; font.pixelSize:11; verticalAlignment:Text.AlignVCenter }
     }
-    Rectangle { anchors.fill:parent; color:"white" }
-    Rectangle { width:parent.width; height:44; color:"white"; border.color:"#dfe3e8" }
-    Text { x:24; y:15; text:"Загрузка ресурсов"; font.bold:true; font.pixelSize:13; color:"#333333" }
+    Rectangle { anchors.fill:parent; color:appTheme.colors.surface }
+    Rectangle { width:parent.width; height:44; color:appTheme.colors.surface; border.color:appTheme.colors.border }
+    Text { x:24; y:15; text:"Загрузка ресурсов"; font.bold:true; font.pixelSize:13; color:appTheme.colors.text }
     ActionButton { x:180; y:7; text:"Люди…"; objectName:"manageResourcesButton"; onClicked:view.manageResource("") }
-    Text { x:265; y:16; width:Math.max(0,view.gridWidth-x-15); text:controller.projectName; elide:Text.ElideRight; font.pixelSize:11; color:"#999999" }
+    Text { x:265; y:16; width:Math.max(0,view.gridWidth-x-15); text:controller.projectName; elide:Text.ElideRight; font.pixelSize:11; color:appTheme.colors.muted }
     Row {
         x:view.gridWidth+Math.max(12,(view.width-view.gridWidth-width)/2); y:10; spacing:16
         ModeChoice { objectName:"workloadHoursMode"; text:"Часы"; checked:view.mode===0; onClicked:view.mode=0 }
@@ -99,14 +99,14 @@ Item {
                     required property var modelData
                     objectName:"resource-row-"+modelData.resource.id
                     y:modelData.y; width:view.gridWidth; height:modelData.height
-                    color:"white"
-                    Rectangle { anchors.bottom:parent.bottom; width:parent.width; height:1; color:"#dedede" }
-                    Text { x:10; y:9; text:view.expanded[modelData.resource.id]?"▴":"▾"; color:"#7c858a"; font.pixelSize:11 }
+                    color:appTheme.colors.surface
+                    Rectangle { anchors.bottom:parent.bottom; width:parent.width; height:1; color:appTheme.colors.border }
+                    Text { x:10; y:9; text:view.expanded[modelData.resource.id]?"▴":"▾"; color:appTheme.colors.secondary; font.pixelSize:11 }
                     Rectangle {
                         x:32; y:7; width:16; height:16; radius:8; color:modelData.resource.color
                         Text { anchors.centerIn:parent; text:modelData.resource.name.slice(0,1).toUpperCase(); color:"white"; font.pixelSize:9 }
                     }
-                    Text { x:60; y:8; width:parent.width-112; text:modelData.resource.name+(modelData.resource.warningDays?"  ⚠ "+modelData.resource.warningDays:""); font.pixelSize:12; color:"#555555"; font.bold:!!view.expanded[modelData.resource.id]; elide:Text.ElideRight }
+                    Text { x:60; y:8; width:parent.width-112; text:modelData.resource.name+(modelData.resource.warningDays?"  ⚠ "+modelData.resource.warningDays:""); font.pixelSize:12; color:appTheme.colors.text; font.bold:!!view.expanded[modelData.resource.id]; elide:Text.ElideRight }
                     MouseArea { width:parent.width-36; height:30; cursorShape:Qt.PointingHandCursor; onClicked:view.toggle(modelData.resource.id) }
                     ActionButton { x:parent.width-34; y:2; width:30; text:"▦"; hint:"Календарь ресурса"; objectName:"resource-calendar-"+modelData.resource.id; onClicked:view.manageResource(modelData.resource.id) }
                 }
@@ -124,28 +124,28 @@ Item {
                     onHeightChanged:requestPaint()
                     onPaint:{
                         const ctx=getContext("2d")
-                        ctx.clearRect(0,0,width,height);ctx.fillStyle="white";ctx.fillRect(0,0,width,height)
+                        ctx.clearRect(0,0,width,height);ctx.fillStyle=appTheme.colors.surface;ctx.fillRect(0,0,width,height)
                         ctx.font="11px Arial";ctx.textAlign="center";ctx.textBaseline="middle"
                         for(let row of view.layoutRows){
                             const r=row.resource
                             for(let col of view.columns){
                                 const data=view.aggregate(r,col), x=col.offset*view.pixelsPerDay,w=col.length*view.pixelsPerDay
                                 const day=r.days[col.offset]
-                                if(col.length===1&&day&&(day.weekend||data.capacity===0)){ctx.fillStyle="#f3faff";ctx.fillRect(x,row.y,w,30)}
+                                if(col.length===1&&day&&(day.weekend||data.capacity===0)){ctx.fillStyle=appTheme.colors.weekend;ctx.fillRect(x,row.y,w,30)}
                                 if(data.hours>0){
                                     const h=Math.max(1,Math.min(1,data.capacity?data.hours/data.capacity:1)*29)
-                                    ctx.fillStyle=data.warning?"rgba(231,76,60,0.1)":data.weekend?"rgba(244,184,61,0.14)":"rgba(80,199,134,0.14)"
+                                    ctx.fillStyle=data.warning?appTheme.colors.overloadFill:data.weekend?appTheme.colors.weekendFill:appTheme.colors.loadFill
                                     ctx.fillRect(x,row.y+30-h,w,h)
                                 }
                                 let label=view.mode===2?String(data.count):view.mode===1?(data.capacity?view.number(data.hours/data.capacity*100)+"%":data.hours?"!":""):view.number(data.hours)
                                 if(data.capacity===0&&data.hours===0&&view.mode!==2)label=""
                                 ctx.save();ctx.beginPath();ctx.rect(x,row.y,w,30);ctx.clip()
-                                ctx.fillStyle=data.warning?"#b93d30":data.weekend?"#ad7a16":"#129534"
+                                ctx.fillStyle=data.warning?appTheme.colors.danger:data.weekend?appTheme.colors.warning:appTheme.colors.success
                                 ctx.fillText(label,x+w/2,row.y+15);ctx.restore()
                             }
-                            ctx.strokeStyle="#dedede";ctx.beginPath();ctx.moveTo(0,row.y+row.height-0.5);ctx.lineTo(width,row.y+row.height-0.5);ctx.stroke()
+                            ctx.strokeStyle=appTheme.colors.border;ctx.beginPath();ctx.moveTo(0,row.y+row.height-0.5);ctx.lineTo(width,row.y+row.height-0.5);ctx.stroke()
                         }
-                        ctx.strokeStyle="#e8e8e8";ctx.lineWidth=1;ctx.beginPath()
+                        ctx.strokeStyle=appTheme.colors.grid;ctx.lineWidth=1;ctx.beginPath()
                         for(let col of view.columns){const x=col.offset*view.pixelsPerDay+0.5;ctx.moveTo(x,0);ctx.lineTo(x,height)}
                         ctx.stroke()
                     }
@@ -201,14 +201,15 @@ Item {
             }
         }
     }
-    Rectangle { x:view.gridWidth-1; y:44; width:1; height:parent.height-44; color:"#d7dce0" }
-    Text { anchors.centerIn:body; visible:view.rows.length===0; text:"Добавьте людей и назначьте их задачам"; font.pixelSize:13; color:"#999999" }
+    Rectangle { x:view.gridWidth-1; y:44; width:1; height:parent.height-44; color:appTheme.colors.border }
+    Text { anchors.centerIn:body; visible:view.rows.length===0; text:"Добавьте людей и назначьте их задачам"; font.pixelSize:13; color:appTheme.colors.muted }
     Popup {
         id:detailPopup
         objectName:"workloadDetail"
         width:Math.min(380,view.width-20);padding:14
-        background:Rectangle { color:"white"; border.color:"#dce2e8"; radius:3 }
+        background:Rectangle { color:appTheme.colors.raised; border.color:appTheme.colors.border }
         contentItem:Label { id:detail; objectName:"workloadDetailText"; wrapMode:Text.WordWrap; font.pixelSize:12 }
     }
     Connections { target:controller; function onViewChanged(){detailPopup.close();canvas.requestPaint()} }
+    Connections { target:appTheme; function onChanged(){canvas.requestPaint()} }
 }

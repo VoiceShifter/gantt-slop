@@ -17,7 +17,7 @@ Drawer {
     property bool colorPending: false
     property string draftColor: "#50c7d6"
     signal deleteRequested()
-    background: Rectangle { color: "white"; border.color: "#e0e3e7" }
+    background: Rectangle { color: appTheme.colors.surface; border.color: appTheme.colors.border }
     onAboutToShow: resetDraft()
     onClosed: if (controller.bulkMode) controller.setBulkMode(false)
 
@@ -40,12 +40,12 @@ Drawer {
             spacing: 9
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Массовое изменение"; font.bold: true; font.pixelSize: 14; color: "#303438" }
+                Label { text: "Массовое изменение"; font.bold: true; font.pixelSize: 14; color: appTheme.colors.text }
                 Item { Layout.fillWidth: true }
                 ActionButton { text: "×"; hint: "Отменить неприменённые изменения"; onClicked: controller.setBulkMode(false) }
             }
-            Label { objectName: "bulkCount"; text: "Выбрано: " + controller.checkedCount; color: "#888888"; font.pixelSize: 11 }
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#eceef0" }
+            Label { objectName: "bulkCount"; text: "Выбрано: " + controller.checkedCount; color: appTheme.colors.muted; font.pixelSize: 11 }
+            Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.colors.border }
             CheckBox {
                 id: assign
                 objectName: "bulkAssignEnabled"
@@ -58,14 +58,14 @@ Drawer {
                     implicitWidth: 18; implicitHeight: 18
                     y: (assign.height-height)/2
                     radius: 1
-                    color: assign.checked ? "#1766cb" : "white"
-                    border.color: assign.checked ? color : "#b9bec3"
+                    color: assign.checked ? appTheme.colors.accent : appTheme.colors.input
+                    border.color: assign.checked ? color : appTheme.colors.strongBorder
                     Text { anchors.centerIn: parent; text: assign.checked ? "✓" : ""; color: "white"; font.pixelSize: 13 }
                 }
                 contentItem: Text {
                     leftPadding: assign.indicator.width + assign.spacing
                     text: assign.text; font: assign.font
-                    color: assign.enabled ? "#555555" : "#aaaaaa"
+                    color: assign.enabled ? appTheme.colors.text : appTheme.colors.disabled
                     verticalAlignment: Text.AlignVCenter
                 }
             }
@@ -75,9 +75,9 @@ Drawer {
                 Layout.fillWidth: true
                 enabled: assign.checked && controller.checkedLeafCount > 0
                 placeholderText: "Имя; пусто — снять назначение"
-                background: Rectangle { radius: 3; color: "white"; border.color: assignee.activeFocus ? "#247edc" : "#d0d4d9" }
+                background: Rectangle { radius: 3; color: appTheme.colors.input; border.color: assignee.activeFocus ? appTheme.colors.link : appTheme.colors.border }
             }
-            Label { text: "Статус"; font.pixelSize: 12; color: "#777777" }
+            Label { text: "Статус"; font.pixelSize: 12; color: appTheme.colors.secondary }
             MetadataChoice {
                 id: status
                 objectName: "bulkStatus"
@@ -85,7 +85,7 @@ Drawer {
                 enabled: controller.checkedLeafCount > 0
                 model: [{value:"",label:"Не менять",color:"#999999",symbol:""}].concat(controller.statusChoices)
             }
-            Label { text: "Приоритет"; font.pixelSize: 12; color: "#777777" }
+            Label { text: "Приоритет"; font.pixelSize: 12; color: appTheme.colors.secondary }
             MetadataChoice {
                 id: priority
                 objectName: "bulkPriority"
@@ -93,10 +93,10 @@ Drawer {
                 enabled: controller.checkedLeafCount > 0
                 model: [{value:"",label:"Не менять",color:"#999999",symbol:""}].concat(controller.priorityChoices)
             }
-            Label { text: "Цвет задачи"; font.pixelSize: 12; color: "#777777" }
+            Label { text: "Цвет задачи"; font.pixelSize: 12; color: appTheme.colors.secondary }
             RowLayout {
                 Layout.fillWidth: true
-                Rectangle { width: 22; height: 22; radius: 3; color: drawer.colorPending ? drawer.draftColor : "white"; border.color: "#cdd1d6" }
+                Rectangle { width: 22; height: 22; radius: 3; color: drawer.colorPending ? drawer.draftColor : appTheme.colors.input; border.color: appTheme.colors.border }
                 ActionButton {
                     objectName: "bulkColorButton"
                     Layout.fillWidth: true
@@ -110,7 +110,7 @@ Drawer {
                 Layout.fillWidth: true
                 text: "Отмечаются только нужные поля. Статус меняет процент выполнения; даты и трудозатраты сохраняются."
                 wrapMode: Text.WordWrap
-                color: "#999999"; font.pixelSize: 11
+                color: appTheme.colors.muted; font.pixelSize: 11
             }
             Item { Layout.fillHeight: true }
             ActionButton {
@@ -136,10 +136,10 @@ Drawer {
                 objectName: "deleteBulkButton"
                 Layout.fillWidth: true
                 implicitHeight: 34
-                palette.buttonText: "#e7767c"
+                palette.buttonText: appTheme.colors.danger
                 text: "Удалить задачи (" + controller.bulkDeleteCount + ")"
                 enabled: controller.bulkDeleteCount > 0
-                background: Rectangle { color: "white"; radius: 3; border.color: "#ed969b"; opacity: parent.enabled ? 1 : 0.4 }
+                background: Rectangle { color: appTheme.colors.surface; radius: 3; border.color: appTheme.colors.danger; opacity: parent.enabled ? 1 : 0.4 }
                 onClicked: drawer.deleteRequested()
             }
         }
