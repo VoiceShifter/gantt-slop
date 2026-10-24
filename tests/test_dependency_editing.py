@@ -1,7 +1,9 @@
 import pytest
 from conftest import wait_until
-from PySide6.QtCore import QObject, QPoint, QPointF, Qt
+from dialog_helpers import click_native, native_dialog, replace_native, required_widget
+from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
 from test_ui import drag, item, point, undo
 
 from gantt_desktop.controller import Controller
@@ -68,25 +70,30 @@ def _open_first_arrow(c, window):
 
     link_id = c.project.dependencies[0].id
     logical = next(d for d in c.links if d["id"] == link_id)
-    expected_x = logical["sx"] * item(window, "ganttView").property("pixelsPerDay")
-    wait_until(lambda: any(p["id"] == link_id and abs(p["points"][0][0] - expected_x) < 0.1 for p in paths()))
+    scale = item(window, "ganttView").property("pixelsPerDay")
+    expected_x, expected_target = logical["sx"] * scale, logical["tx"] * scale
+    wait_until(lambda: any(p["id"] == link_id and abs(p["points"][0][0] - expected_x) < 0.1
+                           and abs(p["points"][-1][0] - expected_target) < 0.1 for p in paths()))
     path = next(p for p in paths() if p["id"] == link_id)
     a, b = path["points"][2:4]
     assert a[1] == b[1]
     location = canvas.mapToScene(QPointF((a[0] + b[0]) / 2, a[1])).toPoint()
     QTest.mouseMove(window, QPoint(1850, 900))
     QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, location)
-    dialog = window.findChild(QObject, "dependencyDialog")
-    assert dialog is not None
-    wait_until(lambda: dialog.property("opened"))
+    dialog = native_dialog("dependencyDialog")
+    wait_until(dialog.isVisible)
     return dialog
 
 
 def _click(window, name):
+    if click_native(name):
+        return
     QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point(item(window, name)))
 
 
 def _replace_text(window, name, text):
+    if replace_native(name, text):
+        return
     _click(window, name)
     QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
     for character in text:
@@ -99,11 +106,11 @@ def test_real_arrow_click_edits_type_lag_and_can_be_deleted(gui):
     original_id = c.project.dependencies[0].id
     dialog = _open_first_arrow(c, window)
     assert item(window, "ganttView").property("activeLinkId") == original_id
-    _click(window, "dependencyKind")
-    QTest.keyClick(window, Qt.Key.Key_Home)
-    QTest.keyClick(window, Qt.Key.Key_Down)
-    QTest.keyClick(window, Qt.Key.Key_Down)
-    QTest.keyClick(window, Qt.Key.Key_Return)
+    kind = required_widget("dependencyKind")
+    kind.setFocus()
+    QTest.keyClick(kind, Qt.Key.Key_Home)
+    QTest.keyClick(kind, Qt.Key.Key_Down)
+    QTest.keyClick(kind, Qt.Key.Key_Down)
     _replace_text(window, "dependencyLag", "1.5")
     assert c.project.to_dict() == before
     _click(window, "saveDependency")
@@ -151,7 +158,7 @@ def test_escape_discards_the_arrow_editor_draft(gui):
     before = c.project.to_dict()
     dialog = _open_first_arrow(c, window)
     _replace_text(window, "dependencyLag", "-2")
-    QTest.keyClick(window, Qt.Key.Key_Escape)
+    QTest.keyClick(dialog, Qt.Key.Key_Escape)
     wait_until(lambda: not dialog.property("visible"))
     assert c.project.to_dict() == before and not c.canUndo
 
@@ -163,11 +170,13 @@ def test_arrow_editor_blocks_background_undo_and_task_delete(gui):
     before = c.project.to_dict()
     dialog = _open_first_arrow(c, window)
     _click(window, "dependencyKind")
-    QTest.keyClick(window, Qt.Key.Key_Escape)
-    assert dialog.property("visible")
+    popup = QApplication.activePopupWidget()
+    if popup is not None:
+        QTest.keyClick(popup, Qt.Key.Key_Escape)
+    assert dialog.isVisible()
     QTest.keyClick(window, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
     QTest.keyClick(window, Qt.Key.Key_Delete)
     QTest.qWait(20)
     assert c.project.to_dict() == before
-    assert not window.findChild(QObject, "deleteDialog").property("visible")
+    assert not any(w.objectName() == "deleteDialog" and w.isVisible() for w in QApplication.topLevelWidgets())
     _click(window, "cancelDependency")

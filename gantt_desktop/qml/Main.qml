@@ -18,8 +18,6 @@ ApplicationWindow {
     property bool allowClose: false
     property bool sidebarVisible: true
     property string filterCode: "all"
-    property string deleteId: ""
-    property bool deleteBulk: false
     property bool workloadVisible: false
     property real workloadHeight: 230
     readonly property bool editingText: activeFocusItem && activeFocusItem.cursorPosition !== undefined
@@ -28,24 +26,18 @@ ApplicationWindow {
     function inspectTask(id) { if (!controller.bulkMode) { controller.select(id); inspector.open() } }
     function selectedParent() { return controller.selected.summary ? controller.selectedId : (controller.selected.parentId || "") }
     function showTaskMenu(id) { if (!controller.bulkMode) { controller.select(id); taskMenu.popup() } }
-    function askDelete(id) { if (!id) return; deleteBulk=false; deleteId=id; deleteDialog.open() }
-    function askBulkDelete() { if (controller.bulkDeleteCount>0) { deleteBulk=true; deleteDialog.open() } }
-    function showDependency(source,target,kind,id) {
-        gantt.cancelInteractions()
-        const detail = id ? controller.linkDetails(id) : ({})
-        dependency.linkId=id; dependency.sourceId=source; dependency.targetId=target
-        dependency.relation=kind; dependency.lagHours=String(detail.lag || 0)
-        dependency.open()
-    }
-    function showResources(id) { gantt.cancelInteractions(); resources.resourceId=id; resources.open() }
-    function showAssignments(id) { gantt.cancelInteractions(); controller.select(id); assignments.taskId=id; assignments.open() }
+    function askDelete(id) { if (id) nativeDialogs.confirmDelete(id,false) }
+    function askBulkDelete() { if (controller.bulkDeleteCount>0) nativeDialogs.confirmDelete("",true) }
+    function showDependency(source,target,kind,id) { gantt.cancelInteractions(); nativeDialogs.showDependency(source,target,kind,id) }
+    function showResources(id) { gantt.cancelInteractions(); nativeDialogs.showResources(id) }
+    function showAssignments(id) { gantt.cancelInteractions(); controller.select(id); nativeDialogs.showAssignments(id) }
     function saveProject() { contentItem.forceActiveFocus(); controller.save() }
 
     Connections {
         target: controller
         function onToast(message) { notification.text=message; notice.visible=true; toastTimer.restart() }
         function onInspectRequested() { inspector.open(); controller.focusTask(controller.selectedId) }
-        function onProjectLoaded() { inspector.close(); dependency.close(); resources.close(); assignments.close(); search.text=""; window.filterCode="all"; gantt.scrollX=0 }
+        function onProjectLoaded() { inspector.close(); search.text=""; window.filterCode="all"; gantt.scrollX=0 }
         function onBulkChanged() {
             if (controller.bulkMode) {
                 inspector.close()
@@ -53,18 +45,18 @@ ApplicationWindow {
             } else if (bulkEditor.visible) bulkEditor.close()
         }
     }
-    Shortcut { sequences: [StandardKey.Save]; onActivated: window.saveProject() }
-    Shortcut { sequence: "Ctrl+Shift+S"; onActivated: controller.saveAs() }
-    Shortcut { sequences: [StandardKey.Open]; onActivated: controller.openProject() }
-    Shortcut { sequences: [StandardKey.New]; onActivated: controller.newProject() }
-    Shortcut { sequences: [StandardKey.Undo]; enabled: !window.editingText; onActivated: controller.undo() }
-    Shortcut { sequences: [StandardKey.Redo]; enabled: !window.editingText; onActivated: controller.redo() }
-    Shortcut { sequence: "Delete"; enabled: !window.editingText && !controller.bulkMode && !!controller.selectedId; onActivated: window.askDelete(controller.selectedId) }
-    Shortcut { sequence: "Delete"; enabled: !window.editingText && controller.bulkMode && controller.bulkDeleteCount>0; onActivated: window.askBulkDelete() }
-    Shortcut { sequences: [StandardKey.SelectAll]; enabled: controller.bulkMode && !window.editingText; onActivated: controller.setAllChecked(true) }
-    Shortcut { sequence: "Escape"; onActivated: { gantt.cancelInteractions(); if (controller.bulkMode) controller.setBulkMode(false); if (inspector.opened) inspector.close(); contentItem.forceActiveFocus() } }
-    Shortcut { sequence: "Return"; enabled: !controller.bulkMode && !window.editingText && !!controller.selectedId && !inspector.opened; onActivated: window.inspectTask(controller.selectedId) }
-    Shortcut { sequence: "Ctrl+F"; onActivated: { search.forceActiveFocus(); search.selectAll() } }
+    Shortcut { sequences: [StandardKey.Save]; enabled:!nativeDialogs.modalOpen; onActivated: window.saveProject() }
+    Shortcut { sequence: "Ctrl+Shift+S"; enabled:!nativeDialogs.modalOpen; onActivated: controller.saveAs() }
+    Shortcut { sequences: [StandardKey.Open]; enabled:!nativeDialogs.modalOpen; onActivated: controller.openProject() }
+    Shortcut { sequences: [StandardKey.New]; enabled:!nativeDialogs.modalOpen; onActivated: controller.newProject() }
+    Shortcut { sequences: [StandardKey.Undo]; enabled:!nativeDialogs.modalOpen && !window.editingText; onActivated: controller.undo() }
+    Shortcut { sequences: [StandardKey.Redo]; enabled:!nativeDialogs.modalOpen && !window.editingText; onActivated: controller.redo() }
+    Shortcut { sequence: "Delete"; enabled:!nativeDialogs.modalOpen && !window.editingText && !controller.bulkMode && !!controller.selectedId; onActivated: window.askDelete(controller.selectedId) }
+    Shortcut { sequence: "Delete"; enabled:!nativeDialogs.modalOpen && !window.editingText && controller.bulkMode && controller.bulkDeleteCount>0; onActivated: window.askBulkDelete() }
+    Shortcut { sequences: [StandardKey.SelectAll]; enabled:!nativeDialogs.modalOpen && controller.bulkMode && !window.editingText; onActivated: controller.setAllChecked(true) }
+    Shortcut { sequence: "Escape"; enabled:!nativeDialogs.modalOpen; onActivated: { gantt.cancelInteractions(); if (controller.bulkMode) controller.setBulkMode(false); if (inspector.opened) inspector.close(); contentItem.forceActiveFocus() } }
+    Shortcut { sequence: "Return"; enabled:!nativeDialogs.modalOpen && !controller.bulkMode && !window.editingText && !!controller.selectedId && !inspector.opened; onActivated: window.inspectTask(controller.selectedId) }
+    Shortcut { sequence: "Ctrl+F"; enabled:!nativeDialogs.modalOpen; onActivated: { search.forceActiveFocus(); search.selectAll() } }
 
     Menu {
         id: fileMenu
@@ -125,35 +117,7 @@ ApplicationWindow {
         MenuItem { text:window.sidebarVisible?"Скрыть боковую панель":"Показать боковую панель"; onTriggered:window.sidebarVisible=!window.sidebarVisible }
         MenuItem { text:"Сбросить ширину таблицы"; onTriggered:gantt.gridWidth=Math.min(716,Math.max(450,gantt.width*0.48)) }
     }
-    Dialog {
-        id: deleteDialog
-        objectName: "deleteDialog"
-        width: Math.min(560, window.width-80)
-        anchors.centerIn: parent
-        title: window.deleteBulk ? "Удалить задач: " + controller.bulkDeleteCount + "?" : "Удалить задачу?"
-        modal: true
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        Label { width:parent.width; text:window.deleteBulk ? "Удалятся только полностью выбранные задачи и группы.\nСнятые отметки сохраняются. Действие можно отменить через Undo." : "Задача, её подзадачи и связанные зависимости будут удалены.\nДействие можно отменить через Undo."; wrapMode:Text.WordWrap }
-        onAccepted: { if (window.deleteBulk) controller.deleteChecked(); else controller.deleteTask(window.deleteId) }
-    }
-    Dialog {
-        id: help
-        anchors.centerIn: parent
-        title: "Работа с диаграммой"
-        modal: true
-        standardButtons: Dialog.Close
-        width: Math.min(660,window.width-80)
-        Label {
-            width:parent.width
-            wrapMode:Text.WordWrap
-            lineHeight:1.5
-            text:"• Перетаскивайте свободную задачу или группу за тело блока.\n• Задача с предшественником закреплена: измените связь или лаг.\n• Тяните края задачи для изменения начала или завершения.\n• Круги по бокам создают связи: перетащите круг на другую задачу.\n• Маленький ромб под блоком меняет прогресс.\n• Двойной щелчок открывает свойства; название редактируется в таблице.\n• Пустую область диаграммы можно перетаскивать.\n• Ctrl+колесо — масштаб; Shift+колесо — горизонтальная прокрутка.\n• Ctrl+Z / Ctrl+Shift+Z — отмена и повтор; Ctrl+S — сохранить.\n\nКалендарь: Пн–Пт, 09:00–13:00 и 14:00–18:00.\nДлительность и трудозатраты — разные величины."
-        }
-    }
-    DependencyDialog { id: dependency; parent: Overlay.overlay }
     BulkEditor { id: bulkEditor; parent: Overlay.overlay; onDeleteRequested: window.askBulkDelete() }
-    ResourceManager { id: resources; parent: Overlay.overlay }
-    ResourcePicker { id: assignments; parent: Overlay.overlay; onManageRequested: window.showResources("") }
     TaskInspector {
         id: inspector
         parent: Overlay.overlay
@@ -203,7 +167,7 @@ ApplicationWindow {
                         Text { text:"Локальный файл · Без аккаунта"; color:"#9aa1a7"; font.pixelSize:11 }
                     }
                 }
-                ActionButton { text:"?  Помощь"; onClicked:help.open() }
+                ActionButton { objectName:"helpButton"; text:"?  Помощь"; onClicked:nativeDialogs.showHelp() }
             }
         }
         ColumnLayout {
@@ -226,7 +190,7 @@ ApplicationWindow {
                 Rectangle { anchors.bottom:parent.bottom; width:parent.width; height:1; color:"#eeeeee" }
                 Text { x:14; y:4; text:"Диаграмма"; color:"#176dce"; font.bold:true; font.pixelSize:14 }
                 Rectangle { x:14; anchors.bottom:parent.bottom; width:78; height:2; color:"#246dc2" }
-                ActionButton { anchors.right:parent.right; anchors.rightMargin:12; text:"▷  Как использовать"; onClicked:help.open() }
+                ActionButton { anchors.right:parent.right; anchors.rightMargin:12; text:"▷  Как использовать"; onClicked:nativeDialogs.showHelp() }
             }
             Rectangle {
                 id: toolbar
@@ -271,7 +235,7 @@ ApplicationWindow {
                 id:gantt
                 Layout.fillWidth:true; Layout.fillHeight:true
                 pixelsPerDay:[52,26,10,4,2,1][Math.round(zoom.value)]
-                activeLinkId:dependency.visible?dependency.linkId:""
+                activeLinkId:nativeDialogs.activeLinkId
                 onInspectTask:function(id){window.inspectTask(id)}
                 onTaskMenuRequested:function(id){window.showTaskMenu(id)}
                 onLinkEditRequested:function(id){const d=controller.linkDetails(id);window.showDependency(d.source,d.target,d.kind,id)}

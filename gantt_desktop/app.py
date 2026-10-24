@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QEvent, Qt, QTimer, QUrl
-from PySide6.QtGui import QFont
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtQuickControls2 import QQuickStyle
@@ -16,10 +15,16 @@ from .controller import Controller
 def create_window(controller: Controller) -> tuple[QQmlApplicationEngine, QQuickWindow]:
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("controller", controller)
+    engine.rootContext().setContextProperty("nativeDialogs", controller.dialogs)
     engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / "qml" / "Main.qml")))
     objects = engine.rootObjects()
     if not objects or not isinstance(objects[0], QQuickWindow):
         raise RuntimeError("Could not load the Gantt desktop interface; see Qt diagnostics above.")
+    controller.dialogs.attach(objects[0])
+    engine.destroyed.connect(controller.dialogs.dispose)
+    app = QCoreApplication.instance()
+    if app is not None:
+        app.aboutToQuit.connect(controller.dialogs.dispose)
     return engine, objects[0]
 
 
@@ -38,7 +43,6 @@ def main() -> int:
     app = QApplication([sys.argv[0]])
     app.setApplicationName("Gantt Desktop")
     app.setOrganizationName("GanttDesktop")
-    app.setFont(QFont("Arial", 9))
     QQuickStyle.setStyle("Basic")
     controller = Controller()
     if args.project and not controller.load_path(args.project):
@@ -76,6 +80,7 @@ def main() -> int:
     result = app.exec()
     # Destroy QML objects while their Python context object is still alive.
     controller.imageRequested.disconnect(export_image)
+    controller.dialogs.dispose()
     engine.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()

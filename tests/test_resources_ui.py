@@ -1,8 +1,10 @@
 from datetime import date, datetime, time
 
 from conftest import wait_until
+from dialog_helpers import click_native, native_dialog, replace_native, required_widget
 from PySide6.QtCore import QObject, QPoint, QPointF, Qt
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QDoubleSpinBox
 from test_resources import MONDAY, project_with_task
 from test_ui import drag, item, point, undo
 
@@ -10,10 +12,14 @@ from gantt_desktop.domain import Task
 
 
 def click(window, name):
+    if click_native(name):
+        return
     QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point(item(window, name)))
 
 
 def replace(window, name, value):
+    if replace_native(name, value):
+        return
     click(window, name)
     QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
     for character in value:
@@ -51,8 +57,8 @@ def test_create_person_with_capacity_and_workdays_is_one_native_edit(gui):
     c, window = gui
     before = c.project.to_dict()
     click(window, "resourcesButton")
-    manager = window.findChild(QObject, "resourceManager")
-    wait_until(lambda: manager.property("opened"))
+    manager = native_dialog("resourceManager")
+    wait_until(manager.isVisible)
     click(window, "newResourceButton")
     replace(window, "resourceName", "alex")
     replace(window, "resourceCapacity", "4")
@@ -73,9 +79,9 @@ def test_calendar_button_renames_the_entity_everywhere(gui):
     key = c.project.tasks["sensor"].resource_ids[0]
     click(window, "workloadToggle")
     click(window, "resource-calendar-" + key)
-    manager = window.findChild(QObject, "resourceManager")
-    wait_until(lambda: manager.property("opened"))
-    assert item(window, "resourceName").property("text") == "Клиент"
+    manager = native_dialog("resourceManager")
+    wait_until(manager.isVisible)
+    assert required_widget("resourceName").property("text") == "Клиент"
     replace(window, "resourceName", "customer")
     click(window, "saveResourceButton")
     wait_until(lambda: c.project.resources[key].name == "customer")
@@ -95,8 +101,8 @@ def open_assignments(window):
     inspector = window.findChild(QObject, "taskInspector")
     wait_until(lambda: inspector.property("opened"))
     click(window, "chooseResourcesButton")
-    picker = window.findChild(QObject, "resourcePicker")
-    wait_until(lambda: picker.property("opened"))
+    picker = native_dialog("resourcePicker")
+    wait_until(picker.isVisible)
     return picker
 
 
@@ -108,12 +114,12 @@ def test_native_multi_assignment_and_cancelled_draft(gui):
     picker = open_assignments(window)
     click(window, "assign-resource-" + artist)
     assert c.project.to_dict() == before
-    assert item(window, "assignmentHours-" + artist).property("text") == "4"
+    assert required_widget("assignmentHours-" + artist).property("value") == 4
     click(window, "cancelResourceAssignment")
     wait_until(lambda: not picker.property("visible"))
     assert c.project.to_dict() == before and not c.canUndo
     click(window, "chooseResourcesButton")
-    wait_until(lambda: picker.property("opened"))
+    wait_until(picker.isVisible)
     click(window, "assign-resource-" + artist)
     click(window, "applyResourceAssignment")
     wait_until(lambda: c.project.tasks["sensor"].resource_ids == [client, artist])
@@ -129,8 +135,8 @@ def test_project_working_saturday_produces_a_weekend_warning_and_undo(gui):
     c.load_project(p)
     before = c.project.to_dict()
     click(window, "resourcesButton")
-    manager = window.findChild(QObject, "resourceManager")
-    wait_until(lambda: manager.property("opened"))
+    manager = native_dialog("resourceManager")
+    wait_until(manager.isVisible)
     click(window, "projectDay-5")
     click(window, "applyProjectCalendar")
     wait_until(lambda: 5 in c.project.calendar.workdays)
@@ -179,13 +185,15 @@ def test_overload_cell_details_show_both_contributing_tasks(gui):
     assert not c.canUndo
 
 
-def test_invalid_assignment_hours_cannot_commit(gui):
+def test_assignment_spinbox_rejects_invalid_text(gui):
     c, window = gui
     before = c.project.to_dict()
     client = c.project.tasks["sensor"].resource_ids[0]
     picker = open_assignments(window)
+    spin = required_widget("assignmentHours-" + client)
+    assert isinstance(spin, QDoubleSpinBox)
     replace(window, "assignmentHours-" + client, "bad")
-    click(window, "applyResourceAssignment")
-    assert picker.property("visible")
+    spin.interpretText()
+    assert spin.value() == 8 and picker.isVisible()
     assert c.project.to_dict() == before and not c.canUndo
     click(window, "cancelResourceAssignment")

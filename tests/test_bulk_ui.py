@@ -1,6 +1,8 @@
 from conftest import wait_until
+from dialog_helpers import native_dialog
 from PySide6.QtCore import QObject, QPoint, Qt
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QMessageBox
 from test_ui import drag, item, point, undo
 
 
@@ -25,18 +27,6 @@ def choose(window, name, index):
         QTest.keyClick(window, Qt.Key.Key_Down)
     QTest.keyClick(window, Qt.Key.Key_Return)
     wait_until(lambda: control.property("currentIndex") == index)
-
-
-def visible_button(window, labels):
-    pending = [window.contentItem()]
-    while pending:
-        candidate = pending.pop()
-        text = candidate.property("text")
-        if (isinstance(text, str) and text.replace("&", "") in labels
-                and candidate.property("down") is not None and candidate.isVisible()):
-            return candidate
-        pending.extend(candidate.childItems())
-    raise AssertionError(f"No visible button in {labels}")
 
 
 def test_real_group_check_partial_state_select_all_and_cancel(gui):
@@ -108,12 +98,13 @@ def test_bulk_delete_confirmation_preserves_unchecked_child(gui):
     click(window, "bulk-check-scenario")
     assert c.property("bulkDeleteCount") == 4
     click(window, "deleteBulkButton")
-    dialog = window.findChild(QObject, "deleteDialog")
-    assert dialog is not None
-    wait_until(lambda: dialog.property("opened"))
-    assert "4" in dialog.property("title")
-    accept = visible_button(window, {"OK", "ОК"})
-    QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point(accept))
+    dialog = native_dialog("deleteDialog")
+    assert isinstance(dialog, QMessageBox)
+    wait_until(dialog.isVisible)
+    assert "4" in dialog.windowTitle()
+    accept = dialog.button(QMessageBox.StandardButton.Ok)
+    assert accept is not None
+    QTest.mouseClick(accept, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, accept.rect().center())
     wait_until(lambda: "sensor" not in c.project.tasks)
     assert "scenario" in c.project.tasks and "planning" in c.project.tasks
     assert c.property("bulkDeleteCount") == 0

@@ -4,7 +4,6 @@ import time
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, qInstallMessageHandler
-from PySide6.QtGui import QFont
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -27,7 +26,6 @@ def qapp():
         assert isinstance(instance, QApplication)
         app = instance
     assert app.platformName() == "offscreen", "GUI tests must use Qt offscreen, never the desktop."
-    app.setFont(QFont("Arial", 9))
     QQuickStyle.setStyle("Basic")
     yield app
     # QML wrapper cycles must be collected before QApplication is destroyed.

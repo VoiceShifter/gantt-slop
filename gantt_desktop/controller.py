@@ -22,6 +22,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
+from .dialogs import NativeDialogs
 from .domain import (
     PRIORITY_LABELS,
     STATUS_LABELS,
@@ -92,6 +93,7 @@ class Controller(QObject):
     def __init__(self, project: Project | None = None):
         super().__init__()
         self.project = project or sample_project()
+        self.dialogs = NativeDialogs(self)
         self._rows = TaskRows(self)
         self._selected = ""
         self._bulk_mode = False

@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.4.1 uses system-styled `QDialog`/`QMessageBox` windows** for modal editors, confirmations and help, with platform fonts/palettes and light/dark support. [Native dialogs](docs/NATIVE_DIALOGS.md).
+
 **0.4 adds people as persistent entities and the bottom “Загрузка ресурсов” panel:** multi-person assignments, daily capacity, overload/weekend warnings and working-day settings. [Resource usage and verification](docs/RESOURCES.md).
 
 0.3 introduced [task/summary dependency arrows and anchored resizing](docs/DEPENDENCY_ARROWS.md).
@@ -42,6 +44,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Nested groups and tasks, milestones, collapse/expand, inline table editing, per-group creation, deletion with confirmation, and grip-based row reordering/nesting with preview, Escape and auto-scroll.
 - Dates/times, working duration, separate effort, cost, resource assignments, notes, synchronized status/progress, five priority levels and task colors.
 - Project-local people with stable IDs, create/rename/delete, individual capacity/workdays, multi-person effort allocation and migration of existing assignee names.
+- System-themed Qt Widgets modal dialogs with standard input controls, window decorations, keyboard handling and parent-window modality; Gantt styling remains unchanged.
 - Collapsible/resizable workload below the Gantt, synchronized zoom/panning, green normal load, red overload, weekend/nonworking warnings, Hours/Percent/Tasks modes and expandable assigned-task bars.
 - Checkbox/group/select-all bulk editing with explicit Apply/Cancel and one-step Undo; protected deletion never removes an unchecked child through a partially selected parent.
 - Body movement for unconstrained tasks and groups; dependency-anchored tasks give an explanatory message instead of silently breaking their links.
@@ -100,13 +103,14 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **200 passing tests**, including 53 native Qt input tests. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **210 passing tests**, including 63 native Qt input/theme/lifecycle tests. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
 - `gantt_desktop/domain.py`: Qt-independent calendar, hierarchy, dependencies and mutations.
 - `gantt_desktop/controller.py`: Qt list model, atomic edits, Python snapshot history, filtering and file operations.
 - `gantt_desktop/workload.py`: working-time effort distribution and daily resource availability/warnings.
+- `gantt_desktop/dialogs.py`: platform-styled QWidget dialogs and QML/window lifecycle bridge.
 - `gantt_desktop/qml/`: native Qt Quick interface and direct manipulation.
 - `gantt_desktop/sample.py`: independent synthetic fixture based on visible sample labels/dates.
 - `tests/`: scheduling, transaction, persistence and real Qt mouse/keyboard regressions.
