@@ -43,6 +43,7 @@ ApplicationWindow {
     function askBulkDelete() { if (controller.bulkDeleteCount>0) nativeDialogs.confirmDelete("",true) }
     function showDependency(source,target,kind,id) { gantt.cancelInteractions(); nativeDialogs.showDependency(source,target,kind,id) }
     function showResources(id) { gantt.cancelInteractions(); nativeDialogs.showResources(id) }
+    function showFields() { gantt.cancelInteractions(); nativeDialogs.showFields(gantt.columnVisibility()) }
     function showAssignments(id) { gantt.cancelInteractions(); controller.select(id); nativeDialogs.showAssignments(id) }
     function saveProject() { contentItem.forceActiveFocus(); controller.save() }
 
@@ -50,13 +51,17 @@ ApplicationWindow {
         target: controller
         function onToast(message) { notification.text=message; notice.visible=true; toastTimer.restart() }
         function onInspectRequested() { inspector.open(); controller.focusTask(controller.selectedId) }
-        function onProjectLoaded() { inspector.close(); search.text=""; window.filterCode="all"; gantt.scrollX=0 }
+        function onProjectLoaded() { inspector.close(); search.text=""; window.filterCode="all"; gantt.scrollX=0; gantt.hiddenCustomFields=[] }
         function onBulkChanged() {
             if (controller.bulkMode) {
                 inspector.close()
                 if (!bulkEditor.visible) bulkEditor.open()
             } else if (bulkEditor.visible) bulkEditor.close()
         }
+    }
+    Connections {
+        target: nativeDialogs
+        function onColumnVisibilityChanged(key, shown) { gantt.setColumnVisible(key,shown) }
     }
     Shortcut { sequences: [StandardKey.Save]; enabled:!window.modalBlocked; onActivated: window.saveProject() }
     Shortcut { sequence: "Ctrl+Shift+S"; enabled:!window.modalBlocked; onActivated: controller.saveAs() }
@@ -95,20 +100,6 @@ ApplicationWindow {
         MenuItem { text: "Добавить зависимость"; enabled: !!controller.selectedId; onTriggered: window.showDependency("",controller.selectedId,"FS","") }
         MenuSeparator {}
         MenuItem { text: "Удалить"; onTriggered: window.askDelete(controller.selectedId) }
-    }
-    Menu {
-        id: fieldsMenu
-        title: "Показать/скрыть поля"
-        MenuItem { text: "Исполнитель"; checkable:true; checked:gantt.showAssignee; onTriggered:gantt.showAssignee=checked }
-        MenuItem { text: "Трудозатраты"; checkable:true; checked:gantt.showEffort; onTriggered:gantt.showEffort=checked }
-        MenuItem { text: "Стоимость"; checkable:true; checked:gantt.showCost; onTriggered:gantt.showCost=checked }
-        MenuSeparator {}
-        MenuItem { text: "Начало"; checkable:true; checked:gantt.showStart; onTriggered:gantt.showStart=checked }
-        MenuItem { text: "Завершение"; checkable:true; checked:gantt.showEnd; onTriggered:gantt.showEnd=checked }
-        MenuItem { text: "Длительность"; checkable:true; checked:gantt.showDuration; onTriggered:gantt.showDuration=checked }
-        MenuItem { text: "Прогресс"; checkable:true; checked:gantt.showProgress; onTriggered:gantt.showProgress=checked }
-        MenuItem { text: "Статус"; checkable:true; checked:gantt.showStatus; onTriggered:gantt.showStatus=checked }
-        MenuItem { text: "Приоритет"; checkable:true; checked:gantt.showPriority; onTriggered:gantt.showPriority=checked }
     }
     Menu {
         id: filterMenu
@@ -232,7 +223,7 @@ ApplicationWindow {
                         onTextChanged:controller.search(text)
                         background:Rectangle { color:search.activeFocus?appTheme.colors.input:appTheme.colors.raised; radius:3; border.color:search.activeFocus?appTheme.colors.link:appTheme.colors.border }
                     }
-                    ActionButton { text:"Поля"; objectName:"fieldsButton"; onClicked:fieldsMenu.popup() }
+                    ActionButton { text:"Поля"; objectName:"fieldsButton"; onClicked:window.showFields() }
                     ActionButton { text:"Фильтр"; objectName:"filterButton"; checked:window.filterCode!=="all"; onClicked:filterMenu.popup() }
                     Slider {
                         id: zoom
@@ -253,6 +244,7 @@ ApplicationWindow {
                 activeLinkId:nativeDialogs.activeLinkId
                 onInspectTask:function(id){window.inspectTask(id)}
                 onTaskMenuRequested:function(id){window.showTaskMenu(id)}
+                onFieldsRequested:window.showFields()
                 onLinkEditRequested:function(id){const d=controller.linkDetails(id);window.showDependency(d.source,d.target,d.kind,id)}
                 onZoomRequested:function(change){zoom.value=Math.max(0,Math.min(5,zoom.value+change))}
             }

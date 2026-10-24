@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 import re
 from collections import deque
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time, timedelta
 from uuid import uuid4
@@ -134,6 +135,94 @@ class Resource:
             raise ScheduleError("Цвет должен иметь формат #RRGGBB.")
 
 
+FIELD_TYPES = {"text": "Текст", "number": "Число", "date": "Дата", "select": "Список",
+               "checkbox": "Флажок", "color": "Цвет", "multi": "Мультиселект",
+               "people": "Люди", "labels": "Лейблы"}
+
+
+@dataclass
+class CustomField:
+    id: str
+    name: str
+    kind: str = "text"
+    options: list[str] = field(default_factory=list)
+    aggregate: str = ""
+
+    def validate(self) -> None:
+        if not isinstance(self.id, str) or not self.id or not isinstance(self.name, str) or not self.name.strip():
+            raise ScheduleError("Укажите название поля.")
+        if self.kind not in FIELD_TYPES:
+            raise ScheduleError("Неизвестный тип поля.")
+        if not isinstance(self.options, list) or any(not isinstance(s, str) or not s.strip() for s in self.options):
+            raise ScheduleError("Опции должны иметь непустые названия.")
+        if len({s.casefold() for s in self.options}) != len(self.options):
+            raise ScheduleError("Названия опций не должны повторяться.")
+        if self.kind in {"select", "multi"}:
+            if not self.options:
+                raise ScheduleError("Добавьте хотя бы одну опцию.")
+        elif self.options:
+            raise ScheduleError("Опции поддерживаются только списком и мультиселектом.")
+        if (self.kind == "number" and self.aggregate not in {"sum", "average"}) or (self.kind != "number" and self.aggregate):
+            raise ScheduleError("Выберите сумму или среднее для числового поля.")
+
+    def normalize(self, value: object, resources: dict[str, Resource]) -> object:
+        if value is None:
+            return None
+        if self.kind == "number":
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ScheduleError("Значение поля должно быть конечным числом.")
+            try:
+                number = float(value)
+            except OverflowError as error:
+                raise ScheduleError("Значение поля выходит за допустимый диапазон.") from error
+            if not math.isfinite(number):
+                raise ScheduleError("Значение поля должно быть конечным числом.")
+            return number
+        if self.kind == "checkbox":
+            if type(value) is not bool:
+                raise ScheduleError("Значение флажка должно быть Да или Нет.")
+            return value
+        if self.kind in {"multi", "people", "labels"}:
+            if not isinstance(value, list) or any(not isinstance(s, str) or not s.strip() for s in value):
+                raise ScheduleError("Ожидается список непустых значений.")
+            result = list(dict.fromkeys(value))
+            if self.kind == "multi":
+                if any(s not in self.options for s in result):
+                    raise ScheduleError("Выберите значения из опций поля.")
+                result = [s for s in self.options if s in result]
+            if self.kind == "people" and any(s not in resources for s in result):
+                raise ScheduleError("Поле ссылается на неизвестный ресурс.")
+            return result or None
+        if not isinstance(value, str):
+            raise ScheduleError("Ожидается текстовое значение поля.")
+        if not value.strip():
+            return None
+        if self.kind == "select" and value not in self.options:
+            raise ScheduleError("Выберите значение из опций поля.")
+        if self.kind == "date":
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                raise ScheduleError("Дата поля должна иметь формат ГГГГ-ММ-ДД.")
+            return date.fromisoformat(value).isoformat()
+        if self.kind == "color":
+            if not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+                raise ScheduleError("Цвет должен иметь формат #RRGGBB.")
+            return value.lower()
+        return value
+
+    def display(self, value: object, resources: dict[str, Resource]) -> str:
+        if value is None:
+            return ""
+        if self.kind == "number":
+            return f"{value:g}"
+        if self.kind == "checkbox":
+            return "Да" if value else "Нет"
+        if self.kind == "date":
+            return date.fromisoformat(str(value)).strftime("%d.%m.%Y")
+        if isinstance(value, list):
+            return ", ".join(resources[s].name if self.kind == "people" else s for s in value)
+        return str(value)
+
+
 @dataclass
 class Task:
     id: str
@@ -152,6 +241,7 @@ class Task:
     priority: str = "medium"
     resource_ids: list[str] = field(default_factory=list)
     resource_shares: list[float] = field(default_factory=list)
+    custom_values: dict[str, object] = field(default_factory=dict)
     # assignee is a legacy-constructor/display cache; JSON stores resource IDs.
 
     def set_progress(self, value: float) -> None:
@@ -198,6 +288,7 @@ class Project:
     dependencies: list[Dependency] = field(default_factory=list)
     calendar: WorkCalendar = field(default_factory=WorkCalendar)
     resources: dict[str, Resource] = field(default_factory=dict)
+    custom_fields: dict[str, CustomField] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for task in self.tasks.values():
@@ -265,7 +356,62 @@ class Project:
                     total = sum(task.resource_shares)
                     shares = [s / total for s in task.resource_shares] if total else []
                     task.resource_shares = [] if shares and all(math.isclose(s, 1 / len(shares)) for s in shares) else shares
+            for definition in self.custom_fields.values():
+                selected = task.custom_values.get(definition.id)
+                if definition.kind == "people" and isinstance(selected, list) and resource_id in selected:
+                    remaining = [key for key in selected if key != resource_id]
+                    if remaining:
+                        task.custom_values[definition.id] = remaining
+                    else:
+                        task.custom_values.pop(definition.id)
         self.sync_resource_names()
+
+    def save_custom_field(self, definition: CustomField) -> None:
+        definition.validate()
+        previous = self.custom_fields.get(definition.id)
+        if previous is not None and previous.kind != definition.kind:
+            raise ScheduleError("Тип существующего поля нельзя изменить.")
+        if any(f.id != definition.id and f.name.casefold() == definition.name.casefold() for f in self.custom_fields.values()):
+            raise ScheduleError("Поле с таким названием уже существует.")
+        updates = {task.id: definition.normalize(task.custom_values[definition.id], self.resources)
+                   for task in self.tasks.values() if definition.id in task.custom_values}
+        self.custom_fields[definition.id] = definition
+        for task_id, value in updates.items():
+            if value is None:
+                self.tasks[task_id].custom_values.pop(definition.id, None)
+            else:
+                self.tasks[task_id].custom_values[definition.id] = value
+
+    def remove_custom_field(self, field_id: str) -> None:
+        del self.custom_fields[field_id]
+        for task in self.tasks.values():
+            task.custom_values.pop(field_id, None)
+
+    def set_custom_value(self, task_id: str, field_id: str, value: object) -> None:
+        task, definition = self.tasks[task_id], self.custom_fields[field_id]
+        if task.kind == "group" and definition.kind == "number":
+            raise ScheduleError("Числовое значение группы вычисляется из её задач.")
+        value = definition.normalize(value, self.resources)
+        if value is None:
+            task.custom_values.pop(field_id, None)
+        else:
+            task.custom_values[field_id] = value
+
+    def custom_value(self, task_id: str, field_id: str) -> object:
+        definition = self.custom_fields[field_id]
+        task = self.tasks.get(task_id)
+        if definition.kind != "number" or (task is not None and task.kind != "group"):
+            return task.custom_values.get(field_id) if task is not None else None
+        members = self.descendants(task_id) if task is not None else self.tasks.values()
+        numbers = [value for t in members if t.kind != "group"
+                   and isinstance(value := t.custom_values.get(field_id), (int, float))]
+        if not numbers:
+            return None
+        divisor = len(numbers) if definition.aggregate == "average" else 1
+        try:
+            return math.fsum(number / divisor for number in numbers)
+        except OverflowError as error:
+            raise ScheduleError("Числовой итог выходит за допустимый диапазон.") from error
 
     def set_workdays(self, days: set[int]) -> None:
         if not days or any(type(day) is not int or not 0 <= day <= 6 for day in days):
@@ -364,7 +510,20 @@ class Project:
             if resource.name.casefold() in names:
                 raise ScheduleError("Ресурс с таким именем уже существует.")
             names.add(resource.name.casefold())
+        field_names = set()
+        for key, definition in self.custom_fields.items():
+            definition.validate()
+            if key != definition.id or definition.name.casefold() in field_names:
+                raise ScheduleError("Повторяющийся идентификатор или название поля.")
+            field_names.add(definition.name.casefold())
         for task in self.tasks.values():
+            if not isinstance(task.custom_values, dict) or any(key not in self.custom_fields for key in task.custom_values):
+                raise ScheduleError("Значение ссылается на неизвестное поле.")
+            for key, value in task.custom_values.items():
+                definition = self.custom_fields[key]
+                definition.normalize(value, self.resources)
+                if task.kind == "group" and definition.kind == "number" and value is not None:
+                    raise ScheduleError("Числовое значение группы вычисляется из её задач.")
             if len(set(task.resource_ids)) != len(task.resource_ids) or any(key not in self.resources for key in task.resource_ids):
                 raise ScheduleError("Назначение ссылается на неизвестный ресурс.")
             if task.resource_shares and (len(task.resource_shares) != len(task.resource_ids)
@@ -418,6 +577,12 @@ class Project:
             if not isinstance(link.lag, int):
                 raise ScheduleError("Лаг задаётся в рабочих минутах.")
         self.topological()
+        for definition in self.custom_fields.values():
+            if definition.kind == "number":
+                self.custom_value("", definition.id)
+                for task in self.tasks.values():
+                    if task.kind == "group":
+                        self.custom_value(task.id, definition.id)
 
     def required_start(self, task_id: str) -> datetime | None:
         target = self.tasks[task_id]
@@ -646,19 +811,21 @@ class Project:
             item.pop("assignee")
             tasks.append(item)
         resources = [{**asdict(r), "workdays": sorted(r.workdays)} for r in self.resources.values()]
-        return {"version": 3, "name": self.name, "tasks": tasks, "resources": resources,
+        return {"version": 4, "name": self.name, "tasks": tasks, "resources": resources,
+                "custom_fields": [asdict(f) for f in self.custom_fields.values()],
                 "dependencies": [asdict(link) for link in self.dependencies],
                 "workdays": sorted(self.calendar.workdays),
                 "holidays": sorted(day.isoformat() for day in self.calendar.holidays)}
 
     @classmethod
     def from_dict(cls, value: dict) -> Project:
-        if value.get("version") not in (1, 2, 3):
+        if value.get("version") not in (1, 2, 3, 4):
             raise ScheduleError("Неподдерживаемая версия файла проекта.")
         tasks = {}
         for item in value["tasks"]:
             record = {**item, "resource_ids": list(item.get("resource_ids", [])),
-                      "resource_shares": list(item.get("resource_shares", []))}
+                      "resource_shares": list(item.get("resource_shares", [])),
+                      "custom_values": deepcopy(item.get("custom_values", {}))}
             record.setdefault("status", status_for_progress(record.get("progress", 0)))
             task = Task(**{**record, "start": datetime.fromisoformat(item["start"])})
             if task.id in tasks:
@@ -670,9 +837,15 @@ class Project:
             if resource.id in resources:
                 raise ScheduleError("Повторяющийся идентификатор ресурса.")
             resources[resource.id] = resource
+        custom_fields = {}
+        for item in value.get("custom_fields", []):
+            definition = CustomField(**deepcopy(item))
+            if definition.id in custom_fields:
+                raise ScheduleError("Повторяющийся идентификатор поля.")
+            custom_fields[definition.id] = definition
         project = cls(value["name"], tasks,
                       [Dependency(**item) for item in value["dependencies"]],
                       WorkCalendar({date.fromisoformat(day) for day in value.get("holidays", [])},
-                                   set(value.get("workdays", range(5)))), resources)
+                                   set(value.get("workdays", range(5)))), resources, custom_fields)
         project.validate()
         return project

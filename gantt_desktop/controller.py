@@ -25,8 +25,10 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from .dialogs import NativeDialogs
 from .domain import (
+    FIELD_TYPES,
     PRIORITY_LABELS,
     STATUS_LABELS,
+    CustomField,
     Project,
     ScheduleError,
     Task,
@@ -93,6 +95,7 @@ class Controller(QObject):
     inspectRequested = Signal()
     focusRequested = Signal(float)
     imageRequested = Signal(str)
+    customFieldCreated = Signal(str)
 
     def __init__(self, project: Project | None = None):
         super().__init__()
@@ -169,7 +172,7 @@ class Controller(QObject):
                             "startDay": (start.date() - self._origin).days,
                             "endDay": (end.date() - self._origin).days + 1,
                             "effort": f"{sum(t.effort for t in leaves):g}ч",
-                            "cost": f"{sum(t.cost for t in leaves):,.2f}"})
+                            "cost": f"{sum(t.cost for t in leaves):,.2f}", **self.custom_record("")})
 
         def visit(parent: str, level: int, prefix: str) -> None:
             for number, task in enumerate(project.children(parent), 1):
@@ -224,7 +227,46 @@ class Controller(QObject):
                 "canResizeEnd": task.kind == "task" and not self.project.endpoint_locked(task_id, "F"),
                 "status": status, "statusText": STATUS_LABELS[status], "priority": task.priority,
                 "priorityText": "" if summary else PRIORITY_LABELS[task.priority],
-                "hasChildren": bool(self.project.children(task.id)), "kind": task.kind}
+                "hasChildren": bool(self.project.children(task.id)), "kind": task.kind,
+                **self.custom_record(task_id)}
+
+    def custom_record(self, task_id: str) -> dict:
+        values = {key: self.project.custom_value(task_id, key) for key in self.project.custom_fields}
+        return {"customValues": values, "customTexts": {
+            key: definition.display(values[key], self.project.resources)
+            for key, definition in self.project.custom_fields.items()}}
+
+    @Property(list, notify=viewChanged)
+    def customFields(self):
+        return [{"id": f.id, "key": "custom:" + f.id, "name": f.name, "kind": f.kind,
+                 "typeLabel": FIELD_TYPES[f.kind], "options": list(f.options), "aggregate": f.aggregate}
+                for f in self.project.custom_fields.values()]
+
+    def saveCustomField(self, field_id: str, name: str, kind: str, options: list[str], aggregate: str) -> str:
+        key = field_id or new_id()
+
+        def apply(project: Project) -> None:
+            if field_id and field_id not in project.custom_fields:
+                raise ScheduleError("Поле уже удалено.")
+            project.save_custom_field(CustomField(key, name.strip(), kind,
+                                                 [s.strip() for s in options if s.strip()],
+                                                 aggregate if kind == "number" else ""))
+        if not self.edit("Изменить поле" if field_id else "Создать поле", apply):
+            return ""
+        if not field_id:
+            self.customFieldCreated.emit(key)
+        return key
+
+    def removeCustomField(self, field_id: str) -> bool:
+        return self.edit("Удалить поле", lambda p: p.remove_custom_field(field_id))
+
+    def setCustomValue(self, task_id: str, field_id: str, value: object) -> bool:
+        return self.edit("Изменить значение поля", lambda p: p.set_custom_value(task_id, field_id, value))
+
+    @Slot(str, str, result=bool)
+    def toggleCustomValue(self, task_id: str, field_id: str) -> bool:
+        return self.edit("Изменить флажок", lambda p: p.set_custom_value(
+            task_id, field_id, p.tasks[task_id].custom_values.get(field_id) is not True))
 
     @Property(dict, notify=selectionChanged)
     def selected(self):
@@ -851,10 +893,12 @@ class Controller(QObject):
         try:
             with Path(path).open("w", encoding="utf-8-sig", newline="") as stream:
                 writer = csv.writer(stream)
-                writer.writerow(["Задача", "Начало", "Завершение", "Длительность (ч)", "Трудозатраты (ч)", "Стоимость", "Прогресс", "Исполнитель", "Статус", "Приоритет"])
+                writer.writerow(["Задача", "Начало", "Завершение", "Длительность (ч)", "Трудозатраты (ч)", "Стоимость", "Прогресс", "Исполнитель", "Статус", "Приоритет"]
+                                + [f.name for f in self.project.custom_fields.values()])
                 for task in self.project.tasks.values():
                     record = self.record(task.id)
-                    writer.writerow([task.name, record["start"], record["end"], record["duration"], record["effortHours"], record["costValue"], record["progress"], task.assignee, record["statusText"], record["priorityText"]])
+                    writer.writerow([task.name, record["start"], record["end"], record["duration"], record["effortHours"], record["costValue"], record["progress"], task.assignee, record["statusText"], record["priorityText"]]
+                                    + [record["customTexts"][key] for key in self.project.custom_fields])
         except OSError as error:
             self.toast.emit(str(error))
 

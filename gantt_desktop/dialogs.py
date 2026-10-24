@@ -410,6 +410,7 @@ class DependencyDialog(EditorDialog):
 
 class NativeDialogs(QObject):
     modalChanged = Signal()
+    columnVisibilityChanged = Signal(str, bool)
 
     def __init__(self, controller: Controller):
         super().__init__(controller)
@@ -470,6 +471,62 @@ class NativeDialogs(QObject):
                 action()
             dialog.deleteLater()
         self.modalChanged.emit()
+
+    @Slot(dict)
+    def showFields(self, shown: dict) -> None:
+        from .field_dialogs import FieldsDialog
+
+        dialog = self._editors.get("fields")
+        if not isinstance(dialog, FieldsDialog):
+            dialog = FieldsDialog(self.controller)
+            dialog.visibilityChanged.connect(self.columnVisibilityChanged.emit)
+            dialog.editRequested.connect(self.showCustomField)
+            dialog.removeRequested.connect(self.confirmCustomFieldDelete)
+            self._editors["fields"] = dialog
+        dialog.prepare(shown)
+        self.present(dialog)
+
+    @Slot(str)
+    def showCustomField(self, field_id: str) -> None:
+        from .field_dialogs import FieldDefinitionDialog
+
+        if field_id and field_id not in self.controller.project.custom_fields:
+            return
+        dialog = self._editors.get("fieldDefinition")
+        if not isinstance(dialog, FieldDefinitionDialog):
+            dialog = FieldDefinitionDialog(self.controller)
+            self._editors["fieldDefinition"] = dialog
+        dialog.prepare(field_id)
+        self.present(dialog)
+
+    @Slot(str, str)
+    def showFieldValue(self, task_id: str, field_id: str) -> None:
+        from .field_dialogs import FieldValueDialog
+
+        task = self.controller.project.tasks.get(task_id)
+        definition = self.controller.project.custom_fields.get(field_id)
+        if task is None or definition is None or (task.kind == "group" and definition.kind == "number"):
+            return
+        dialog = self._editors.get("fieldValue")
+        if not isinstance(dialog, FieldValueDialog):
+            dialog = FieldValueDialog(self.controller)
+            self._editors["fieldValue"] = dialog
+        dialog.prepare(task_id, field_id)
+        self.present(dialog)
+
+    @Slot(str)
+    def confirmCustomFieldDelete(self, field_id: str) -> None:
+        if field_id not in self.controller.project.custom_fields:
+            return
+        name = self.controller.project.custom_fields[field_id].name
+        box = QMessageBox(QMessageBox.Icon.Question, "Удалить поле?",
+                          f"Поле «{name}» и его значения во всех задачах будут удалены. Действие можно отменить.",
+                          QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        box.setObjectName("deleteCustomFieldDialog")
+        box.setTextFormat(Qt.TextFormat.PlainText)
+        box.button(QMessageBox.StandardButton.Cancel).setText("Отмена")
+        self._actions[box] = lambda: self.controller.removeCustomField(field_id)
+        self.present(box)
 
     @Slot(str)
     def showResources(self, resource_id: str) -> None:

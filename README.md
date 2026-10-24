@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.7 makes the header + functional:** show/hide standard columns and create project-local fields of nine types, with typed editors, numeric group rollups, rename/delete, JSON persistence, CSV and Undo/Redo. [Custom fields](docs/CUSTOM_FIELDS.md).
+
 **0.6 adds individually resizable table columns and fixes the creation row:** “Добавить задачу / Добавить веху” stays centered inside the Task column in narrow and wide layouts. [Columns and verification](docs/COLUMNS.md).
 
 **0.5 adds Settings → “Тёмная тема”:** one saved light/dark choice for the workspace, panels, menus and QWidget dialogs. Light is the default; switching is immediate and never modifies the project. [Themes and settings](docs/THEMES.md).
@@ -60,6 +62,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Whole-transaction Python undo/redo, including every task changed by propagated scheduling; no-op/invalid edits do not create history entries.
 - Zoom, timeline panning, horizontal/vertical scrolling, adjustable table/timeline divider, optional columns, search and completion/overdue filters.
 - Drag any column's right header boundary to resize it independently; headers/cells stay aligned, minimum widths and clipping prevent overlap, and the workload split follows the table.
+- Header + / “Поля” opens a native field picker. User fields support Text, Number, Date, List, Checkbox, Color, Multi-select, People and Labels, with validation and independent values; numbers sum/average terminal tasks without double-counting groups.
 - Versioned JSON save/load, a dirty indicator, CSV task export, and PNG export of the **current window**, not an entire off-screen project.
 
 ### Gestures
@@ -74,6 +77,8 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Multiple assignees | Task properties → ⋯ beside the assignee; choose people and hours |
 | Reorder/nest rows | Drag the six-dot left grip; use row edges or a group's name area |
 | Edit name/field | Click the table cell |
+| Choose/create columns | Header + or “Поля”; select Standard/Custom, create/edit/delete fields |
+| Edit a custom value | Click its cell; checkboxes also toggle directly; “Не задано” clears a value |
 | Resize a column | Drag its right header boundary; Escape restores the pre-drag widths |
 | Reset column widths | “Вид” → “Сбросить ширину таблицы” |
 | Inspect task | Double-click bar; or select then Enter |
@@ -93,7 +98,7 @@ The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00
 
 ### Project-file compatibility
 
-New saves use **schema 3** for resource entities, assignment IDs/shares and project/resource workdays. Schema-1/2 files remain importable: existing assignee names are migrated to shared resource records, while dates, effort, status and priority are retained. Older app versions cannot read schema 3; keep a separate copy if needed.
+New saves use **schema 4**, adding typed custom-field definitions and task values to resource entities, assignment IDs/shares and project/resource workdays. Schema-1/2/3 files remain importable; older assignee names migrate to shared resources and existing schedules/metadata are retained. App versions before 0.7 cannot read schema 4; keep a separate copy if needed.
 
 ## Tests and native screenshots
 
@@ -112,7 +117,7 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **257 passing tests**, including 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **324 passing tests**, including 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
@@ -120,6 +125,7 @@ The current suite has **257 passing tests**, including 25 column/layout and 22 t
 - `gantt_desktop/controller.py`: Qt list model, atomic edits, Python snapshot history, filtering and file operations.
 - `gantt_desktop/workload.py`: working-time effort distribution and daily resource availability/warnings.
 - `gantt_desktop/dialogs.py`: platform-styled QWidget dialogs and QML/window lifecycle bridge.
+- `gantt_desktop/field_dialogs.py`: native field picker, definition and typed-value editors.
 - `gantt_desktop/theme.py`: shared light/dark tokens, application/widget palette and local `QSettings` preference.
 - `gantt_desktop/qml/`: native Qt Quick interface and direct manipulation.
 - `gantt_desktop/sample.py`: independent synthetic fixture based on visible sample labels/dates.

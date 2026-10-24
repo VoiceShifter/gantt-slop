@@ -128,13 +128,13 @@ def test_summaries_do_not_double_count_child_effort():
     assert workload_rows(p, MONDAY, 1)[0]["hours"] == 8
 
 
-def test_resource_and_calendar_round_trip_schema_three():
+def test_resource_and_calendar_round_trip_current_schema():
     p = project_with_task()
     bob = p.ensure_resource("Bob").id
     p.assign_resources("a", [p.tasks["a"].resource_ids[0], bob], [2, 6])
     p.calendar.workdays = set(range(7))
     data = p.to_dict()
-    assert data["version"] == 3 and "assignee" not in data["tasks"][0]
+    assert data["version"] == 4 and "assignee" not in data["tasks"][0]
     assert Project.from_dict(data).to_dict() == data
 
 

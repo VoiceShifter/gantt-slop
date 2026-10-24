@@ -11,6 +11,8 @@ Item {
     property real scrollX: 0
     property real gridScroll: 0
     property var columnWidths: ({})
+    property var hiddenCustomFields: []
+    property var customFields: controller.customFields
     property bool viewportReady: false
     property int hoverRow: -1
     property bool showAssignee: true
@@ -47,6 +49,7 @@ Item {
     signal linkEditRequested(string linkId)
     signal zoomRequested(int change)
     signal cancelDrags()
+    signal fieldsRequested()
 
     property string rowDragId: ""
     property string rowDragLabel: ""
@@ -104,6 +107,8 @@ Item {
         if (showProgress) cols.push({key:"progress", title:"Прогресс", width:85})
         if (showStatus) cols.push({key:"status", title:"Статус", width:120})
         if (showPriority) cols.push({key:"priority", title:"Приоритет", width:125})
+        for (let f of customFields) if (hiddenCustomFields.indexOf(f.id)<0)
+            cols.push({key:f.key, title:f.name, width:160, customId:f.id, kind:f.kind})
         let used = 0
         for (let c of cols) { c.width = columnWidths[c.key] || c.width; used += c.width }
         cols.unshift({key:"name", title:"Задача", width:columnWidths.name || Math.max(250, gridWidth - used - 46)})
@@ -117,6 +122,26 @@ Item {
         return total
     }
 
+    function columnVisibility() {
+        const shown={assignee:showAssignee,effort:showEffort,cost:showCost,start:showStart,end:showEnd,
+                     duration:showDuration,progress:showProgress,status:showStatus,priority:showPriority}
+        for (let f of customFields) shown[f.key]=hiddenCustomFields.indexOf(f.id)<0
+        return shown
+    }
+    function setColumnVisible(key, shown) {
+        if (key.indexOf("custom:")===0) {
+            const id=key.slice(7)
+            hiddenCustomFields=shown?hiddenCustomFields.filter(value=>value!==id):hiddenCustomFields.concat([id])
+        } else {
+            const properties={assignee:"showAssignee",effort:"showEffort",cost:"showCost",start:"showStart",
+                              end:"showEnd",duration:"showDuration",progress:"showProgress",status:"showStatus",priority:"showPriority"}
+            view[properties[key]]=shown
+        }
+    }
+    function revealColumn(key) {
+        const column=columns.find(c=>c.key===key)
+        if (column) { gridScroll=Math.max(0,column.offset+column.width+46-gridWidth); clampGridScroll() }
+    }
     function clampGridScroll() { gridScroll = Math.max(0, Math.min(gridScroll, gridContentWidth - gridWidth)) }
     function boundedGridWidth(value) { return Math.min(Math.max(180,width-180),Math.max(380,value)) }
     function fitGridViewport() {
@@ -186,6 +211,7 @@ Item {
         function onBulkChanged() { if (controller.bulkMode) view.cancelInteractions() }
         function onSelectionChanged() { background.requestPaint() }
         function onFocusRequested(day) { view.centerDay(day) }
+        function onCustomFieldCreated(id) { Qt.callLater(function() { view.revealColumn("custom:"+id) }) }
     }
 
     Connections { target: appTheme; function onChanged() { background.requestPaint() } }
@@ -211,7 +237,17 @@ Item {
                     }
                 }
             }
-            Text { x: view.gridContentWidth - 40; width: 34; height: parent.height; text: "＋"; color: appTheme.colors.muted; font.pixelSize: 22; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+        }
+        Rectangle {
+            id: addColumnSlot
+            x: Math.max(0,Math.min(view.gridWidth,view.gridContentWidth)-46)
+            width: 46; height: parent.height; color: appTheme.colors.panel
+            ActionButton {
+                objectName: "addColumnButton"
+                x: 6; width: 34; height: parent.height
+                text: "＋"; font.pixelSize: 22; hint: "Добавить или выбрать поля"
+                onClicked: view.fieldsRequested()
+            }
         }
         MouseArea {
             id: columnResizer
@@ -227,6 +263,7 @@ Item {
             property var frozenWidths: ({})
             property bool moved: false
             cursorShape: key || hoveredIndex>=0 ? Qt.SplitHCursor : Qt.ArrowCursor
+            function hitIndex(x) { return x<=addColumnSlot.x+5 ? view.columnEdgeAt(x+view.gridScroll) : -1 }
             function resizeAt(x) {
                 if (!key) return
                 const size=Math.max(key==="name"?250:64,Math.round(startWidth+x-downX))
@@ -249,7 +286,7 @@ Item {
                 hoveredIndex=-1
             }
             onPressed: function(mouse) {
-                const index=view.columnEdgeAt(mouse.x+view.gridScroll)
+                const index=hitIndex(mouse.x)
                 if (index<0) { mouse.accepted=false; return }
                 view.cancelInteractions(); view.forceActiveFocus()
                 key=view.columns[index].key; startWidth=view.columns[index].width
@@ -261,9 +298,9 @@ Item {
             }
             onPositionChanged: function(mouse) {
                 if (pressed && key) resizeAt(mouse.x)
-                else hoveredIndex=view.columnEdgeAt(mouse.x+view.gridScroll)
+                else hoveredIndex=hitIndex(mouse.x)
             }
-            onReleased: function(mouse) { resizeAt(mouse.x); key=""; hoveredIndex=view.columnEdgeAt(mouse.x+view.gridScroll) }
+            onReleased: function(mouse) { resizeAt(mouse.x); key=""; hoveredIndex=hitIndex(mouse.x) }
             onCanceled: cancelResize()
             onExited: if (!pressed) hoveredIndex=-1
             Rectangle {
@@ -397,6 +434,7 @@ Item {
                             delegate: Item {
                                 id: columnCell
                                 required property var modelData
+                                readonly property bool custom: !!modelData.customId
                                 readonly property bool metadata: ["status","priority"].indexOf(modelData.key)>=0 && gridRow.rowData.rowKind==="task" && !gridRow.rowData.summary
                                 objectName: "column-cell-" + modelData.key + "-" + gridRow.index
                                 x: modelData.offset; width: modelData.width; height: view.rowHeight; clip: true
@@ -423,7 +461,7 @@ Item {
                                     x: key === "assignee" && !!gridRow.rowData.assignee ? 26 : 0
                                     width: parent.width - x; height: parent.height
                                     text: displayValue()
-                                    visible: !columnCell.metadata
+                                    visible: !columnCell.metadata && !columnCell.custom
                                     horizontalAlignment: ["cost","effort","duration","progress"].indexOf(key) >= 0 ? Text.AlignRight : Text.AlignLeft
                                     color: gridRow.rowData.rowKind === "total" ? appTheme.colors.muted : appTheme.colors.text
                                     font.bold: gridRow.rowData.summary || false
@@ -444,6 +482,21 @@ Item {
                                         if (text !== displayValue()) {
                                             const value = text.replace("%", "")
                                             if (!controller.editField(gridRow.rowData.taskId, key, value)) text = displayValue()
+                                        }
+                                    }
+                                }
+                                Loader {
+                                    anchors.fill: parent
+                                    active: columnCell.custom && (gridRow.rowData.rowKind==="task" || (gridRow.rowData.rowKind==="total" && columnCell.modelData.kind==="number"))
+                                    sourceComponent: Component {
+                                        CustomCell {
+                                            definition: columnCell.modelData
+                                            taskId: gridRow.rowData.taskId || ""
+                                            value: (gridRow.rowData.customValues || ({}))[columnCell.modelData.customId] ?? null
+                                            displayText: (gridRow.rowData.customTexts || ({}))[columnCell.modelData.customId] || ""
+                                            summary: !!gridRow.rowData.summary || gridRow.rowData.rowKind==="total"
+                                            editable: gridRow.rowData.rowKind==="task" && !controller.bulkMode && !(gridRow.rowData.summary && columnCell.modelData.kind==="number")
+                                            onEditRequested: { controller.select(taskId); nativeDialogs.showFieldValue(taskId,definition.customId) }
                                         }
                                     }
                                 }

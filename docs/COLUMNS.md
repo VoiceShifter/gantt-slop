@@ -1,5 +1,7 @@
 # Table columns and creation rows — 0.6.0
 
+**0.7 update:** the header + now opens a functional native field picker with typed, persistent [custom fields](CUSTOM_FIELDS.md). The verification/package details below describe the 0.6 checkpoint.
+
 ## Use
 
 - Drag the **right boundary of a table header** to change that column's width. This works for Task, Assignee, Effort, Cost and all six optional fields.
