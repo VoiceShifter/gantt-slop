@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gantt-desktop"
-version = "0.8.0"
+version = "0.9.0"
 description = "Independent Python/Qt desktop task and Gantt editor"
 requires-python = ">=3.11"
 dependencies = ["PySide6>=6.8,<7"]

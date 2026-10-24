@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.9 adds a real export preview:** full-diagram PDF/PNG, paged paper sizes/orientation, selected fields/range/scale, optional workload, typed Excel, MS Project XML and CSV. No application-window capture. [Export](docs/EXPORT.md).
+
 **0.8 replaces free-text assignees with roster dropdowns** in the table, task properties and bulk editor: multiple people, local search, Reset/OK, explicit resource creation and native per-person hours. [Assignee picker](docs/ASSIGNEES.md).
 
 **0.7 makes the header + functional:** show/hide standard columns and create project-local fields of nine types, with typed editors, numeric group rollups, rename/delete, JSON persistence, CSV and Undo/Redo. [Custom fields](docs/CUSTOM_FIELDS.md).
@@ -66,7 +68,8 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Zoom, timeline panning, horizontal/vertical scrolling, adjustable table/timeline divider, optional columns, search and completion/overdue filters.
 - Drag any column's right header boundary to resize it independently; headers/cells stay aligned, minimum widths and clipping prevent overlap, and the workload split follows the table.
 - Header + / “Поля” opens a native field picker. User fields support Text, Number, Date, List, Checkbox, Color, Multi-select, People and Labels, with validation and independent values; numbers sum/average terminal tasks without double-counting groups.
-- Versioned JSON save/load, a dirty indicator, CSV task export, and PNG export of the **current window**, not an entire off-screen project.
+- Versioned JSON save/load and a dirty indicator; independent full-diagram PDF/PNG export with vector preview, paged paper sizes/orientation, label/style/date/range/field controls and optional resource workload.
+- Excel `.xlsx` with real numbers/booleans/dates, hierarchy and optional workload sheet; MS Project XML with calendars/links/assignments and custom metadata in Notes; CSV remains available.
 
 ### Gestures
 
@@ -96,6 +99,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Pan | Drag empty chart space |
 | Zoom | Slider or Ctrl+wheel |
 | Scroll horizontally | Horizontal scrollbar or Shift+wheel |
+| Export | “Экспорт” → preview/settings → format → choose a local destination |
 | Cancel gesture | Escape |
 | Undo / redo | Toolbar or platform-standard shortcuts |
 
@@ -122,7 +126,7 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **343 passing tests**, including 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **395 passing tests**, including 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
@@ -132,12 +136,13 @@ The current suite has **343 passing tests**, including 19 assignee-picker, 67 cu
 - `gantt_desktop/dialogs.py`: platform-styled QWidget dialogs and QML/window lifecycle bridge.
 - `gantt_desktop/field_dialogs.py`: native field picker, definition and typed-value editors.
 - `gantt_desktop/theme.py`: shared light/dark tokens, application/widget palette and local `QSettings` preference.
+- `gantt_desktop/exporting.py`, `interchange.py`, `export_dialog.py`: frozen export snapshots, shared vector rendering, atomic format writers and native preview/settings.
 - `gantt_desktop/qml/`: native Qt Quick interface and direct manipulation.
 - `gantt_desktop/sample.py`: independent synthetic fixture based on visible sample labels/dates.
 - `tests/`: scheduling, transaction, persistence and real Qt mouse/keyboard regressions.
 
 ## Parity boundary
 
-This is a working implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-row dragging, arbitrary multi-bar date gestures, full calendar exception/holiday editing, baselines/critical-path UI, richer scheduling modes/constraints, full date-scale/header parity, full-project PDF/printing, large-project virtualization, and comprehensive accessibility/high-DPI QA. The inspected reference checkbox mode edits bulk properties, not task dates. Less-common dependency editing behaviors still need further live-reference parity testing.
+This is a working implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-row dragging, arbitrary multi-bar date gestures, full calendar exception/holiday editing, baselines/critical-path UI, richer scheduling modes/constraints, full date-scale/header parity, direct native-printer integration, large-project virtualization, and comprehensive accessibility/high-DPI QA. The inspected reference checkbox mode edits bulk properties, not task dates. Less-common dependency editing behaviors still need further live-reference parity testing.
 
 Qt supports Windows, macOS and Linux, but this checkout has only been run and tested on **Linux**. Windows/macOS installation bundles, signing and platform QA have not been produced. When distributing the app, observe PySide6/Qt and other dependency licensing requirements.

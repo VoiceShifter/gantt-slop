@@ -59,11 +59,6 @@ def main() -> int:
         return 1
     window.resize(width, height)
 
-    def export_image(path: str) -> None:
-        saved = window.grabWindow().save(path)
-        controller.toast.emit("PNG сохранён" if saved else "Не удалось сохранить PNG")
-
-    controller.imageRequested.connect(export_image)
     if args.screenshot:
         captured = False
 
@@ -83,7 +78,6 @@ def main() -> int:
         window.update()
     result = app.exec()
     # Destroy QML objects while their Python context object is still alive.
-    controller.imageRequested.disconnect(export_image)
     controller.dialogs.dispose()
     engine.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

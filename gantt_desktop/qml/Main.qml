@@ -47,6 +47,10 @@ ApplicationWindow {
     function showAssignments(id) { gantt.cancelInteractions(); controller.select(id); nativeDialogs.showAssignments(id) }
     function showAssigneePicker(id, anchor) { gantt.cancelInteractions(); controller.select(id); assigneePicker.openTask(id,anchor) }
     function saveProject() { contentItem.forceActiveFocus(); controller.save() }
+    function showExport() {
+        contentItem.forceActiveFocus(); gantt.cancelInteractions()
+        nativeDialogs.showExport({columns:gantt.columns,pixelsPerDay:gantt.pixelsPerDay,workload:window.workloadVisible})
+    }
 
     Connections {
         target: controller
@@ -108,11 +112,6 @@ ApplicationWindow {
         MenuItem { text:"Незавершённые"; checkable:true; checked:window.filterCode==="incomplete"; onTriggered:{window.filterCode="incomplete";controller.setFilter("incomplete")} }
         MenuItem { text:"Завершённые"; checkable:true; checked:window.filterCode==="complete"; onTriggered:{window.filterCode="complete";controller.setFilter("complete")} }
         MenuItem { text:"Просроченные"; checkable:true; checked:window.filterCode==="overdue"; onTriggered:{window.filterCode="overdue";controller.setFilter("overdue")} }
-    }
-    Menu {
-        id: exportMenu
-        MenuItem { text:"Текущий вид в PNG…"; onTriggered:controller.exportPng() }
-        MenuItem { text:"Таблица задач в CSV…"; onTriggered:controller.exportCsv() }
     }
     Menu {
         id: viewMenu
@@ -247,7 +246,7 @@ ApplicationWindow {
                         Accessible.name:"Масштаб времени"
                     }
                     Text { text:["Дни","Дни","Недели","Месяцы","Кварталы","Годы"][Math.round(zoom.value)]; font.pixelSize:12; color:appTheme.colors.secondary; Layout.preferredWidth:58 }
-                    ActionButton { text:"Экспорт"; onClicked:exportMenu.popup() }
+                    ActionButton { objectName:"exportButton"; text:"Экспорт"; onClicked:window.showExport() }
                     ActionButton { text:"Вид ⌄"; onClicked:viewMenu.popup() }
                 }
             }

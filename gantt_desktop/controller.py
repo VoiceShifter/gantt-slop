@@ -94,7 +94,6 @@ class Controller(QObject):
     toast = Signal(str)
     inspectRequested = Signal()
     focusRequested = Signal(float)
-    imageRequested = Signal(str)
     customFieldCreated = Signal(str)
 
     def __init__(self, project: Project | None = None):
@@ -920,6 +919,4 @@ class Controller(QObject):
 
     @Slot()
     def exportPng(self):
-        path, _ = QFileDialog.getSaveFileName(None, "Экспорт текущего окна", "gantt.png", "PNG (*.png)")
-        if path:
-            self.imageRequested.emit(path)
+        self.dialogs.showExport({"format": "png"})

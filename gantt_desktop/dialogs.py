@@ -475,6 +475,17 @@ class NativeDialogs(QObject):
         self.modalChanged.emit()
 
     @Slot(dict)
+    def showExport(self, context: dict) -> None:
+        from .export_dialog import ExportDialog
+
+        dialog = self._editors.get("export")
+        if not isinstance(dialog, ExportDialog):
+            dialog = ExportDialog(self.controller)
+            self._editors["export"] = dialog
+        dialog.prepare(context)
+        self.present(dialog)
+
+    @Slot(dict)
     def showFields(self, shown: dict) -> None:
         from .field_dialogs import FieldsDialog
 
