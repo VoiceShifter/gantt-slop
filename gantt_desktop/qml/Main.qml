@@ -128,7 +128,7 @@ ApplicationWindow {
         MenuItem { text:"К выбранной задаче"; enabled:!!controller.selectedId; onTriggered:controller.focusTask(controller.selectedId) }
         MenuSeparator {}
         MenuItem { text:window.sidebarVisible?"Скрыть боковую панель":"Показать боковую панель"; onTriggered:window.sidebarVisible=!window.sidebarVisible }
-        MenuItem { text:"Сбросить ширину таблицы"; onTriggered:gantt.gridWidth=Math.min(716,Math.max(450,gantt.width*0.48)) }
+        MenuItem { text:"Сбросить ширину таблицы"; onTriggered:gantt.resetColumnWidths() }
     }
     Settings { id: settings; parent: Overlay.overlay }
     BulkEditor { id: bulkEditor; parent: Overlay.overlay; onDeleteRequested: window.askBulkDelete() }

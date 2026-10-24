@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.6 adds individually resizable table columns and fixes the creation row:** “Добавить задачу / Добавить веху” stays centered inside the Task column in narrow and wide layouts. [Columns and verification](docs/COLUMNS.md).
+
 **0.5 adds Settings → “Тёмная тема”:** one saved light/dark choice for the workspace, panels, menus and QWidget dialogs. Light is the default; switching is immediate and never modifies the project. [Themes and settings](docs/THEMES.md).
 
 0.4.1 introduced platform-styled `QDialog`/`QMessageBox` editors, confirmations and help, with standard controls/system fonts. [Native dialogs](docs/NATIVE_DIALOGS.md).
@@ -57,6 +59,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Downstream rescheduling with preserved working durations; derived group dates/effort/cost/progress.
 - Whole-transaction Python undo/redo, including every task changed by propagated scheduling; no-op/invalid edits do not create history entries.
 - Zoom, timeline panning, horizontal/vertical scrolling, adjustable table/timeline divider, optional columns, search and completion/overdue filters.
+- Drag any column's right header boundary to resize it independently; headers/cells stay aligned, minimum widths and clipping prevent overlap, and the workload split follows the table.
 - Versioned JSON save/load, a dirty indicator, CSV task export, and PNG export of the **current window**, not an entire off-screen project.
 
 ### Gestures
@@ -71,6 +74,8 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Multiple assignees | Task properties → ⋯ beside the assignee; choose people and hours |
 | Reorder/nest rows | Drag the six-dot left grip; use row edges or a group's name area |
 | Edit name/field | Click the table cell |
+| Resize a column | Drag its right header boundary; Escape restores the pre-drag widths |
+| Reset column widths | “Вид” → “Сбросить ширину таблицы” |
 | Inspect task | Double-click bar; or select then Enter |
 | Move free task/group | Drag the body |
 | Change task boundary | Drag an unanchored edge; FS/SS fix the start, FF/SF fix the finish |
@@ -107,7 +112,7 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **232 passing tests**, including 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **257 passing tests**, including 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 

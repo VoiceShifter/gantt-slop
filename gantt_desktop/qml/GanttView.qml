@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 
 Item {
     id: view
@@ -9,6 +10,8 @@ Item {
     property real previousScale: 10
     property real scrollX: 0
     property real gridScroll: 0
+    property var columnWidths: ({})
+    property bool viewportReady: false
     property int hoverRow: -1
     property bool showAssignee: true
     property bool showEffort: true
@@ -55,7 +58,7 @@ Item {
     property string rowPlanKey: ""
     property var rowPlan: ({})
 
-    function cancelInteractions() { cancelLink(); cancelDrags(); cancelRowDrag() }
+    function cancelInteractions() { columnResizer.cancelResize(); cancelLink(); cancelDrags(); cancelRowDrag() }
     function beginRowDrag(id, label, x, y) {
         controller.select(id)
         rowDragId=id; rowDragLabel=label; rowPressX=x; rowPressY=y
@@ -102,8 +105,8 @@ Item {
         if (showStatus) cols.push({key:"status", title:"Статус", width:120})
         if (showPriority) cols.push({key:"priority", title:"Приоритет", width:125})
         let used = 0
-        for (let c of cols) used += c.width
-        cols.unshift({key:"name", title:"Задача", width:Math.max(250, gridWidth - used - 46)})
+        for (let c of cols) { c.width = columnWidths[c.key] || c.width; used += c.width }
+        cols.unshift({key:"name", title:"Задача", width:columnWidths.name || Math.max(250, gridWidth - used - 46)})
         let offset = 0
         for (let c of cols) { c.offset = offset; offset += c.width }
         return cols
@@ -114,6 +117,22 @@ Item {
         return total
     }
 
+    function clampGridScroll() { gridScroll = Math.max(0, Math.min(gridScroll, gridContentWidth - gridWidth)) }
+    function boundedGridWidth(value) { return Math.min(Math.max(180,width-180),Math.max(380,value)) }
+    function fitGridViewport() {
+        if (width>0 && gridWidth>Math.max(180,width-180)) gridWidth=Math.max(180,width-180)
+        clampGridScroll(); clampScroll()
+    }
+    function resetColumnWidths() {
+        columnResizer.cancelResize()
+        columnWidths = ({})
+        gridWidth = boundedGridWidth(Math.min(716, Math.max(450, width * 0.48)))
+        gridScroll = 0
+    }
+    function columnEdgeAt(x) {
+        for (let i=0; i<columns.length; i++) if (Math.abs(x-columns[i].offset-columns[i].width)<=5) return i
+        return -1
+    }
     function clampScroll() { scrollX = Math.max(0, Math.min(scrollX, sceneWidth - timelineViewport)) }
     function centerDay(day) { scrollX = Math.max(0, Math.min(sceneWidth - timelineViewport, day * pixelsPerDay - timelineViewport * 0.25)) }
     function beginLink(id, end, x, y) {
@@ -151,7 +170,16 @@ Item {
         background.requestPaint()
     }
     onHoverRowChanged: background.requestPaint()
-    onWidthChanged: clampScroll()
+    onWidthChanged: if (viewportReady) Qt.callLater(fitGridViewport)
+    onGridWidthChanged: { clampGridScroll(); clampScroll() }
+    onGridContentWidthChanged: clampGridScroll()
+    // Enforce the viewport ceiling only after the initial layouts have settled.
+    Connections {
+        target: view.Window.window
+        function onFrameSwapped() {
+            if (!view.viewportReady) { view.viewportReady=true; view.fitGridViewport() }
+        }
+    }
     Connections {
         target: controller
         function onViewChanged() { view.cancelLink(); view.cancelRowDrag(); view.clampScroll(); background.hoveredLink=""; background.requestPaint() }
@@ -172,12 +200,81 @@ Item {
                 model: view.columns
                 delegate: Rectangle {
                     required property var modelData
+                    objectName: "column-header-" + modelData.key
                     x: modelData.offset; width: modelData.width; height: view.headerHeight
                     color: appTheme.colors.panel; border.color: appTheme.colors.border
-                    Text { anchors.centerIn: parent; text: modelData.title; font.family: "Arial"; font.pixelSize: 12; color: appTheme.colors.text }
+                    Text {
+                        anchors.fill: parent; anchors.margins: 8
+                        text: modelData.title; font.family: "Arial"; font.pixelSize: 12; color: appTheme.colors.text
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight; clip: true
+                    }
                 }
             }
             Text { x: view.gridContentWidth - 40; width: 34; height: parent.height; text: "＋"; color: appTheme.colors.muted; font.pixelSize: 22; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+        }
+        MouseArea {
+            id: columnResizer
+            objectName: "columnResizer"
+            anchors.fill: parent; hoverEnabled: true; preventStealing: true
+            property int hoveredIndex: -1
+            property string key: ""
+            property real downX: 0
+            property real startWidth: 0
+            property real startGridWidth: 0
+            property real startScroll: 0
+            property var savedWidths: ({})
+            property var frozenWidths: ({})
+            property bool moved: false
+            cursorShape: key || hoveredIndex>=0 ? Qt.SplitHCursor : Qt.ArrowCursor
+            function resizeAt(x) {
+                if (!key) return
+                const size=Math.max(key==="name"?250:64,Math.round(startWidth+x-downX))
+                if (size===startWidth && !moved) return
+                moved=true
+                const widths=Object.assign({},frozenWidths)
+                widths[key]=size
+                const grid=view.boundedGridWidth(startGridWidth+size-startWidth)
+                if (grid<view.gridWidth) view.gridWidth=grid
+                view.columnWidths=widths
+                view.gridWidth=grid
+            }
+            function cancelResize() {
+                if (!key) return
+                key=""
+                view.columnWidths=savedWidths
+                view.gridWidth=startGridWidth
+                view.gridScroll=startScroll
+                view.clampGridScroll()
+                hoveredIndex=-1
+            }
+            onPressed: function(mouse) {
+                const index=view.columnEdgeAt(mouse.x+view.gridScroll)
+                if (index<0) { mouse.accepted=false; return }
+                view.cancelInteractions(); view.forceActiveFocus()
+                key=view.columns[index].key; startWidth=view.columns[index].width
+                downX=mouse.x; startGridWidth=view.gridWidth; startScroll=view.gridScroll
+                savedWidths=view.columnWidths
+                const widths=Object.assign({},savedWidths)
+                for (let column of view.columns) widths[column.key]=column.width
+                frozenWidths=widths; moved=false; hoveredIndex=index
+            }
+            onPositionChanged: function(mouse) {
+                if (pressed && key) resizeAt(mouse.x)
+                else hoveredIndex=view.columnEdgeAt(mouse.x+view.gridScroll)
+            }
+            onReleased: function(mouse) { resizeAt(mouse.x); key=""; hoveredIndex=view.columnEdgeAt(mouse.x+view.gridScroll) }
+            onCanceled: cancelResize()
+            onExited: if (!pressed) hoveredIndex=-1
+            Rectangle {
+                readonly property var column: columnResizer.hoveredIndex>=0 ? view.columns[columnResizer.hoveredIndex] : null
+                visible: !!column
+                x: column ? column.offset+column.width-view.gridScroll-1 : 0
+                width: 2; height: parent.height; color: appTheme.colors.link
+            }
+            ToolTip.visible: containsMouse && hoveredIndex>=0 && !pressed
+            ToolTip.text: "Перетащите границу, чтобы изменить ширину колонки"
+            ToolTip.delay: 500
         }
     }
     Item {
@@ -263,7 +360,7 @@ Item {
                         Item {
                             visible: gridRow.rowData.rowKind === "task"
                             opacity: gridRow.textOpacity
-                            width: view.columns[0].width; height: parent.height
+                            width: view.columns[0].width; height: parent.height; clip: true
                             Text {
                                 x: 30; width: 54; height: parent.height
                                 text: gridRow.rowData.outline || ""
@@ -301,7 +398,8 @@ Item {
                                 id: columnCell
                                 required property var modelData
                                 readonly property bool metadata: ["status","priority"].indexOf(modelData.key)>=0 && gridRow.rowData.rowKind==="task" && !gridRow.rowData.summary
-                                x: modelData.offset; width: modelData.width; height: view.rowHeight
+                                objectName: "column-cell-" + modelData.key + "-" + gridRow.index
+                                x: modelData.offset; width: modelData.width; height: view.rowHeight; clip: true
                                 opacity: gridRow.textOpacity
                                 Rectangle { width: 1; height: parent.height; color: appTheme.colors.grid }
                                 Rectangle {
@@ -418,13 +516,28 @@ Item {
                                 Text { anchors.centerIn:parent; text:parent.parent.checkState===Qt.Checked?"✓":parent.parent.checkState===Qt.PartiallyChecked?"−":"";color:"white";font.pixelSize:13 }
                             }
                         }
-                        Row {
+                        Item {
+                            objectName: "add-cell-" + gridRow.index
                             visible: gridRow.rowData.rowKind === "add"
                             enabled: !controller.bulkMode
-                            x: 114 + (gridRow.rowData.level || 0) * 14; height: parent.height
-                            ActionButton { text: "⊕  Добавить задачу"; palette.buttonText: appTheme.colors.link; onClicked: controller.addTask(gridRow.rowData.parentId, "task") }
-                            Text { height: parent.height; text: " | "; color: appTheme.colors.muted; verticalAlignment: Text.AlignVCenter }
-                            ActionButton { text: "Добавить веху"; palette.buttonText: appTheme.colors.link; onClicked: controller.addTask(gridRow.rowData.parentId, "milestone") }
+                            width: view.columns[0].width; height: parent.height; clip: true
+                            Row {
+                                objectName: "add-actions-" + gridRow.index
+                                anchors.centerIn: parent; height: parent.height
+                                ActionButton {
+                                    objectName: "inline-add-task-" + gridRow.index
+                                    text: "⊕  Добавить задачу"; palette.buttonText: appTheme.colors.link
+                                    implicitWidth: contentItem.implicitWidth+8; leftPadding: 4; rightPadding: 4
+                                    onClicked: controller.addTask(gridRow.rowData.parentId, "task")
+                                }
+                                Text { height: parent.height; text: " | "; color: appTheme.colors.muted; verticalAlignment: Text.AlignVCenter }
+                                ActionButton {
+                                    objectName: "inline-add-milestone-" + gridRow.index
+                                    text: "Добавить веху"; palette.buttonText: appTheme.colors.link
+                                    implicitWidth: contentItem.implicitWidth+8; leftPadding: 4; rightPadding: 4
+                                    onClicked: controller.addTask(gridRow.rowData.parentId, "milestone")
+                                }
+                            }
                         }
                     }
                 }
@@ -639,7 +752,7 @@ Item {
         cursorShape: Qt.SplitHCursor
         preventStealing: true
         onPositionChanged: function(mouse) {
-            if (pressed) view.gridWidth=Math.max(380,Math.min(view.width-180,mapToItem(view,mouse.x,mouse.y).x))
+            if (pressed) view.gridWidth=view.boundedGridWidth(mapToItem(view,mouse.x,mouse.y).x)
         }
     }
     ScrollBar {
@@ -653,12 +766,13 @@ Item {
         onPositionChanged: if (pressed) view.scrollX=position*view.sceneWidth
     }
     ScrollBar {
+        objectName: "tableScroll"
         x:0; y:parent.height-15; width:view.gridWidth; height:15
         orientation: Qt.Horizontal
         policy: view.gridContentWidth>view.gridWidth ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
         size:Math.min(1,view.gridWidth/view.gridContentWidth)
         position:view.gridScroll/view.gridContentWidth
-        onPositionChanged: if (pressed) view.gridScroll=position*view.gridContentWidth
+        onPositionChanged: if (pressed) { view.gridScroll=position*view.gridContentWidth; view.clampGridScroll() }
     }
     Text {
         anchors.centerIn: body
