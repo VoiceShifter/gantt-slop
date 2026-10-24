@@ -16,14 +16,16 @@ Drawer {
     closePolicy: Popup.NoAutoClose
     property bool colorPending: false
     property string draftColor: "#50c7d6"
+    property var draftResourceIds: []
     signal deleteRequested()
+    signal assigneePickerRequested(var ids, var anchor)
     background: Rectangle { color: appTheme.colors.surface; border.color: appTheme.colors.border }
     onAboutToShow: resetDraft()
     onClosed: if (controller.bulkMode) controller.setBulkMode(false)
 
     function resetDraft() {
         assign.checked = false
-        assignee.text = ""
+        draftResourceIds = []
         status.currentIndex = 0
         priority.currentIndex = 0
         colorPending = false
@@ -69,13 +71,14 @@ Drawer {
                     verticalAlignment: Text.AlignVCenter
                 }
             }
-            CellEditor {
+            AssigneeField {
                 id: assignee
                 objectName: "bulkAssignee"
-                Layout.fillWidth: true
+                Layout.fillWidth: true; framed: true
                 enabled: assign.checked && controller.checkedLeafCount > 0
-                placeholderText: "Имя; пусто — снять назначение"
-                background: Rectangle { radius: 3; color: appTheme.colors.input; border.color: assignee.activeFocus ? appTheme.colors.link : appTheme.colors.border }
+                resourceIds: drawer.draftResourceIds
+                placeholderText: "Снять назначение"
+                onClicked: drawer.assigneePickerRequested(drawer.draftResourceIds,assignee)
             }
             Label { text: "Статус"; font.pixelSize: 12; color: appTheme.colors.secondary }
             MetadataChoice {
@@ -124,7 +127,7 @@ Drawer {
                     drawer.contentItem.forceActiveFocus()
                     let changes = ({})
                     if (controller.checkedLeafCount > 0) {
-                        if (assign.checked) changes.assignee = assignee.text
+                        if (assign.checked) changes.resourceIds = drawer.draftResourceIds
                         if (status.currentIndex > 0) changes.status = status.currentValue
                         if (priority.currentIndex > 0) changes.priority = priority.currentValue
                     }

@@ -269,12 +269,14 @@ class AssignmentDialog(EditorDialog):
         actions.addWidget(buttons)
         self.layout_root.addLayout(actions)
 
-    def prepare(self, task_id: str) -> None:
+    def prepare(self, task_id: str, ids: list[str] | None = None) -> None:
         task = self.controller.project.tasks[task_id]
         self.task_id, self.total = task_id, task.effort
-        self.chosen = list(task.resource_ids)
-        self.hours = {key: task.effort * (task.resource_shares[i] if task.resource_shares else 1 / len(self.chosen))
-                      for i, key in enumerate(self.chosen)}
+        self.chosen = list(task.resource_ids if ids is None else ids)
+        self.hours = {key: task.effort * (task.resource_shares[i] if task.resource_shares else 1 / len(task.resource_ids))
+                      for i, key in enumerate(task.resource_ids)}
+        if len(self.chosen) != len(task.resource_ids) or set(self.chosen) != set(task.resource_ids):
+            self.hours = {key: task.effort / len(self.chosen) for key in self.chosen}
         self.caption.setText(task.name)
         self.error.hide()
         self.spins.clear()
@@ -538,13 +540,25 @@ class NativeDialogs(QObject):
         self.present(dialog)
 
     @Slot(str)
-    def showAssignments(self, task_id: str) -> None:
+    def showNewResource(self, name: str) -> None:
+        dialog = self._editors.get("resources")
+        if not isinstance(dialog, ResourceDialog):
+            dialog = ResourceDialog(self.controller)
+            self._editors["resources"] = dialog
+        dialog.prepare("")
+        dialog.load_resource("")
+        dialog.name.setText(name.strip())
+        self.present(dialog)
+
+    @Slot(str)
+    @Slot(str, list)
+    def showAssignments(self, task_id: str, ids: list[str] | None = None) -> None:
         dialog = self._editors.get("assignments")
         if not isinstance(dialog, AssignmentDialog):
             dialog = AssignmentDialog(self.controller)
             dialog.manageRequested.connect(lambda: self.showResources(""))
             self._editors["assignments"] = dialog
-        dialog.prepare(task_id)
+        dialog.prepare(task_id, ids)
         self.present(dialog)
 
     @Slot(str, str, str, str)

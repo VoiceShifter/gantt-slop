@@ -50,6 +50,7 @@ Item {
     signal zoomRequested(int change)
     signal cancelDrags()
     signal fieldsRequested()
+    signal assigneePickerRequested(string taskId, var anchor)
 
     property string rowDragId: ""
     property string rowDragLabel: ""
@@ -440,12 +441,6 @@ Item {
                                 x: modelData.offset; width: modelData.width; height: view.rowHeight; clip: true
                                 opacity: gridRow.textOpacity
                                 Rectangle { width: 1; height: parent.height; color: appTheme.colors.grid }
-                                Rectangle {
-                                    x: 9; y: 6; width: 18; height: 18; radius: 9
-                                    visible: columnCell.modelData.key === "assignee" && !!gridRow.rowData.assignee
-                                    color: gridRow.rowData.assigneeColor || "#829da7"
-                                    Text { anchors.centerIn: parent; text: (gridRow.rowData.assignee || "").slice(0,1).toUpperCase(); color: "white"; font.pixelSize: 10 }
-                                }
                                 CellEditor {
                                     id: valueField
                                     readonly property string key: columnCell.modelData.key
@@ -458,10 +453,9 @@ Item {
                                         if (key === "priority") return gridRow.rowData.priorityText || ""
                                         return String(value)
                                     }
-                                    x: key === "assignee" && !!gridRow.rowData.assignee ? 26 : 0
-                                    width: parent.width - x; height: parent.height
+                                    width: parent.width; height: parent.height
                                     text: displayValue()
-                                    visible: !columnCell.metadata && !columnCell.custom
+                                    visible: !columnCell.metadata && !columnCell.custom && key!=="assignee"
                                     horizontalAlignment: ["cost","effort","duration","progress"].indexOf(key) >= 0 ? Text.AlignRight : Text.AlignLeft
                                     color: gridRow.rowData.rowKind === "total" ? appTheme.colors.muted : appTheme.colors.text
                                     font.bold: gridRow.rowData.summary || false
@@ -482,6 +476,19 @@ Item {
                                         if (text !== displayValue()) {
                                             const value = text.replace("%", "")
                                             if (!controller.editField(gridRow.rowData.taskId, key, value)) text = displayValue()
+                                        }
+                                    }
+                                }
+                                Loader {
+                                    anchors.fill: parent
+                                    active: columnCell.modelData.key==="assignee" && gridRow.rowData.rowKind==="task" && !gridRow.rowData.summary
+                                    sourceComponent: Component {
+                                        AssigneeField {
+                                            id: assigneeField
+                                            objectName: "assignee-" + gridRow.rowData.taskId
+                                            resourceIds: gridRow.rowData.resourceIds || []
+                                            enabled: !controller.bulkMode
+                                            onClicked: view.assigneePickerRequested(gridRow.rowData.taskId,assigneeField)
                                         }
                                     }
                                 }

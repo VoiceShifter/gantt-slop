@@ -349,6 +349,16 @@ class Controller(QObject):
     def assignResources(self, task_id, ids, hours):
         return self.edit("Назначение ресурсов", lambda p: p.assign_resources(task_id, list(ids), [parse_number(str(h)) for h in hours]))
 
+    @Slot(str, list, result=bool)
+    def chooseTaskResources(self, task_id, ids):
+        def apply(project):
+            task = project.tasks[task_id]
+            if task.kind == "group":
+                raise ScheduleError("Назначайте ресурсы задачам, а не сводной группе.")
+            if len(ids) != len(task.resource_ids) or set(ids) != set(task.resource_ids):
+                project.assign_resources(task_id, list(ids))
+        return self.edit("Назначение ресурсов", apply)
+
     @Slot("QVariantList", result=bool)
     def setProjectWorkdays(self, days):
         return self.edit("Рабочие дни проекта", lambda p: p.set_workdays(set(days)))
@@ -494,8 +504,11 @@ class Controller(QObject):
     def applyBulk(self, changes):
         if not self._bulk_mode or not self._checked or not changes:
             return False
-        allowed = {"assignee", "status", "priority", "color"}
-        if set(changes) - allowed or any(not isinstance(value, str) for value in changes.values()):
+        allowed = {"assignee", "resourceIds", "status", "priority", "color"}
+        ids = changes.get("resourceIds", [])
+        if (set(changes) - allowed or any(not isinstance(value, str) for key, value in changes.items() if key != "resourceIds")
+                or not isinstance(ids, list) or any(not isinstance(key, str) or key not in self.project.resources for key in ids)
+                or len(set(ids)) != len(ids) or ("assignee" in changes and "resourceIds" in changes)):
             self.toast.emit("Некорректные поля массового изменения.")
             return False
         targets = set(self._checked)
@@ -510,6 +523,9 @@ class Controller(QObject):
                         task.set_status(value)
                     elif field_name == "assignee":
                         project.assign_name(task_id, value)
+                    elif field_name == "resourceIds":
+                        if len(value) != len(task.resource_ids) or set(value) != set(task.resource_ids):
+                            project.assign_resources(task_id, list(value))
                     else:
                         setattr(task, field_name, value)
         return self.edit("Массовое изменение задач", apply)

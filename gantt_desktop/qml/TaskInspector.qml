@@ -16,6 +16,7 @@ Drawer {
     signal dependencyRequested(string source, string target, string kind, string linkId)
     signal deleteRequested(string taskId)
     signal assignmentRequested(string taskId)
+    signal assigneePickerRequested(string taskId, var anchor)
     background: Rectangle { color: appTheme.colors.surface; border.color: appTheme.colors.border }
     Connections {
         target: controller
@@ -147,12 +148,13 @@ Drawer {
                     Label { text: "Стоимость"; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
                     RowLayout {
                         Layout.columnSpan:2; Layout.fillWidth:true
-                        CellEditor {
+                        AssigneeField {
+                            id: assigneeField
                             objectName:"inspectorAssignee"
-                            Layout.fillWidth:true
-                            text:controller.selected.assignee||""; enabled:!controller.selected.summary
-                            placeholderText:"Имя ресурса или новое имя"
-                            onEditingFinished:if(text!==controller.selected.assignee)controller.editField(controller.selectedId,"assignee",text)
+                            Layout.fillWidth:true; framed:true
+                            resourceIds:controller.selected.resourceIds||[]
+                            enabled:!!controller.selectedId&&!controller.selected.summary
+                            onClicked:drawer.assigneePickerRequested(controller.selectedId,assigneeField)
                         }
                         ActionButton { objectName:"chooseResourcesButton"; text:"⋯"; hint:"Выбрать ресурсы и распределить часы"; enabled:!!controller.selectedId&&!controller.selected.summary; onClicked:drawer.assignmentRequested(controller.selectedId) }
                     }

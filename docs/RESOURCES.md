@@ -1,5 +1,7 @@
 # People and resource workload — 0.4
 
+**0.8 update:** [assignee dropdowns](ASSIGNEES.md) replace the old single-name and bulk text inputs. Users now select existing resource IDs; creation is a separate explicit action. The older shortcut behavior below is historical, not the current task-assignment UI.
+
 Version **0.4.1** replaces the QML modal pages with [system-styled QWidget dialogs](NATIVE_DIALOGS.md). The controls and resource calculations below are retained; the screenshots and package/test counts here record the 0.4 checkpoint.
 
 Implemented only in the independent `gantt-desktop/` application. The legacy application's code and unrelated staged changes are not used or modified.

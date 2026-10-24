@@ -33,7 +33,7 @@ ApplicationWindow {
     property bool workloadVisible: false
     property real workloadHeight: 230
     readonly property bool editingText: activeFocusItem && activeFocusItem.cursorPosition !== undefined
-    readonly property bool modalBlocked: nativeDialogs.modalOpen || settings.visible
+    readonly property bool modalBlocked: nativeDialogs.modalOpen || settings.visible || assigneePicker.visible
     onClosing: function(event) { if (!allowClose) event.accepted = controller.confirmClose() }
 
     function inspectTask(id) { if (!controller.bulkMode) { controller.select(id); inspector.open() } }
@@ -45,6 +45,7 @@ ApplicationWindow {
     function showResources(id) { gantt.cancelInteractions(); nativeDialogs.showResources(id) }
     function showFields() { gantt.cancelInteractions(); nativeDialogs.showFields(gantt.columnVisibility()) }
     function showAssignments(id) { gantt.cancelInteractions(); controller.select(id); nativeDialogs.showAssignments(id) }
+    function showAssigneePicker(id, anchor) { gantt.cancelInteractions(); controller.select(id); assigneePicker.openTask(id,anchor) }
     function saveProject() { contentItem.forceActiveFocus(); controller.save() }
 
     Connections {
@@ -122,13 +123,26 @@ ApplicationWindow {
         MenuItem { text:"Сбросить ширину таблицы"; onTriggered:gantt.resetColumnWidths() }
     }
     Settings { id: settings; parent: Overlay.overlay }
-    BulkEditor { id: bulkEditor; parent: Overlay.overlay; onDeleteRequested: window.askBulkDelete() }
+    AssigneePicker {
+        id: assigneePicker
+        parent: Overlay.overlay
+        onBulkChosen: function(ids) { bulkEditor.draftResourceIds=ids }
+        onCreateRequested: function(name) { nativeDialogs.showNewResource(name) }
+        onAdvancedRequested: function(id,ids) { nativeDialogs.showAssignments(id,ids) }
+    }
+    BulkEditor {
+        id: bulkEditor
+        parent: Overlay.overlay
+        onDeleteRequested: window.askBulkDelete()
+        onAssigneePickerRequested: function(ids,anchor) { gantt.cancelInteractions(); assigneePicker.openBulk(ids,anchor) }
+    }
     TaskInspector {
         id: inspector
         parent: Overlay.overlay
         onDependencyRequested: function(source,target,kind,id) { window.showDependency(source,target,kind,id) }
         onDeleteRequested: function(id) { window.askDelete(id) }
         onAssignmentRequested: function(id) { window.showAssignments(id) }
+        onAssigneePickerRequested: function(id,anchor) { window.showAssigneePicker(id,anchor) }
     }
 
     RowLayout {
@@ -245,6 +259,7 @@ ApplicationWindow {
                 onInspectTask:function(id){window.inspectTask(id)}
                 onTaskMenuRequested:function(id){window.showTaskMenu(id)}
                 onFieldsRequested:window.showFields()
+                onAssigneePickerRequested:function(id,anchor){window.showAssigneePicker(id,anchor)}
                 onLinkEditRequested:function(id){const d=controller.linkDetails(id);window.showDependency(d.source,d.target,d.kind,id)}
                 onZoomRequested:function(change){zoom.value=Math.max(0,Math.min(5,zoom.value+change))}
             }
