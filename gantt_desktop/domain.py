@@ -331,6 +331,38 @@ class Task:
         self.progress = {"open": 0, "in_progress": 50, "completed": 100, "closed": 100}[value]
 
 
+@dataclass(frozen=True)
+class BaselineEntry:
+    task_id: str
+    name: str
+    kind: str
+    start: datetime
+    end: datetime
+
+
+@dataclass(frozen=True)
+class Baseline:
+    id: str
+    name: str
+    created: date
+    tasks: dict[str, BaselineEntry] = field(default_factory=dict)
+
+    def validate(self) -> None:
+        if not isinstance(self.id, str) or not self.id or not isinstance(self.name, str) or not self.name.strip():
+            raise ScheduleError("Укажите название базового плана.")
+        if type(self.created) is not date or not isinstance(self.tasks, dict):
+            raise ScheduleError("Некорректный базовый план.")
+        for key, entry in self.tasks.items():
+            if not isinstance(entry, BaselineEntry) or not isinstance(key, str) or not key or key != entry.task_id:
+                raise ScheduleError("Некорректный идентификатор элемента базового плана.")
+            if not isinstance(entry.name, str) or not entry.name.strip() or entry.kind not in {"task", "group", "milestone"}:
+                raise ScheduleError("Некорректный элемент базового плана.")
+            if not isinstance(entry.start, datetime) or not isinstance(entry.end, datetime) or entry.start.tzinfo is not None or entry.end.tzinfo is not None:
+                raise ScheduleError("Даты базового плана должны быть в локальном времени.")
+            if entry.end < entry.start or entry.kind == "milestone" and entry.start != entry.end:
+                raise ScheduleError("Некорректный диапазон дат базового плана.")
+
+
 @dataclass
 class Dependency:
     id: str
@@ -355,6 +387,8 @@ class Project:
     calendar: WorkCalendar = field(default_factory=WorkCalendar)
     resources: dict[str, Resource] = field(default_factory=dict)
     custom_fields: dict[str, CustomField] = field(default_factory=dict)
+    baselines: dict[str, Baseline] = field(default_factory=dict)
+    active_baseline: str = ""
 
     def __post_init__(self) -> None:
         for task in self.tasks.values():
@@ -364,6 +398,30 @@ class Project:
                     math.isclose(s, 1 / len(task.resource_ids)) for s in task.resource_shares):
                 task.resource_shares = []
         self.sync_resource_names()
+
+    def capture_baseline(self, name: str, created: date) -> str:
+        name = name.strip()
+        if not name or any(item.name.casefold() == name.casefold() for item in self.baselines.values()):
+            raise ScheduleError("Укажите уникальное название базового плана.")
+        key = new_id()
+        entries = {task.id: BaselineEntry(task.id, task.name, task.kind, *self.span(task.id)) for task in self.tasks.values()}
+        snapshot = Baseline(key, name, created, entries)
+        snapshot.validate()
+        self.baselines[key] = snapshot
+        self.active_baseline = key
+        return key
+
+    def select_baseline(self, baseline_id: str) -> None:
+        if baseline_id and baseline_id not in self.baselines:
+            raise ScheduleError("Базовый план уже удалён.")
+        self.active_baseline = baseline_id
+
+    def remove_baseline(self, baseline_id: str) -> None:
+        if baseline_id not in self.baselines:
+            raise ScheduleError("Базовый план уже удалён.")
+        del self.baselines[baseline_id]
+        if self.active_baseline == baseline_id:
+            self.active_baseline = ""
 
     def sync_resource_names(self) -> None:
         for task in self.tasks.values():
@@ -580,6 +638,14 @@ class Project:
         if not isinstance(self.name, str) or not self.name.strip():
             raise ScheduleError("Укажите название проекта.")
         self.calendar.validate()
+        baseline_names = set()
+        for key, baseline in self.baselines.items():
+            baseline.validate()
+            if key != baseline.id or baseline.name.casefold() in baseline_names:
+                raise ScheduleError("Повторяющийся идентификатор или название базового плана.")
+            baseline_names.add(baseline.name.casefold())
+        if not isinstance(self.active_baseline, str) or self.active_baseline and self.active_baseline not in self.baselines:
+            raise ScheduleError("Неизвестный выбранный базовый план.")
         names = set()
         for resource in self.resources.values():
             resource.validate()
@@ -892,7 +958,11 @@ class Project:
             item.pop("assignee")
             tasks.append(item)
         resources = [{**asdict(r), "workdays": sorted(r.workdays), "exceptions": exceptions(r.exceptions)} for r in self.resources.values()]
-        return {"version": 6, "name": self.name, "tasks": tasks, "resources": resources,
+        baselines = [{"id": item.id, "name": item.name, "created": item.created.isoformat(),
+                      "tasks": [{**asdict(entry), "start": entry.start.isoformat(), "end": entry.end.isoformat()}
+                                for entry in item.tasks.values()]} for item in self.baselines.values()]
+        return {"version": 7, "name": self.name, "tasks": tasks, "resources": resources,
+                "baselines": baselines, "active_baseline": self.active_baseline,
                 "calendar_exceptions": exceptions(self.calendar.exceptions),
                 "custom_fields": [asdict(f) for f in self.custom_fields.values()],
                 "dependencies": [asdict(link) for link in self.dependencies],
@@ -901,7 +971,7 @@ class Project:
 
     @classmethod
     def from_dict(cls, value: dict) -> Project:
-        if value.get("version") not in (1, 2, 3, 4, 5, 6):
+        if value.get("version") not in (1, 2, 3, 4, 5, 6, 7):
             raise ScheduleError("Неподдерживаемая версия файла проекта.")
         def exceptions(items, kind):
             return [kind(**{**deepcopy(item), "start": date.fromisoformat(item["start"]), "end": date.fromisoformat(item["end"])})
@@ -930,10 +1000,24 @@ class Project:
             if definition.id in custom_fields:
                 raise ScheduleError("Повторяющийся идентификатор поля.")
             custom_fields[definition.id] = definition
+        baselines = {}
+        for item in value.get("baselines", []):
+            entries = {}
+            for entry in item["tasks"]:
+                record = BaselineEntry(**{**entry, "start": datetime.fromisoformat(entry["start"]),
+                                          "end": datetime.fromisoformat(entry["end"])})
+                if record.task_id in entries:
+                    raise ScheduleError("Повторяющийся элемент базового плана.")
+                entries[record.task_id] = record
+            snapshot = Baseline(item["id"], item["name"], date.fromisoformat(item["created"]), entries)
+            if snapshot.id in baselines:
+                raise ScheduleError("Повторяющийся идентификатор базового плана.")
+            baselines[snapshot.id] = snapshot
         project = cls(value["name"], tasks,
                       [Dependency(**item) for item in value["dependencies"]],
                       WorkCalendar({date.fromisoformat(day) for day in value.get("holidays", [])},
                                    set(value.get("workdays", range(5))),
-                                   exceptions(value.get("calendar_exceptions", []), CalendarException)), resources, custom_fields)
+                                   exceptions(value.get("calendar_exceptions", []), CalendarException)), resources, custom_fields,
+                      baselines, value.get("active_baseline", ""))
         project.validate()
         return project

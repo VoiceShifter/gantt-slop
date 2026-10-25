@@ -25,6 +25,10 @@ Item {
     property bool showStatus: false
     property bool showPriority: false
     property bool showDeadline: false
+    property bool showBaselineStart: false
+    property bool showBaselineEnd: false
+    property bool showStartVariance: false
+    property bool showEndVariance: false
     property var checkStates: controller.checkStates
     property var checkedIds: controller.checkedIds
     readonly property int rowHeight: 30
@@ -110,6 +114,10 @@ Item {
         if (showProgress) cols.push({key:"progress", title:"Прогресс", width:85})
         if (showStatus) cols.push({key:"status", title:"Статус", width:120})
         if (showPriority) cols.push({key:"priority", title:"Приоритет", width:125})
+        if (showBaselineStart) cols.push({key:"baselineStart", title:"Базовое начало", width:150})
+        if (showBaselineEnd) cols.push({key:"baselineEnd", title:"Базовое завершение", width:160})
+        if (showStartVariance) cols.push({key:"startVariance", title:"Δ начала, кал. ч", width:140})
+        if (showEndVariance) cols.push({key:"endVariance", title:"Δ завершения, кал. ч", width:160})
         for (let f of customFields) if (hiddenCustomFields.indexOf(f.id)<0)
             cols.push({key:f.key, title:f.name, width:160, customId:f.id, kind:f.kind})
         let used = 0
@@ -127,7 +135,8 @@ Item {
 
     function columnVisibility() {
         const shown={assignee:showAssignee,effort:showEffort,cost:showCost,start:showStart,end:showEnd,
-                     duration:showDuration,progress:showProgress,status:showStatus,priority:showPriority,deadline:showDeadline}
+                     duration:showDuration,progress:showProgress,status:showStatus,priority:showPriority,deadline:showDeadline,baselineStart:showBaselineStart,baselineEnd:showBaselineEnd,
+                     startVariance:showStartVariance,endVariance:showEndVariance}
         for (let f of customFields) shown[f.key]=hiddenCustomFields.indexOf(f.id)<0
         return shown
     }
@@ -137,7 +146,8 @@ Item {
             hiddenCustomFields=shown?hiddenCustomFields.filter(value=>value!==id):hiddenCustomFields.concat([id])
         } else {
             const properties={assignee:"showAssignee",effort:"showEffort",cost:"showCost",start:"showStart",
-                              end:"showEnd",duration:"showDuration",progress:"showProgress",status:"showStatus",priority:"showPriority",deadline:"showDeadline"}
+                              end:"showEnd",duration:"showDuration",progress:"showProgress",status:"showStatus",priority:"showPriority",deadline:"showDeadline",baselineStart:"showBaselineStart",baselineEnd:"showBaselineEnd",
+                              startVariance:"showStartVariance",endVariance:"showEndVariance"}
             view[properties[key]]=shown
         }
     }
@@ -461,11 +471,12 @@ Item {
                                     width: parent.width; height: parent.height
                                     text: displayValue()
                                     visible: !columnCell.metadata && !columnCell.custom && key!=="assignee"
-                                    horizontalAlignment: ["cost","effort","duration","progress"].indexOf(key) >= 0 ? Text.AlignRight : Text.AlignLeft
+                                    horizontalAlignment: ["cost","effort","duration","progress","startVariance","endVariance"].indexOf(key) >= 0 ? Text.AlignRight : Text.AlignLeft
                                     color: key === "deadline" && (gridRow.rowData.deadlineMissed || gridRow.rowData.deadlineOverdue) ? appTheme.colors.danger : gridRow.rowData.rowKind === "total" ? appTheme.colors.muted : appTheme.colors.text
                                     font.bold: gridRow.rowData.summary || false
                                     font.strikeout: gridRow.rowData.status === "closed"
                                     readOnly: gridRow.rowData.rowKind !== "task" ||
+                                              ["baselineStart","baselineEnd","startVariance","endVariance"].indexOf(key)>=0 ||
                                               (gridRow.rowData.summary && key !== "start" && key !== "deadline") ||
                                               (key === "start" && !gridRow.rowData.canMove) ||
                                               (key === "end" && !gridRow.rowData.canResizeEnd) ||
@@ -747,6 +758,23 @@ Item {
                         Loader {
                             active: barRow.rowData.rowKind === "task"
                             sourceComponent: Component { TaskBar { task: barRow.rowData; rowIndex: barRow.index; workspace: view } }
+                        }
+                        Item {
+                            id: baselineMark
+                            objectName: "baseline-bar-" + (barRow.rowData.taskId || "")
+                            visible: barRow.rowData.rowKind === "task" && !!barRow.rowData.hasBaseline
+                            readonly property bool point: barRow.rowData.baselineKind === "milestone"
+                            x: ((barRow.rowData.baselineStartDay || 0)+(point?0.5:0))*view.pixelsPerDay-(point?3:0)
+                            y: barRow.index*view.rowHeight+26
+                            width: point?6:Math.max(2,((barRow.rowData.baselineEndDay||0)-(barRow.rowData.baselineStartDay||0))*view.pixelsPerDay)
+                            height: 4
+                            Rectangle {
+                                x: baselineMark.point?1:0; y: baselineMark.point?-1:1
+                                width: baselineMark.point?4:parent.width; height: baselineMark.point?4:2
+                                rotation: baselineMark.point?45:0; color: appTheme.colors.secondary
+                            }
+                            Rectangle { width:1; height:4; color:appTheme.colors.secondary; visible:barRow.rowData.baselineKind==="group" }
+                            Rectangle { anchors.right:parent.right; width:1; height:4; color:appTheme.colors.secondary; visible:barRow.rowData.baselineKind==="group" }
                         }
                         Rectangle {
                             objectName: "deadline-marker-" + (barRow.rowData.taskId || "")

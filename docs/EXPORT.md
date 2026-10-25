@@ -1,5 +1,7 @@
 # Full-diagram export — 0.9.0
 
+**0.13 update:** [baselines](BASELINES.md) add a selected-reference PDF/PNG overlay, four baseline/deviation fields, real Excel date/time cells and the active snapshot as MS Project XML Baseline 0. Other snapshots and deleted-element entries remain in the project JSON, now schema 7. The historical feature counts below are unchanged.
+
 **0.12 update:** PDF/PNG now include a real [critical-path option](CRITICAL_PATH.md), computed from the frozen whole project rather than filtered rows. Its initial checkbox follows the workspace and can be changed independently. Invalid/over-budget analysis disables graphical export until the option is unchecked. Schema is now 6; the counts/package below remain the historical 0.9 checkpoint.
 
 ## Use
@@ -37,7 +39,7 @@ The CLI **`--screenshot`** option intentionally remains a raw window-capture too
 
 The rendered GanttPRO export page was inspected in the shared **headless** browser: PDF/PNG/XML/EXCEL, document preview, Full-size and named paper formats, landscape/portrait, scale, label placement, styling/date/workload switches and field choices. Excel exposed its task filter; XML had no additional settings. The initial PDF format was restored and the export view closed without pressing final Export, downloading a file or editing project data; the checklist was audited complete. No application source, private state or downloaded assets were used.
 
-Features not present in this application's engine are not offered as fake export controls: baselines, account creator/comment/file indicators and actual time/cost tracking. Critical-path highlighting was added in 0.12; general reserve columns are not part of the export field picker. Native printer integration, horizontal PDF tiling, exhaustive Office application compatibility and very large project/complex arrow-routing parity remain pending. No new runtime dependency is required.
+Features not present in this application's engine are not offered as fake export controls: account creator/comment/file indicators and actual time/cost tracking. Critical-path highlighting was added in 0.12; general reserve columns are not part of the export field picker. Native printer integration, horizontal PDF tiling, exhaustive Office application compatibility and very large project/complex arrow-routing parity remain pending. No new runtime dependency is required.
 
 ## Verification
 

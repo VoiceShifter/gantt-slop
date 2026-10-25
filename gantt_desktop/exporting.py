@@ -27,7 +27,7 @@ from PySide6.QtGui import (
 )
 
 from .critical_path import CriticalPath, analyze
-from .domain import Project
+from .domain import Baseline, Project
 from .workload import workload_rows
 
 if TYPE_CHECKING:
@@ -42,7 +42,9 @@ STOCK_COLUMNS = {"wbs": ("№", 64), "name": ("Задача", 300), "assignee": 
                  "end": ("Завершение", 110), "endTime": ("Время завершения", 90), "deadline": ("Крайний срок", 120),
                  "duration": ("Длительность", 100), "effort": ("Трудозатраты", 100),
                  "cost": ("Стоимость", 110), "progress": ("Прогресс", 90), "status": ("Статус", 120),
-                 "priority": ("Приоритет", 130), "predecessors": ("Предшественники", 180), "notes": ("Описание", 260)}
+                 "priority": ("Приоритет", 130), "predecessors": ("Предшественники", 180), "notes": ("Описание", 260),
+                 "baselineStart": ("Базовое начало", 160), "baselineEnd": ("Базовое завершение", 180),
+                 "startVariance": ("Δ начала, кал. ч", 150), "endVariance": ("Δ завершения, кал. ч", 180)}
 
 
 class ExportError(ValueError):
@@ -67,6 +69,7 @@ class ExportOptions:
     strike_closed: bool = True
     fade_closed: bool = True
     critical: bool = False
+    baseline: bool = False
 
     def validate(self) -> None:
         if self.format not in {"pdf", "png", "xlsx", "xml", "csv"} or self.scope not in {"all", "visible"}:
@@ -141,6 +144,16 @@ class ExportSource:
             return value.date() if isinstance(value, datetime) else None
         if key == "deadline":
             return self.project.tasks[row["taskId"]].deadline
+        if key in {"baselineStart", "baselineEnd", "startVariance", "endVariance"}:
+            baseline = self.project.baselines.get(self.project.active_baseline)
+            entry = baseline.tasks.get(row["taskId"]) if baseline is not None else None
+            if entry is None:
+                return None
+            if key == "baselineStart":
+                return entry.start
+            if key == "baselineEnd":
+                return entry.end
+            return (row["startValue"]-entry.start).total_seconds()/3600 if key == "startVariance" else (row["endValue"]-entry.end).total_seconds()/3600
         if key in {"duration", "effort", "cost"}:
             return row.get({"duration": "duration", "effort": "effortHours", "cost": "costValue"}[key])
         if key in {"status", "priority"}:
@@ -157,8 +170,12 @@ class ExportSource:
             return self.project.custom_fields[key[7:]].display(value, self.project.resources)
         if value is None:
             return ""
+        if isinstance(value, datetime):
+            return value.strftime("%d.%m.%Y %H:%M")
         if isinstance(value, date):
             return f"{value.day:02}.{value.month:02}.{value.year:04}"
+        if key in {"startVariance", "endVariance"}:
+            return f"{value:+g}" if value else "0"
         if key == "cost":
             return f"{value:,.2f}"
         if key in {"duration", "effort"}:
@@ -183,6 +200,7 @@ class ExportDocument:
     height: float = field(init=False)
     body_rows: int = field(init=False)
     analysis: CriticalPath | None = field(init=False, default=None)
+    reference: Baseline | None = field(init=False, default=None)
     header: int = 80
     row_height: int = 30
 
@@ -195,9 +213,16 @@ class ExportDocument:
             raise ExportError("Нет задач для экспорта. Проверьте фильтр.")
         if self.options.critical:
             self.analysis = analyze(self.source.project)
+        self.reference = self.source.project.baselines.get(self.source.project.active_baseline)
+        if self.options.baseline and self.reference is None:
+            raise ExportError("Выберите базовый план перед экспортом сравнения.")
         self.columns = [self.source.columns[key] for key in self.options.columns] if self.options.content != "chart" else []
         first = min(r["startValue"].date() for r in self.rows)
         last = max(r["endValue"].date() for r in self.rows)
+        if self.options.baseline and self.reference is not None:
+            entries = [self.reference.tasks[r["taskId"]] for r in self.rows if r["taskId"] in self.reference.tasks]
+            first = min([first] + [entry.start.date() for entry in entries])
+            last = max([last] + [entry.end.date() for entry in entries])
         self.start = self.options.start or (first - timedelta(days=1) if first > date.min else first)
         self.end = self.options.end or (last + timedelta(days=1) if last < date.max else last)
         if self.start > self.end:
@@ -264,7 +289,10 @@ class ExportDocument:
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(QRectF(0, 0, self.width, self.header + body_height + 22), QColor("white"))
-        self._text(painter, QRectF(0, 0, self.width, 34), self.source.project.name +
+        title = self.source.project.name
+        if self.reference is not None and (self.options.baseline or any(c["key"] in {"baselineStart", "baselineEnd", "startVariance", "endVariance"} for c in self.columns)):
+            title += " · Базовый план: " + self.reference.name
+        self._text(painter, QRectF(0, 0, self.width, 34), title +
                    f" · {self.start:%d.%m.%Y} — {self.end:%d.%m.%Y}", bold=True)
         x = 0.0
         for column in self.columns:
@@ -328,7 +356,30 @@ class ExportDocument:
                        color="#777777", align=Qt.AlignmentFlag.AlignRight)
         painter.restore()
 
+    def _baseline(self, painter: QPainter, row: dict, y: float, chart_width: float) -> None:
+        entry = self.reference.tasks.get(row["taskId"]) if self.reference is not None else None
+        if not self.options.baseline or entry is None:
+            return
+        ppd = self.options.pixels_per_day
+        x = self.left + (entry.start.date()-self.start).days*ppd
+        end = self.left + ((entry.end.date()-self.start).days+1)*ppd
+        painter.save()
+        painter.setClipRect(QRectF(self.left, y, chart_width, self.row_height), Qt.ClipOperation.IntersectClip)
+        color = QColor("#8493a3")
+        if entry.kind == "milestone":
+            x += ppd/2
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(color)
+            painter.drawPolygon(QPolygonF([QPointF(x, y+24), QPointF(x+3, y+27), QPointF(x, y+30), QPointF(x-3, y+27)]))
+        else:
+            painter.fillRect(QRectF(x, y+27, max(2, end-x), 2), color)
+            if entry.kind == "group":
+                painter.fillRect(QRectF(x, y+26, 1, 4), color)
+                painter.fillRect(QRectF(end-1, y+26, 1, 4), color)
+        painter.restore()
+
     def _bar(self, painter: QPainter, row: dict, y: float, chart_width: float) -> None:
+        self._baseline(painter, row, y, chart_width)
         ppd = self.options.pixels_per_day
         x = self.left + (row["startValue"].date() - self.start).days * ppd
         end = self.left + ((row["endValue"].date() - self.start).days + 1) * ppd

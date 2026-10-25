@@ -568,6 +568,30 @@ class NativeDialogs(QObject):
         self._actions[box] = lambda: self.controller.removeCustomField(field_id)
         self.present(box)
 
+    @Slot()
+    def showBaselines(self) -> None:
+        from .baseline_dialog import BaselineDialog
+
+        dialog = self._editors.get("baselines")
+        if not isinstance(dialog, BaselineDialog):
+            dialog = BaselineDialog(self.controller)
+            self._editors["baselines"] = dialog
+        dialog.prepare()
+        self.present(dialog)
+
+    @Slot(str)
+    def confirmBaselineDelete(self, baseline_id: str) -> None:
+        if baseline_id not in self.controller.project.baselines:
+            return
+        box = QMessageBox(QMessageBox.Icon.Question, "Удалить базовый план?",
+                          "Снимок будет удалён. Текущие задачи не изменятся. Действие можно отменить.",
+                          QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        box.setObjectName("deleteBaselineDialog")
+        box.button(QMessageBox.StandardButton.Ok).setText("Удалить")
+        box.button(QMessageBox.StandardButton.Cancel).setText("Отмена")
+        self._actions[box] = lambda: self.controller.removeBaseline(baseline_id)
+        self.present(box)
+
     @Slot(str)
     def showResources(self, resource_id: str) -> None:
         dialog = self._editors.get("resources")

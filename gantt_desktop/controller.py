@@ -115,6 +115,8 @@ class Controller(QObject):
         self._critical_path = False
         self._critical: CriticalPath | None = None
         self._critical_error = ""
+        self._baseline_range_warning = False
+        self._baseline_range_id = ""
         self._path: Path | None = None
         self._history: list[tuple[str, dict]] = [("", self.project.to_dict())]
         self._history_index = 0
@@ -158,9 +160,57 @@ class Controller(QObject):
             self._critical_path = enabled
             self.refresh()
 
+    @Property(str, notify=viewChanged)
+    def baselineName(self):
+        baseline = self.project.baselines.get(self.project.active_baseline)
+        return baseline.name if baseline else ""
+
+    @Property(str, notify=viewChanged)
+    def baselineInfo(self):
+        baseline = self.project.baselines.get(self.project.active_baseline)
+        if baseline is None:
+            return ""
+        saved, current = set(baseline.tasks), set(self.project.tasks)
+        text = (f"Базовый план: {baseline.name} · совпадает: {len(saved & current)} · "
+                f"новых: {len(current-saved)} · удалённых: {len(saved-current)}. Δ — календарные часы.")
+        if self._baseline_range_warning:
+            text += " Диапазон больше 100 лет не расширяет диаграмму; даты доступны в полях."
+        return text
+
+    @Slot(str, result=str)
+    def createBaseline(self, name):
+        result = []
+        def capture(project):
+            result.append(project.capture_baseline(name, local_today()))
+        return result[0] if self.edit("Создание базового плана", capture) else ""
+
+    @Slot(str, result=bool)
+    def selectBaseline(self, baseline_id):
+        return self.edit("Выбор базового плана", lambda p: p.select_baseline(baseline_id))
+
+    @Slot(str, result=bool)
+    def removeBaseline(self, baseline_id):
+        return self.edit("Удаление базового плана", lambda p: p.remove_baseline(baseline_id))
+
+    def timeline_limits(self) -> tuple[date, date]:
+        spans = [self.project.span(key) for key in self.project.tasks]
+        first = min((a.date() for a, _b in spans), default=local_today())
+        last = max((b.date() for _a, b in spans), default=first)
+        self._baseline_range_warning = False
+        baseline = self.project.baselines.get(self.project.active_baseline)
+        if baseline is not None:
+            entries = [entry for key, entry in baseline.tasks.items() if key in self.project.tasks]
+            start = min([first] + [entry.start.date() for entry in entries])
+            end = max([last] + [entry.end.date() for entry in entries])
+            if (end-start).days <= 36600:
+                first, last = start, end
+            else:
+                self._baseline_range_warning = True
+        return first, last
+
     def reset_range(self) -> None:
-        start = min((self.project.span(t.id)[0].date() for t in self.project.tasks.values()), default=local_today())
-        self._origin = start - timedelta(days=start.weekday() + 7)
+        start, _end = self.timeline_limits()
+        self._origin = start - timedelta(days=min(start.toordinal()-1, start.weekday()+7))
 
     def refresh(self) -> None:
         project = self.project
@@ -171,11 +221,11 @@ class Controller(QObject):
                 self._critical = analyze(project)
             except AnalysisError as error:
                 self._critical_error = str(error)
-        first = min((project.span(t.id)[0].date() for t in project.tasks.values()), default=self._origin)
-        if first < self._origin:
-            self._origin = first - timedelta(days=first.weekday() + 7)
-        last = max((project.span(t.id)[1].date() for t in project.tasks.values()), default=self._origin)
-        self._day_count = max(180, (last - self._origin).days + 60)
+        first, last = self.timeline_limits()
+        if first < self._origin or self._baseline_range_id != project.active_baseline or self._baseline_range_warning:
+            self._origin = first - timedelta(days=min(first.toordinal()-1, first.weekday()+7))
+        self._baseline_range_id = project.active_baseline
+        self._day_count = min(max(180, (last - self._origin).days + 60), (date.max-self._origin).days+1)
         matching = set()
         for task in project.tasks.values():
             text_match = self._query in f"{task.name} {task.assignee} {task.notes}".casefold()
@@ -244,10 +294,22 @@ class Controller(QObject):
         progress = (sum(t.progress * t.duration for t in leaves) / weight if weight else 0) if summary else task.progress
         status = ("closed" if leaves and all(t.status == "closed" for t in leaves) else status_for_progress(progress)) if summary else task.status
         locked = not self.project.can_move(task_id)
+        baseline = self.project.baselines.get(self.project.active_baseline)
+        saved = baseline.tasks.get(task_id) if baseline is not None else None
+        start_delta = (start-saved.start).total_seconds()/3600 if saved is not None else None
+        end_delta = (end-saved.end).total_seconds()/3600 if saved is not None else None
         return {"taskId": task.id, "rowKind": "task", "parentId": task.parent, "name": task.name,
                 "summary": summary, "milestone": task.kind == "milestone", "color": task.color,
                 "critical": self._critical is not None and self._critical.total_float.get(task_id) == 0,
                 "totalFloat": self._critical.total_float.get(task_id) if self._critical is not None else None,
+                "hasBaseline": saved is not None, "baselineKind": saved.kind if saved is not None else "",
+                "baselineStart": saved.start.strftime("%d.%m.%Y %H:%M") if saved is not None else "",
+                "baselineEnd": saved.end.strftime("%d.%m.%Y %H:%M") if saved is not None else "",
+                "baselineStartDay": (saved.start.date()-self._origin).days if saved is not None else None,
+                "baselineEndDay": (saved.end.date()-self._origin).days+1 if saved is not None else None,
+                "startVariance": f"{start_delta:+g}" if start_delta else "0" if start_delta == 0 else "",
+                "endVariance": f"{end_delta:+g}" if end_delta else "0" if end_delta == 0 else "",
+                "startVarianceHours": start_delta, "endVarianceHours": end_delta,
                 "startDay": (start.date() - self._origin).days,
                 "endDay": (end.date() - self._origin).days + 1,
                 "start": start.strftime("%d.%m.%Y"), "end": end.strftime("%d.%m.%Y"),
@@ -997,11 +1059,11 @@ class Controller(QObject):
         try:
             with Path(path).open("w", encoding="utf-8-sig", newline="") as stream:
                 writer = csv.writer(stream)
-                writer.writerow(["Задача", "Начало", "Завершение", "Длительность (ч)", "Трудозатраты (ч)", "Стоимость", "Прогресс", "Исполнитель", "Статус", "Приоритет", "Крайний срок"]
+                writer.writerow(["Задача", "Начало", "Завершение", "Длительность (ч)", "Трудозатраты (ч)", "Стоимость", "Прогресс", "Исполнитель", "Статус", "Приоритет", "Крайний срок", "Базовое начало", "Базовое завершение", "Δ начала, кал. ч", "Δ завершения, кал. ч"]
                                 + [f.name for f in self.project.custom_fields.values()])
                 for task in self.project.tasks.values():
                     record = self.record(task.id)
-                    writer.writerow([task.name, record["start"], record["end"], record["duration"], record["effortHours"], record["costValue"], record["progress"], task.assignee, record["statusText"], record["priorityText"], record["deadline"]]
+                    writer.writerow([task.name, record["start"], record["end"], record["duration"], record["effortHours"], record["costValue"], record["progress"], task.assignee, record["statusText"], record["priorityText"], record["deadline"], record["baselineStart"], record["baselineEnd"], record["startVarianceHours"], record["endVarianceHours"]]
                                     + [record["customTexts"][key] for key in self.project.custom_fields])
         except OSError as error:
             self.toast.emit(str(error))

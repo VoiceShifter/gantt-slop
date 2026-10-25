@@ -33,7 +33,9 @@ if TYPE_CHECKING:
 
 BUILTIN_FIELDS = {"assignee": "Исполнитель", "effort": "Трудозатраты", "cost": "Стоимость",
                   "start": "Начало", "end": "Завершение", "duration": "Длительность",
-                  "progress": "Прогресс", "status": "Статус", "priority": "Приоритет", "deadline": "Крайний срок"}
+                  "progress": "Прогресс", "status": "Статус", "priority": "Приоритет", "deadline": "Крайний срок",
+                  "baselineStart": "Базовое начало", "baselineEnd": "Базовое завершение",
+                  "startVariance": "Δ начала, кал. ч", "endVariance": "Δ завершения, кал. ч"}
 
 
 def editor_buttons(dialog: EditorDialog, apply, prefix: str) -> QDialogButtonBox:

@@ -179,6 +179,23 @@ Drawer {
                 }
                 ColumnLayout {
                     Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
+                    visible: !!controller.baselineName && !!controller.selectedId
+                    Label {
+                        Layout.fillWidth: true; elide: Text.ElideRight
+                        text: "Базовый план: " + controller.baselineName; textFormat: Text.PlainText
+                        color: appTheme.colors.muted; font.pixelSize: 12
+                    }
+                    Label {
+                        objectName: "inspectorBaseline"
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+                        text: controller.selected.hasBaseline ? "Начало: " + controller.selected.baselineStart + " · завершение: " + controller.selected.baselineEnd +
+                              "\nΔ начала: " + controller.selected.startVariance + " · Δ завершения: " + controller.selected.endVariance + " календарных ч." : "Элемента нет в выбранном базовом плане."
+                        color: controller.selected.endVarianceHours > 0 ? appTheme.colors.danger : appTheme.colors.secondary
+                        font.pixelSize: 12
+                    }
+                }
+                ColumnLayout {
+                    Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
                     Label { text: "Крайний срок"; color: appTheme.colors.muted; font.pixelSize: 12 }
                     RowLayout {
                         Layout.fillWidth: true

@@ -198,6 +198,7 @@ ApplicationWindow {
                     ActionButton { text:"⇥"; visible:!window.sidebarVisible; hint:"Показать панель проектов"; onClicked:window.sidebarVisible=true }
                     ActionButton { text:"Файл ⌄"; onClicked:fileMenu.popup() }
                     CellEditor { text:controller.projectName; font.bold:true; font.pixelSize:15; Layout.preferredWidth:280; onEditingFinished:if(text!==controller.projectName)controller.renameProject(text) }
+                    ActionButton { objectName:"baselinesButton"; text:window.width>=1200?"Базовые планы":"▱"; hint:"Базовые планы: создать, выбрать, удалить"; checked:!!controller.baselineName; onClicked:{window.contentItem.forceActiveFocus();gantt.cancelInteractions();nativeDialogs.showBaselines()} }
                     Item { Layout.fillWidth:true }
                     Text { visible:window.width>=1200; text:"Локальный проект"; color:appTheme.colors.muted; font.pixelSize:12 }
                     ActionButton { objectName:"settingsButton"; text:"⚙ Настройки"; hint:"Настройки приложения"; onClicked:{gantt.cancelInteractions();settings.open()} }
@@ -263,6 +264,19 @@ ApplicationWindow {
                     text: controller.criticalPathInfo; textFormat: Text.PlainText
                     wrapMode: Text.WordWrap; font.pixelSize: 11
                     color: controller.criticalPathError ? appTheme.colors.danger : appTheme.colors.text
+                }
+            }
+            Rectangle {
+                visible: !!controller.baselineName
+                Layout.fillWidth: true; Layout.preferredHeight: baselineInfo.implicitHeight + 14
+                color: appTheme.colors.panel
+                Rectangle { width: 3; height: parent.height; color: appTheme.colors.secondary }
+                Label {
+                    id: baselineInfo
+                    objectName: "baselineInfo"
+                    x: 14; y: 7; width: parent.width-28
+                    text: controller.baselineInfo; textFormat: Text.PlainText
+                    wrapMode: Text.WrapAnywhere; font.pixelSize: 11; color: appTheme.colors.secondary
                 }
             }
             GanttView {

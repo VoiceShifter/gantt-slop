@@ -108,13 +108,16 @@ def worksheet(headers: list[str], rows: list[tuple[list[object], bool, int]], wi
                     raise ExportError("Excel не поддерживает бесконечные числовые значения.")
                 cell = element(record, "c", t="n", **attrs)
                 element(cell, "v", f"{value:.15g}")
-            elif isinstance(value, date) and value >= date(1900, 1, 1):
-                serial = (value - date(1899, 12, 30)).days
+            elif isinstance(value, date) and (value.date() if isinstance(value, datetime) else value) >= date(1900, 1, 1):
+                day = value.date() if isinstance(value, datetime) else value
+                serial = (day - date(1899, 12, 30)).days
                 if serial <= 60:
                     serial -= 1
-                attrs["s"] = "2"
+                if isinstance(value, datetime):
+                    serial += (value.hour*3600 + value.minute*60 + value.second + value.microsecond/1e6)/86400
+                attrs["s"] = "4" if isinstance(value, datetime) else "2"
                 cell = element(record, "c", t="n", **attrs)
-                element(cell, "v", serial)
+                element(cell, "v", f"{serial:.15g}")
             else:
                 cell = element(record, "c", t="inlineStr", **attrs)
                 string = element(cell, "is")
@@ -146,8 +149,8 @@ def styles() -> bytes:
     element(borders, "border")
     base = element(root, "cellStyleXfs", count="1")
     element(base, "xf", numFmtId="0", fontId="0", fillId="0", borderId="0")
-    formats = element(root, "cellXfs", count="4")
-    for font, fill, number in ((0, 0, 0), (1, 2, 0), (0, 0, 14), (1, 0, 0)):
+    formats = element(root, "cellXfs", count="5")
+    for font, fill, number in ((0, 0, 0), (1, 2, 0), (0, 0, 14), (1, 0, 0), (0, 0, 22)):
         element(formats, "xf", numFmtId=str(number), fontId=str(font), fillId=str(fill), borderId="0", xfId="0")
     names = element(root, "cellStyles", count="1")
     element(names, "cellStyle", name="Normal", xfId="0", builtinId="0")
@@ -305,6 +308,14 @@ def write_project_xml(path: Path, source: ExportSource) -> None:
         if task.deadline is not None:
             element(record, "Deadline", task.deadline.isoformat() + "T23:59:59")
         notes = [task.notes, "Статус: " + row["statusText"]]
+        baseline = project.baselines.get(project.active_baseline)
+        saved = baseline.tasks.get(task.id) if baseline is not None else None
+        if baseline is not None and saved is not None:
+            baseline_node = element(record, "Baseline")
+            element(baseline_node, "Number", 0)
+            element(baseline_node, "Start", saved.start.isoformat())
+            element(baseline_node, "Finish", saved.end.isoformat())
+            notes.append("Базовый план: " + baseline.name)
         notes.extend(f.name + ": " + source.text(row, "custom:" + f.id) for f in project.custom_fields.values()
                      if source.value(row, "custom:" + f.id) is not None)
         element(record, "Notes", "\n".join(part for part in notes if part))

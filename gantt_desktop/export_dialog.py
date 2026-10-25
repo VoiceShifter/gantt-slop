@@ -175,10 +175,11 @@ class ExportDialog(EditorDialog):
         self.today = QCheckBox("Маркер текущей даты")
         self.workload = QCheckBox("Загрузка ресурсов")
         self.critical = QCheckBox("Критический путь (весь проект)")
+        self.baseline = QCheckBox("Выбранный базовый план")
         self.strike = QCheckBox("Зачёркивать закрытые")
         self.fade = QCheckBox("Обесцвечивать закрытые")
         for widget, name in ((self.links, "exportLinks"), (self.today, "exportToday"),
-                             (self.workload, "exportWorkload"), (self.critical, "exportCritical"), (self.strike, "exportStrike"), (self.fade, "exportFade")):
+                             (self.workload, "exportWorkload"), (self.critical, "exportCritical"), (self.baseline, "exportBaseline"), (self.strike, "exportStrike"), (self.fade, "exportFade")):
             widget.setObjectName(name)
         self.fields = QListWidget()
         self.fields.setObjectName("exportFields")
@@ -186,7 +187,7 @@ class ExportDialog(EditorDialog):
         for label, widget in (("Формат", self.format), ("Задачи", self.scope), ("Содержание", self.content),
                               ("Шкала времени", self.scale), ("Размер бумаги", self.paper), ("Ориентация", self.orientation),
                               ("Имя задачи", self.labels), ("", self.range), ("Начало", self.start), ("Завершение", self.end),
-                              ("", self.links), ("", self.today), ("", self.workload), ("", self.critical), ("", self.strike), ("", self.fade),
+                              ("", self.links), ("", self.today), ("", self.workload), ("", self.critical), ("", self.baseline), ("", self.strike), ("", self.fade),
                               ("Поля", self.fields)):
             form.addRow(label, widget)
         self.note = QLabel("Экспорт не меняет проект. PDF с размером бумаги вписывается по ширине и разбивается по строкам; "
@@ -218,7 +219,7 @@ class ExportDialog(EditorDialog):
         self.timer.timeout.connect(self.update_preview)
         for widget in (self.format, self.scope, self.content, self.scale, self.paper, self.orientation, self.labels):
             widget.currentIndexChanged.connect(self.schedule)
-        for widget in (self.range, self.links, self.today, self.workload, self.critical, self.strike, self.fade):
+        for widget in (self.range, self.links, self.today, self.workload, self.critical, self.baseline, self.strike, self.fade):
             widget.toggled.connect(self.schedule)
         self.start.dateChanged.connect(self.schedule)
         self.end.dateChanged.connect(self.schedule)
@@ -247,6 +248,7 @@ class ExportDialog(EditorDialog):
         self.today.setChecked(True)
         self.workload.setChecked(bool(context.get("workload", False)))
         self.critical.setChecked(bool(context.get("critical", False)))
+        self.baseline.setChecked(bool(self.source.project.active_baseline))
         self.strike.setChecked(True)
         self.fade.setChecked(True)
         self.fields.blockSignals(True)
@@ -281,7 +283,8 @@ class ExportDialog(EditorDialog):
                              labels=self.labels.currentData(), links=self.links.isChecked(), today=self.today.isChecked(),
                              workload=self.workload.isChecked() and format_ in {"pdf", "png", "xlsx"},
                              strike_closed=self.strike.isChecked(), fade_closed=self.fade.isChecked(),
-                             critical=self.critical.isChecked() and visual and self.content.currentData() != "table")
+                             critical=self.critical.isChecked() and visual and self.content.currentData() != "table",
+                             baseline=self.baseline.isChecked() and visual and self.content.currentData() != "table")
 
     def update_preview(self) -> None:
         if self.source is None:
@@ -305,11 +308,14 @@ class ExportDialog(EditorDialog):
         self.end.setEnabled(self.range.isChecked() and format_ != "xml")
         self.workload.setEnabled(format_ == "xlsx" or (visual and self.content.currentData() != "table"))
         self.critical.setEnabled(visual and self.content.currentData() != "table")
+        self.baseline.setEnabled(visual and self.content.currentData() != "table" and bool(self.source.project.active_baseline))
         try:
             document = ExportDocument(self.source, self.options())
             detail = f"{len(document.rows)} задач/групп · {math.ceil(document.width)} × {math.ceil(document.height)} px"
             if document.analysis is not None:
                 detail += " · критический путь по всему проекту"
+            if document.options.baseline:
+                detail += " · базовый план"
             if format_ == "pdf":
                 _size, _orientation, _scale, count = document.pdf_layout()
                 detail += f" · {math.ceil(document.body_rows/count)} стр."
