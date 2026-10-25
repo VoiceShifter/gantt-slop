@@ -26,6 +26,7 @@ from PySide6.QtGui import (
     QPolygonF,
 )
 
+from .critical_path import CriticalPath, analyze
 from .domain import Project
 from .workload import workload_rows
 
@@ -65,6 +66,7 @@ class ExportOptions:
     workload: bool = False
     strike_closed: bool = True
     fade_closed: bool = True
+    critical: bool = False
 
     def validate(self) -> None:
         if self.format not in {"pdf", "png", "xlsx", "xml", "csv"} or self.scope not in {"all", "visible"}:
@@ -180,6 +182,7 @@ class ExportDocument:
     width: float = field(init=False)
     height: float = field(init=False)
     body_rows: int = field(init=False)
+    analysis: CriticalPath | None = field(init=False, default=None)
     header: int = 80
     row_height: int = 30
 
@@ -190,6 +193,8 @@ class ExportDocument:
         self.rows = self.source.selected_rows(self.options.scope)
         if not self.rows:
             raise ExportError("Нет задач для экспорта. Проверьте фильтр.")
+        if self.options.critical:
+            self.analysis = analyze(self.source.project)
         self.columns = [self.source.columns[key] for key in self.options.columns] if self.options.content != "chart" else []
         first = min(r["startValue"].date() for r in self.rows)
         last = max(r["endValue"].date() for r in self.rows)
@@ -331,7 +336,8 @@ class ExportDocument:
         painter.setClipRect(QRectF(self.left, y, self.width - self.left, self.row_height))
         if self.options.fade_closed and row["status"] == "closed":
             painter.setOpacity(0.45)
-        color = QColor(row["color"])
+        critical = self.analysis is not None and self.analysis.total_float[row["taskId"]] == 0
+        color = QColor("#c93b3b" if critical else row["color"])
         if row["milestone"]:
             center = x + ppd / 2
             painter.setPen(Qt.PenStyle.NoPen)
@@ -346,11 +352,11 @@ class ExportDocument:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(color)
             painter.drawRoundedRect(rect, 2, 2)
-            painter.fillRect(QRectF(x, y+4, rect.width()*row["progress"]/100, 22), QColor("#289da9"))
+            painter.fillRect(QRectF(x, y+4, rect.width()*row["progress"]/100, 22), QColor("#8e232b" if critical else "#289da9"))
             label_rect = QRectF(end+4, y, 176, 30) if self.options.labels == "right" else rect
         if self.options.labels != "none":
             self._text(painter, label_rect, row["name"], bold=row["summary"],
-                       color="#125360" if row["summary"] else "white" if self.options.labels == "inside" and not row["milestone"] else "#30363b",
+                       color=("#a82c2c" if critical else "#125360") if row["summary"] else "white" if self.options.labels == "inside" and not row["milestone"] else "#30363b",
                        strike=row["status"] == "closed" and self.options.strike_closed)
         deadline = self.source.project.tasks[row["taskId"]].deadline
         if deadline is not None and self.start <= deadline <= self.end:
@@ -367,11 +373,12 @@ class ExportDocument:
         ppd = self.options.pixels_per_day
         painter.save()
         painter.setClipRect(QRectF(self.left, self.header, len(self.dates)*ppd, self.body_rows*self.row_height), Qt.ClipOperation.IntersectClip)
-        painter.setPen(QPen(QColor("#ffa726"), 1.4))
-        painter.setBrush(QColor("#ffa726"))
         for link in self.source.project.dependencies:
             if link.source not in indices or link.target not in indices:
                 continue
+            critical = self.analysis is not None and self.analysis.link_float[link.id] == 0
+            color = QColor("#c93b3b" if critical else "#ffa726")
+            painter.setPen(QPen(color, 2 if critical else 1.4))
             points = []
             for key, endpoint in ((link.source, link.kind[0]), (link.target, link.kind[1])):
                 row = data[key]
@@ -395,7 +402,7 @@ class ExportDocument:
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
             direction = -1 if link.kind[1] == "F" else 1
-            painter.setBrush(QColor("#ffa726"))
+            painter.setBrush(color)
             painter.drawPolygon(QPolygonF([end, QPointF(end.x()-direction*5, end.y()-3), QPointF(end.x()-direction*5, end.y()+3)]))
         painter.restore()
 

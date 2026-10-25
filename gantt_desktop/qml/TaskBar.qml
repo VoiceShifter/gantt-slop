@@ -19,6 +19,8 @@ Item {
     readonly property var shown: dragging && preview.valid ? preview : task
     readonly property bool over: body.containsMouse || leftEdge.containsMouse || rightEdge.containsMouse || linkHovered || progressHandle.containsMouse
     readonly property real completion: progressPreview >= 0 ? progressPreview : task.progress
+    readonly property bool critical: !!task.critical
+    readonly property color displayColor: critical ? "#c93b3b" : task.color
     objectName: "taskbar-" + task.taskId
     x: (shown.startDay + (task.milestone ? 0.5 : 0)) * workspace.pixelsPerDay - (task.milestone ? 11 : 0)
     y: rowIndex * workspace.rowHeight + (workspace.rowHeight - height) / 2
@@ -27,7 +29,7 @@ Item {
     z: dragging || over ? 5 : 2
     opacity: dragging ? 0.65 : task.status === "closed" ? 0.45 : 1
     Accessible.role: Accessible.Graphic
-    Accessible.name: task.name + ", " + task.start + " — " + task.end
+    Accessible.name: task.name + ", " + task.start + " — " + task.end + (bar.critical ? ", критическая" : "")
     Connections {
         target: workspace
         function onCancelDrags() { bar.cancelled = true; bar.dragging = false; bar.preview = ({}); bar.progressPreview = -1 }
@@ -74,7 +76,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         anchors.topMargin: task.summary ? 17 : 0
-        color: task.color
+        color: bar.displayColor
         radius: task.summary ? 0 : 2
         visible: !task.milestone
         border.width: !task.summary && controller.selectedId === task.taskId ? 1 : 0
@@ -82,7 +84,7 @@ Item {
         Rectangle {
             width: parent.width * bar.completion / 100
             height: parent.height
-            color: "#289da9"
+            color: bar.critical ? "#8e232b" : "#289da9"
             opacity: 0.7
             radius: parent.radius
         }
@@ -92,7 +94,7 @@ Item {
         anchors.centerIn: parent
         width: 20; height: 20
         rotation: 45
-        color: task.color
+        color: bar.displayColor
         border.width: controller.selectedId === task.taskId ? 1 : 0
         border.color: "#a94488"
     }
@@ -108,7 +110,7 @@ Item {
         font.pixelSize: 12
         font.bold: task.summary
         font.strikeout: task.status === "closed"
-        color: task.summary ? appTheme.colors.summary : "white"
+        color: task.summary ? (bar.critical ? appTheme.colors.danger : appTheme.colors.summary) : "white"
         elide: Text.ElideRight
         verticalAlignment: Text.AlignVCenter
         visible: !task.milestone
@@ -247,5 +249,6 @@ Item {
     }
     ToolTip.visible: bar.dragging || (body.containsMouse && workspace.linkSource === "")
     ToolTip.delay: bar.dragging ? 0 : 600
-    ToolTip.text: bar.dragging ? (bar.preview.hint || "") : task.name + "\n" + task.start + " — " + task.end + " · " + Math.round(task.progress) + "%"
+    ToolTip.text: bar.dragging ? (bar.preview.hint || "") : task.name + "\n" + task.start + " — " + task.end + " · " + Math.round(task.progress) + "%" +
+                  (controller.criticalPath && task.totalFloat !== null && task.totalFloat !== undefined ? "\n" + (bar.critical ? "Критическая · " : "") + "Резерв: " + Number(task.totalFloat/60).toLocaleString(Qt.locale(),"g",6) + " рабочих ч." : "")
 }

@@ -113,6 +113,16 @@ Drawer {
                         onClicked: drawer.dependencyRequested("", controller.selectedId, "FS", "")
                     }
                 }
+                Label {
+                    objectName: "inspectorTotalFloat"
+                    Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
+                    visible: controller.criticalPath && !!controller.selectedId
+                    textFormat: Text.PlainText; wrapMode: Text.WordWrap; font.pixelSize: 12
+                    text: controller.selected.totalFloat === null || controller.selected.totalFloat === undefined ? "Резерв не рассчитан: " + controller.criticalPathError :
+                          (controller.selected.critical ? (controller.selected.summary ? "Критическая группа. " : "Критическая задача. ") : "") +
+                          "Резерв: " + Number(controller.selected.totalFloat/60).toLocaleString(Qt.locale(),"g",6) + " рабочих ч."
+                    color: controller.selected.critical ? appTheme.colors.danger : appTheme.colors.secondary
+                }
                 GridLayout {
                     columns: 4
                     columnSpacing: 12; rowSpacing: 9

@@ -24,6 +24,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
+from .critical_path import AnalysisError, CriticalPath, analyze
 from .dialogs import NativeDialogs
 from .domain import (
     FIELD_TYPES,
@@ -111,6 +112,9 @@ class Controller(QObject):
         self._collapsed: set[str] = set()
         self._query = ""
         self._filter = "all"
+        self._critical_path = False
+        self._critical: CriticalPath | None = None
+        self._critical_error = ""
         self._path: Path | None = None
         self._history: list[tuple[str, dict]] = [("", self.project.to_dict())]
         self._history_index = 0
@@ -136,12 +140,37 @@ class Controller(QObject):
     fileName = Property(str, lambda self: self._path.name if self._path else "Без файла", notify=fileChanged)
     taskCount = Property(int, lambda self: sum(t.kind != "group" for t in self.project.tasks.values()), notify=viewChanged)
 
+    criticalPath = Property(bool, lambda self: self._critical_path, notify=viewChanged)
+    criticalPathError = Property(str, lambda self: self._critical_error, notify=viewChanged)
+
+    @Property(str, notify=viewChanged)
+    def criticalPathInfo(self):
+        if self._critical_error:
+            return "Критический путь не рассчитан: " + self._critical_error
+        if self._critical is None or self._critical.finish is None:
+            return "Нет элементов для расчёта критического пути."
+        return (f"По всему текущему плану · нулевой резерв: {len(self._critical.critical_tasks)} элементов · "
+                f"завершение: {self._critical.finish:%d.%m.%Y %H:%M}. Резерв — в рабочем времени.")
+
+    @Slot(bool)
+    def setCriticalPath(self, enabled):
+        if self._critical_path != enabled:
+            self._critical_path = enabled
+            self.refresh()
+
     def reset_range(self) -> None:
         start = min((self.project.span(t.id)[0].date() for t in self.project.tasks.values()), default=local_today())
         self._origin = start - timedelta(days=start.weekday() + 7)
 
     def refresh(self) -> None:
         project = self.project
+        self._critical = None
+        self._critical_error = ""
+        if self._critical_path:
+            try:
+                self._critical = analyze(project)
+            except AnalysisError as error:
+                self._critical_error = str(error)
         first = min((project.span(t.id)[0].date() for t in project.tasks.values()), default=self._origin)
         if first < self._origin:
             self._origin = first - timedelta(days=first.weekday() + 7)
@@ -217,6 +246,8 @@ class Controller(QObject):
         locked = not self.project.can_move(task_id)
         return {"taskId": task.id, "rowKind": "task", "parentId": task.parent, "name": task.name,
                 "summary": summary, "milestone": task.kind == "milestone", "color": task.color,
+                "critical": self._critical is not None and self._critical.total_float.get(task_id) == 0,
+                "totalFloat": self._critical.total_float.get(task_id) if self._critical is not None else None,
                 "startDay": (start.date() - self._origin).days,
                 "endDay": (end.date() - self._origin).days + 1,
                 "start": start.strftime("%d.%m.%Y"), "end": end.strftime("%d.%m.%Y"),
@@ -467,6 +498,7 @@ class Controller(QObject):
             sx = sr["startDay"] + 0.5 if sr["milestone"] else sr["endDay"] if source_finish else sr["startDay"]
             tx = tr["startDay"] + 0.5 if tr["milestone"] else tr["endDay"] if target_finish else tr["startDay"]
             result.append({"id": link.id, "sx": sx, "tx": tx, "sourceRow": si, "targetRow": ti,
+                           "critical": self._critical is not None and self._critical.link_float.get(link.id) == 0,
                            "sourceFinish": source_finish, "targetFinish": target_finish,
                            "sourceSummary": sr["summary"], "targetSummary": tr["summary"],
                            "sourceMilestone": sr["milestone"], "targetMilestone": tr["milestone"],

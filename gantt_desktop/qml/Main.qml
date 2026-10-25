@@ -49,7 +49,7 @@ ApplicationWindow {
     function saveProject() { contentItem.forceActiveFocus(); controller.save() }
     function showExport() {
         contentItem.forceActiveFocus(); gantt.cancelInteractions()
-        nativeDialogs.showExport({columns:gantt.columns,pixelsPerDay:gantt.pixelsPerDay,workload:window.workloadVisible})
+        nativeDialogs.showExport({columns:gantt.columns,pixelsPerDay:gantt.pixelsPerDay,workload:window.workloadVisible,critical:controller.criticalPath})
     }
 
     Connections {
@@ -225,13 +225,14 @@ ApplicationWindow {
                     ActionButton { objectName:"addTaskButton"; text:"＋"; font.pixelSize:21; hint:"Добавить задачу"; enabled:!controller.bulkMode; onClicked:controller.addTask(window.selectedParent(),"task") }
                     ActionButton { text:"◇"; font.pixelSize:20; hint:"Добавить веху"; enabled:!controller.bulkMode; onClicked:controller.addTask(window.selectedParent(),"milestone") }
                     ActionButton { text:"⊞"; font.pixelSize:18; hint:"Добавить группу"; enabled:!controller.bulkMode; onClicked:controller.addTask("","group") }
+                    ActionButton { objectName:"criticalPathButton"; text:"⌁"; font.pixelSize:21; hint:"Критический путь"; checked:controller.criticalPath; onClicked:{window.contentItem.forceActiveFocus();gantt.cancelInteractions();controller.setCriticalPath(!controller.criticalPath)} }
                     ActionButton { text:"⌃ Развернуть все"; visible:toolbar.width>1100; onClicked:controller.expandAll(true) }
                     ActionButton { text:"⌄ Свернуть все"; visible:toolbar.width>1100; onClicked:controller.expandAll(false) }
                     Item { Layout.fillWidth:true }
                     CellEditor {
                         id: search
                         objectName:"taskSearch"
-                        Layout.preferredWidth:toolbar.width>1100?190:130
+                        Layout.preferredWidth:toolbar.width>1100?190:toolbar.width>900?130:100
                         placeholderText:"Поиск по имени задачи"
                         onTextChanged:controller.search(text)
                         background:Rectangle { color:search.activeFocus?appTheme.colors.input:appTheme.colors.raised; radius:3; border.color:search.activeFocus?appTheme.colors.link:appTheme.colors.border }
@@ -248,6 +249,20 @@ ApplicationWindow {
                     Text { text:["Дни","Дни","Недели","Месяцы","Кварталы","Годы"][Math.round(zoom.value)]; font.pixelSize:12; color:appTheme.colors.secondary; Layout.preferredWidth:58 }
                     ActionButton { objectName:"exportButton"; text:"Экспорт"; onClicked:window.showExport() }
                     ActionButton { text:"Вид ⌄"; onClicked:viewMenu.popup() }
+                }
+            }
+            Rectangle {
+                visible: controller.criticalPath
+                Layout.fillWidth: true; Layout.preferredHeight: criticalInfo.implicitHeight + 14
+                color: appTheme.colors.panel
+                Rectangle { width: 3; height: parent.height; color: controller.criticalPathError ? appTheme.colors.warning : "#c93b3b" }
+                Label {
+                    id: criticalInfo
+                    objectName: "criticalPathInfo"
+                    x: 14; y: 7; width: parent.width-28
+                    text: controller.criticalPathInfo; textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap; font.pixelSize: 11
+                    color: controller.criticalPathError ? appTheme.colors.danger : appTheme.colors.text
                 }
             }
             GanttView {

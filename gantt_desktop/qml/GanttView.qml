@@ -660,8 +660,8 @@ Item {
                                 points=[[sx,sy],[stubS,sy],[stubS,midY],[stubT,midY],[stubT,ty],[tx,ty]]
                             }
                             const highlighted=hoveredLink===link.id || view.activeLinkId===link.id
-                            const color=highlighted?appTheme.colors.link:"#ffa726"
-                            ctx.strokeStyle=color; ctx.lineWidth=highlighted?2.5:1.4
+                            const color=highlighted?appTheme.colors.link:link.critical?"#c93b3b":"#ffa726"
+                            ctx.strokeStyle=color; ctx.lineWidth=highlighted?2.5:link.critical?2:1.4
                             ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1])
                             for (let p of points.slice(1)) ctx.lineTo(p[0],p[1])
                             ctx.stroke()

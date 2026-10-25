@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.12 adds critical-path analysis:** a read-only toolbar overlay, working-time total float in task properties, exact min/max summary endpoint handling, critical dependencies and independent PDF/PNG highlighting. Analysis uses the whole current plan; it does not reschedule tasks or level resources. [Rules, limits and verification](docs/CRITICAL_PATH.md).
+
 **0.11 adds dated calendar exceptions:** editable project holidays/working intervals and resource vacations/daily capacity ranges, overlap validation, independent availability warnings, atomic scheduling/history and export. [Calendar exceptions](docs/CALENDAR_EXCEPTIONS.md).
 
 **0.10 adds native task-date calendars and independent deadlines:** calendar buttons in properties/table, explicit Apply/Cancel, a “Крайний срок” field/column, warnings/diagram flags and export support. Deadlines never reschedule tasks. [Dates and deadlines](docs/DATES_AND_DEADLINES.md). The remaining work is tracked in the [parity plan](docs/PARITY_PLAN.md).
@@ -71,6 +73,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Reachable endpoint circles on tasks, milestones and summary groups; drag or click-pair creation, live preview, edge auto-scroll, FS/SS/FF/SF, positive/negative working-hour lag and multiple predecessors.
 - Click an arrow to edit its type/lag or delete it; stable link IDs, anchored endpoint protection, hierarchy-aware cycle rejection and one-step Undo.
 - Downstream rescheduling with preserved working durations; derived group dates/effort/cost/progress.
+- Current-plan critical tasks, milestones, groups and dependency arrows; working-time float under FS/SS/FF/SF and signed lags, including summary min/max alternatives. The view is non-mutating, global across filters/collapse, and reports unavailable analysis instead of partial guesses when its exact-search budget is exceeded.
 - Whole-transaction Python undo/redo, including every task changed by propagated scheduling; no-op/invalid edits do not create history entries.
 - Zoom, timeline panning, horizontal/vertical scrolling, adjustable table/timeline divider, optional columns, search and completion/overdue filters.
 - Drag any column's right header boundary to resize it independently; headers/cells stay aligned, minimum widths and clipping prevent overlap, and the workload split follows the table.
@@ -110,7 +113,8 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Pan | Drag empty chart space |
 | Zoom | Slider or Ctrl+wheel |
 | Scroll horizontally | Horizontal scrollbar or Shift+wheel |
-| Export | “Экспорт” → preview/settings → format → choose a local destination |
+| Critical path | Toolbar ⌁ → red critical elements/arrows; task properties show working-hour float; toggle off restores original colors |
+| Export | “Экспорт” → preview/settings → format → choose a local destination; PDF/PNG also offer a critical-path checkbox |
 | Cancel gesture | Escape |
 | Undo / redo | Toolbar or platform-standard shortcuts |
 
@@ -118,7 +122,7 @@ The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00
 
 ### Project-file compatibility
 
-New saves use **schema 6**, adding project/resource exception ranges. Schema-1/2/3/4/5 files remain importable; their holidays, deadlines and other metadata are retained. Older assignee names still migrate to shared resources. App versions through 0.10 cannot read schema 6; keep a separate copy before saving with 0.11.
+New saves use **schema 6**, adding project/resource exception ranges. Schema-1/2/3/4/5 files remain importable; their holidays, deadlines and other metadata are retained. Older assignee names still migrate to shared resources. App versions through 0.10 cannot read schema 6; keep a separate copy before saving with 0.11 or later. Version 0.12 keeps schema 6; its critical-path toggle and computed reserves are window-local, not project data.
 
 ## Tests and native screenshots
 
@@ -137,12 +141,13 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **532 passing tests**, including 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **603 passing tests**, including 71 critical-path and 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
 - `gantt_desktop/domain.py`: Qt-independent calendar, hierarchy, dependencies and mutations.
 - `gantt_desktop/controller.py`: Qt list model, atomic edits, Python snapshot history, filtering and file operations.
+- `gantt_desktop/critical_path.py`: read-only current-plan float analysis, DAG passes and exact bounded summary alternatives.
 - `gantt_desktop/workload.py`: working-time effort distribution and daily resource availability/warnings.
 - `gantt_desktop/dialogs.py`: platform-styled QWidget dialogs and QML/window lifecycle bridge.
 - `gantt_desktop/field_dialogs.py`: native field picker, definition and typed-value editors.
@@ -156,6 +161,6 @@ The current suite has **532 passing tests**, including 79 calendar-exception, 22
 
 ## Parity boundary
 
-This is a working implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-row dragging, arbitrary multi-bar date gestures, recurring/overnight or resource time-of-day shift editing, baselines/critical-path UI, richer scheduling modes/constraints, full date-scale/header parity, direct native-printer integration, large-project virtualization, and comprehensive accessibility/high-DPI QA. The inspected reference checkbox mode edits bulk properties, not task dates. Less-common dependency editing behaviors still need further live-reference parity testing.
+This is a working implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-row dragging, arbitrary multi-bar date gestures, recurring/overnight or resource time-of-day shift editing, baselines, richer scheduling modes/constraints, full date-scale/header parity, direct native-printer integration, large-project virtualization, and comprehensive accessibility/high-DPI QA. The inspected reference checkbox mode edits bulk properties, not task dates. Less-common dependency editing behaviors still need further live-reference parity testing.
 
 Qt supports Windows, macOS and Linux, but this checkout has only been run and tested on **Linux**. Windows/macOS installation bundles, signing and platform QA have not been produced. When distributing the app, observe PySide6/Qt and other dependency licensing requirements.
