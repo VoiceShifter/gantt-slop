@@ -5,6 +5,7 @@ import csv
 import json
 import math
 from collections.abc import Callable
+from copy import deepcopy
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -28,8 +29,10 @@ from .domain import (
     FIELD_TYPES,
     PRIORITY_LABELS,
     STATUS_LABELS,
+    CalendarException,
     CustomField,
     Project,
+    ResourceException,
     ScheduleError,
     Task,
     new_id,
@@ -323,7 +326,9 @@ class Controller(QObject):
 
     @Property(str, notify=viewChanged)
     def calendarLabel(self):
-        return "Пн–Пт · 8ч/день" if self.project.calendar.workdays == set(range(5)) else f"{len(self.project.calendar.workdays)} дн/нед · 8ч/день"
+        base = "Пн–Пт · 8ч/день" if self.project.calendar.workdays == set(range(5)) else f"{len(self.project.calendar.workdays)} дн/нед · 8ч/день"
+        count = len(self.project.calendar.holidays) + len(self.project.calendar.exceptions)
+        return base + (f" · исключений: {count}" if count else "")
 
     @Slot(str, result=str)
     def createResource(self, name):
@@ -367,6 +372,50 @@ class Controller(QObject):
     @Slot("QVariantList", result=bool)
     def setProjectWorkdays(self, days):
         return self.edit("Рабочие дни проекта", lambda p: p.set_workdays(set(days)))
+
+    def saveCalendarException(self, resource_id: str, exception_id: str, name: str, start: str, end: str,
+                              periods: list, capacity: str, holiday: str = "") -> bool:
+        def apply(project):
+            calendar = deepcopy(project.calendar)
+            items = project.resources[resource_id].exceptions if resource_id else calendar.exceptions
+            if exception_id and not any(item.id == exception_id for item in items):
+                raise ScheduleError("Исключение уже удалено. Откройте список заново.")
+            if holiday:
+                if resource_id or exception_id or date.fromisoformat(holiday) not in calendar.holidays:
+                    raise ScheduleError("Праздник уже удалён. Откройте список заново.")
+                if start == end == holiday and name.strip() == "Праздник" and periods == []:
+                    return
+                calendar.holidays.remove(date.fromisoformat(holiday))
+            key = exception_id or new_id()
+            common = (key, date.fromisoformat(start), date.fromisoformat(end), name.strip())
+            item = ResourceException(*common, parse_number(capacity)) if resource_id else CalendarException(*common, deepcopy(periods))
+            updated = [item if current.id == key else current for current in items]
+            if not exception_id:
+                updated.append(item)
+            if resource_id:
+                project.resources[resource_id].exceptions = updated
+            else:
+                calendar.exceptions = updated
+                project.set_calendar(calendar)
+        return self.edit("Исключение календаря", apply)
+
+    def removeCalendarException(self, resource_id: str, exception_id: str, holiday: str = "") -> bool:
+        def remove(project):
+            if resource_id:
+                resource = project.resources[resource_id]
+                if not any(item.id == exception_id for item in resource.exceptions):
+                    raise ScheduleError("Исключение уже удалено.")
+                resource.exceptions = [item for item in resource.exceptions if item.id != exception_id]
+            else:
+                calendar = deepcopy(project.calendar)
+                if holiday:
+                    calendar.holidays.remove(date.fromisoformat(holiday))
+                elif any(item.id == exception_id for item in calendar.exceptions):
+                    calendar.exceptions = [item for item in calendar.exceptions if item.id != exception_id]
+                else:
+                    raise ScheduleError("Исключение уже удалено.")
+                project.set_calendar(calendar)
+        return self.edit("Удаление исключения календаря", remove)
 
     @Property(list, notify=viewChanged)
     def taskChoices(self):

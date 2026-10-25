@@ -112,6 +112,11 @@ class ResourceDialog(EditorDialog):
         form.addRow("Имя", self.name)
         form.addRow("Доступно часов в день", self.capacity)
         form.addRow("Рабочие дни", days_widget)
+        self.exceptions_button = QPushButton("Отпуска и исключения…")
+        self.exceptions_button.setObjectName("resourceExceptionsButton")
+        self.exceptions_button.setAutoDefault(False)
+        self.exceptions_button.clicked.connect(lambda: self.controller.dialogs.showCalendar(self.resource_id))
+        form.addRow(self.exceptions_button)
         note = QLabel("Доступность влияет на предупреждения, а не переносит задачи.")
         note.setWordWrap(True)
         form.addRow(note)
@@ -133,6 +138,11 @@ class ResourceDialog(EditorDialog):
         project_layout = QVBoxLayout(project)
         project_days, self.project_days = day_controls("projectDay")
         project_layout.addWidget(project_days)
+        exceptions = QPushButton("Праздники и исключения…")
+        exceptions.setObjectName("projectExceptionsButton")
+        exceptions.setAutoDefault(False)
+        exceptions.clicked.connect(lambda: self.controller.dialogs.showCalendar(""))
+        project_layout.addWidget(exceptions, 0, Qt.AlignmentFlag.AlignLeft)
         note = QLabel("Изменение календаря проекта пересчитывает сроки одной отменяемой операцией. "
                       "Календарь человека остаётся независимым.")
         note.setWordWrap(True)
@@ -184,6 +194,7 @@ class ResourceDialog(EditorDialog):
         for i, box in enumerate(self.days):
             box.setChecked(i in (resource.workdays if resource else range(5)))
         self.remove.setEnabled(resource is not None)
+        self.exceptions_button.setEnabled(resource is not None)
         if resource is None:
             self.people.blockSignals(True)
             self.people.setCurrentRow(-1)
@@ -565,6 +576,41 @@ class NativeDialogs(QObject):
             self._editors["resources"] = dialog
         dialog.prepare(resource_id)
         self.present(dialog)
+
+    @Slot(str)
+    def showCalendar(self, resource_id: str) -> None:
+        from .calendar_dialog import CalendarDialog
+
+        if resource_id and resource_id not in self.controller.project.resources:
+            return
+        dialog = self._editors.get("calendar")
+        if not isinstance(dialog, CalendarDialog):
+            dialog = CalendarDialog(self.controller)
+            self._editors["calendar"] = dialog
+        dialog.prepare(resource_id)
+        self.present(dialog)
+
+    @Slot(str, str, str)
+    def showCalendarException(self, resource_id: str, exception_id: str, holiday: str) -> None:
+        from .calendar_dialog import CalendarExceptionDialog
+
+        dialog = self._editors.get("calendarException")
+        if not isinstance(dialog, CalendarExceptionDialog):
+            dialog = CalendarExceptionDialog(self.controller)
+            self._editors["calendarException"] = dialog
+        if dialog.prepare(resource_id, exception_id, holiday):
+            self.present(dialog)
+
+    @Slot(str, str, str)
+    def confirmCalendarException(self, resource_id: str, exception_id: str, holiday: str) -> None:
+        box = QMessageBox(QMessageBox.Icon.Question, "Удалить исключение?",
+                          "Вернётся базовый график. Изменение можно отменить. Для календаря проекта сроки пересчитаются.",
+                          QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        box.setObjectName("deleteCalendarExceptionDialog")
+        box.button(QMessageBox.StandardButton.Ok).setText("Удалить")
+        box.button(QMessageBox.StandardButton.Cancel).setText("Отмена")
+        self._actions[box] = lambda: self.controller.removeCalendarException(resource_id, exception_id, holiday)
+        self.present(box)
 
     @Slot(str)
     def showNewResource(self, name: str) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import csv
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 from xml.etree import ElementTree as ET
@@ -220,7 +220,14 @@ def write_project_xml(path: Path, source: ExportSource) -> None:
         element(root, "FinishDate", max(r["endValue"] for r in source.rows).isoformat(timespec="seconds"))
     calendars = element(root, "Calendars")
 
-    def calendar(uid: int, name: str, days: set[int], base: bool) -> None:
+    def working_times(day, periods) -> None:
+        times = element(day, "WorkingTimes")
+        for a, b in periods:
+            period = element(times, "WorkingTime")
+            element(period, "FromTime", f"{a//60:02}:{a%60:02}:00")
+            element(period, "ToTime", f"{b//60:02}:{b%60:02}:00")
+
+    def calendar(uid: int, name: str, days: set[int], base: bool, exceptions) -> None:
         record = element(calendars, "Calendar")
         element(record, "UID", uid)
         element(record, "Name", name)
@@ -233,28 +240,49 @@ def write_project_xml(path: Path, source: ExportSource) -> None:
             working = (day_type+5) % 7 in days
             element(day, "DayWorking", int(working))
             if working:
-                times = element(day, "WorkingTimes")
-                for start, end in (("09:00:00", "13:00:00"), ("14:00:00", "18:00:00")):
-                    period = element(times, "WorkingTime")
-                    element(period, "FromTime", start)
-                    element(period, "ToTime", end)
-        for holiday in sorted(project.calendar.holidays):
+                working_times(day, [[540, 780], [840, 1080]])
+        ranges = [(item.start, item.end, item.periods if base else [[540, 780], [840, 1080]] if item.capacity else [])
+                  for item in exceptions]
+        if base:
+            ranges += [(holiday, holiday, []) for holiday in sorted(project.calendar.holidays)
+                       if not any(item.start <= holiday <= item.end for item in exceptions)]
+        for start, end, periods in sorted(ranges):
             day = element(weekdays, "WeekDay")
             element(day, "DayType", 0)
-            element(day, "DayWorking", 0)
+            element(day, "DayWorking", int(bool(periods)))
             period = element(day, "TimePeriod")
-            element(period, "FromDate", holiday.isoformat() + "T00:00:00")
-            element(period, "ToDate", holiday.isoformat() + "T23:59:59")
-    calendar(1, "Календарь проекта", project.calendar.workdays, True)
+            element(period, "FromDate", start.isoformat() + "T00:00:00")
+            element(period, "ToDate", end.isoformat() + "T23:59:59")
+            if periods:
+                working_times(day, periods)
+    calendar(1, "Календарь проекта", project.calendar.workdays, True, project.calendar.exceptions)
     resource_uids = {key: index for index, key in enumerate(project.resources, 1)}
     for key, resource in project.resources.items():
-        calendar(resource_uids[key]+1, resource.name, resource.workdays, False)
+        calendar(resource_uids[key]+1, resource.name, resource.workdays, False, resource.exceptions)
     resources = element(root, "Resources")
     for key, resource in project.resources.items():
         record = element(resources, "Resource")
         for name, value in (("UID", resource_uids[key]), ("ID", resource_uids[key]), ("Name", resource.name),
                             ("Type", 1), ("MaxUnits", resource.capacity/8), ("CalendarUID", resource_uids[key]+1)):
             element(record, name, value)
+        if resource.exceptions:
+            availability = element(record, "AvailabilityPeriods")
+            def available(start: date | None, end: date | None, hours: float, parent=availability) -> None:
+                period = element(parent, "AvailabilityPeriod")
+                if start is not None:
+                    element(period, "AvailableFrom", start.isoformat() + "T00:00:00")
+                if end is not None:
+                    element(period, "AvailableTo", end.isoformat() + "T23:59:59")
+                element(period, "AvailableUnits", hours/8)
+            previous = None
+            for exception in sorted(resource.exceptions, key=lambda item: item.start):
+                first = previous + timedelta(days=1) if previous is not None else None
+                if exception.start > date.min and (first is None or first < exception.start):
+                    available(first, exception.start - timedelta(days=1), resource.capacity)
+                available(exception.start, exception.end, exception.capacity)
+                previous = exception.end
+            if previous is not None and previous < date.max:
+                available(previous + timedelta(days=1), None, resource.capacity)
     task_uids = {row["taskId"]: index for index, row in enumerate(source.rows, 1)}
     tasks = element(root, "Tasks")
     for row in source.rows:

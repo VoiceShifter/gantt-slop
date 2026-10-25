@@ -7,6 +7,7 @@ from collections import deque
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time, timedelta
+from itertools import pairwise
 from uuid import uuid4
 
 
@@ -24,38 +25,99 @@ def status_for_progress(progress: float) -> str:
 
 
 @dataclass
+class CalendarException:
+    id: str
+    start: date
+    end: date
+    name: str = ""
+    periods: list[list[int]] = field(default_factory=list)
+
+
+@dataclass
+class ResourceException:
+    id: str
+    start: date
+    end: date
+    name: str = ""
+    capacity: float = 0
+
+
+def validate_exceptions(items, expected_type) -> None:
+    if not isinstance(items, list) or any(type(item) is not expected_type for item in items):
+        raise ScheduleError("Некорректный список исключений календаря.")
+    ids = set()
+    for item in items:
+        if not isinstance(item.id, str) or not item.id or item.id in ids or not isinstance(item.name, str):
+            raise ScheduleError("Некорректный или повторяющийся идентификатор исключения.")
+        ids.add(item.id)
+        if type(item.start) is not date or type(item.end) is not date or item.end < item.start:
+            raise ScheduleError("Начало исключения должно быть не позже завершения.")
+        if isinstance(item, ResourceException):
+            if isinstance(item.capacity, bool) or not isinstance(item.capacity, (int, float)) or not 0 <= item.capacity <= 24 or not math.isfinite(item.capacity):
+                raise ScheduleError("Доступность исключения должна быть от 0 до 24 часов в день.")
+        else:
+            if not isinstance(item.periods, list) or len(item.periods) > 2:
+                raise ScheduleError("Задайте не более двух рабочих интервалов в пределах дня.")
+            previous = -1
+            for period in item.periods:
+                if not isinstance(period, list) or len(period) != 2 or any(type(m) is not int for m in period):
+                    raise ScheduleError("Рабочие интервалы задаются целыми минутами.")
+                start, end = period
+                if not 0 <= start < end < 1440 or start < previous:
+                    raise ScheduleError("Рабочие интервалы должны идти по порядку, не пересекаться и не переходить через полночь.")
+                previous = end
+    ordered = sorted(items, key=lambda item: item.start)
+    if any(a.end >= b.start for a, b in pairwise(ordered)):
+        raise ScheduleError("Диапазоны исключений пересекаются. Измените существующее исключение.")
+
+
+@dataclass
 class WorkCalendar:
     """Local project time: Monday–Friday, 09–13 and 14–18 (eight working hours)."""
 
     holidays: set[date] = field(default_factory=set)
     workdays: set[int] = field(default_factory=lambda: set(range(5)))
+    exceptions: list[CalendarException] = field(default_factory=list)
+
+    def validate(self) -> None:
+        if not self.workdays or any(type(day) is not int or not 0 <= day <= 6 for day in self.workdays):
+            raise ScheduleError("Некорректные рабочие дни проекта.")
+        if any(type(day) is not date for day in self.holidays):
+            raise ScheduleError("Некорректная дата праздника.")
+        validate_exceptions(self.exceptions, CalendarException)
 
     def working_day(self, day: date) -> bool:
-        return day.weekday() in self.workdays and day not in self.holidays
+        return bool(self.segments(day))
 
     def segments(self, day: date) -> list[tuple[datetime, datetime]]:
-        if not self.working_day(day):
-            return []
-        return [(datetime.combine(day, time(a)), datetime.combine(day, time(b)))
-                for a, b in ((9, 13), (14, 18))]
+        override = next((item for item in self.exceptions if item.start <= day <= item.end), None)
+        if override is not None:
+            periods = override.periods
+        elif day.weekday() in self.workdays and day not in self.holidays:
+            periods = [[540, 780], [840, 1080]]
+        else:
+            periods = []
+        midnight = datetime.combine(day, time())
+        return [(midnight + timedelta(minutes=a), midnight + timedelta(minutes=b)) for a, b in periods]
 
     def normalize(self, value: datetime, forward: bool = True) -> datetime:
+        day = value.date()
         while True:
-            spans = self.segments(value.date())
+            spans = self.segments(day)
             if forward:
                 for start, end in spans:
                     if value < start:
                         return start
                     if start <= value < end:
                         return value
-                value = datetime.combine(value.date() + timedelta(days=1), time(9))
+                day += timedelta(days=1)
             else:
                 for start, end in reversed(spans):
                     if value > end:
                         return end
                     if start < value <= end:
                         return value
-                value = datetime.combine(value.date() - timedelta(days=1), time(18))
+                day -= timedelta(days=1)
 
     def add(self, value: datetime, minutes: int) -> datetime:
         if not minutes:
@@ -101,7 +163,7 @@ class WorkCalendar:
             value += timedelta(days=direction)
             while not self.working_day(value.date()):
                 value += timedelta(days=direction)
-        return value
+        return self.normalize(value)
 
     def day_distance(self, start: date, end: date) -> int:
         direction = 1 if end >= start else -1
@@ -120,9 +182,11 @@ class Resource:
     capacity: float = 8
     workdays: set[int] = field(default_factory=lambda: set(range(5)))
     color: str = "#2683ed"
+    exceptions: list[ResourceException] = field(default_factory=list)
 
     def available(self, day: date) -> float:
-        return self.capacity if day.weekday() in self.workdays else 0
+        override = next((item for item in self.exceptions if item.start <= day <= item.end), None)
+        return override.capacity if override is not None else self.capacity if day.weekday() in self.workdays else 0
 
     def validate(self) -> None:
         if not self.id or not isinstance(self.name, str) or not self.name.strip():
@@ -133,6 +197,7 @@ class Resource:
             raise ScheduleError("Некорректные рабочие дни ресурса.")
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", self.color):
             raise ScheduleError("Цвет должен иметь формат #RRGGBB.")
+        validate_exceptions(self.exceptions, ResourceException)
 
 
 FIELD_TYPES = {"text": "Текст", "number": "Число", "date": "Дата", "select": "Список",
@@ -417,11 +482,22 @@ class Project:
     def set_workdays(self, days: set[int]) -> None:
         if not days or any(type(day) is not int or not 0 <= day <= 6 for day in days):
             raise ScheduleError("Выберите хотя бы один рабочий день проекта.")
-        if days == self.calendar.workdays:
+        calendar = deepcopy(self.calendar)
+        calendar.workdays = days
+        self.set_calendar(calendar)
+
+    def set_calendar(self, calendar: WorkCalendar) -> None:
+        calendar.validate()
+        if calendar == self.calendar:
             return
-        self.calendar.workdays = days
+        previous = self.calendar
+        self.calendar = deepcopy(calendar)
+        if (calendar.workdays == previous.workdays and calendar.holidays == previous.holidays and
+                [(item.start, item.end, item.periods) for item in calendar.exceptions] ==
+                [(item.start, item.end, item.periods) for item in previous.exceptions]):
+            return
         for task in self.tasks.values():
-            if task.kind != "group":
+            if task.kind != "group" or not self.children(task.id):
                 task.start = self.calendar.normalize(task.start)
         self.propagate(set(self.tasks), {}, align_changed=True)
 
@@ -503,8 +579,7 @@ class Project:
     def validate(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
             raise ScheduleError("Укажите название проекта.")
-        if not self.calendar.workdays or any(type(day) is not int or not 0 <= day <= 6 for day in self.calendar.workdays):
-            raise ScheduleError("Некорректные рабочие дни проекта.")
+        self.calendar.validate()
         names = set()
         for resource in self.resources.values():
             resource.validate()
@@ -807,6 +882,8 @@ class Project:
                 raise
 
     def to_dict(self) -> dict:
+        def exceptions(items):
+            return [{**asdict(item), "start": item.start.isoformat(), "end": item.end.isoformat()} for item in items]
         tasks = []
         for task in self.tasks.values():
             item = asdict(task)
@@ -814,8 +891,9 @@ class Project:
             item["deadline"] = task.deadline.isoformat() if task.deadline is not None else None
             item.pop("assignee")
             tasks.append(item)
-        resources = [{**asdict(r), "workdays": sorted(r.workdays)} for r in self.resources.values()]
-        return {"version": 5, "name": self.name, "tasks": tasks, "resources": resources,
+        resources = [{**asdict(r), "workdays": sorted(r.workdays), "exceptions": exceptions(r.exceptions)} for r in self.resources.values()]
+        return {"version": 6, "name": self.name, "tasks": tasks, "resources": resources,
+                "calendar_exceptions": exceptions(self.calendar.exceptions),
                 "custom_fields": [asdict(f) for f in self.custom_fields.values()],
                 "dependencies": [asdict(link) for link in self.dependencies],
                 "workdays": sorted(self.calendar.workdays),
@@ -823,8 +901,11 @@ class Project:
 
     @classmethod
     def from_dict(cls, value: dict) -> Project:
-        if value.get("version") not in (1, 2, 3, 4, 5):
+        if value.get("version") not in (1, 2, 3, 4, 5, 6):
             raise ScheduleError("Неподдерживаемая версия файла проекта.")
+        def exceptions(items, kind):
+            return [kind(**{**deepcopy(item), "start": date.fromisoformat(item["start"]), "end": date.fromisoformat(item["end"])})
+                    for item in items]
         tasks = {}
         for item in value["tasks"]:
             record = {**item, "resource_ids": list(item.get("resource_ids", [])),
@@ -838,7 +919,8 @@ class Project:
             tasks[task.id] = task
         resources = {}
         for item in value.get("resources", []):
-            resource = Resource(**{**item, "workdays": set(item.get("workdays", range(5)))})
+            resource = Resource(**{**item, "workdays": set(item.get("workdays", range(5))),
+                                   "exceptions": exceptions(item.get("exceptions", []), ResourceException)})
             if resource.id in resources:
                 raise ScheduleError("Повторяющийся идентификатор ресурса.")
             resources[resource.id] = resource
@@ -851,6 +933,7 @@ class Project:
         project = cls(value["name"], tasks,
                       [Dependency(**item) for item in value["dependencies"]],
                       WorkCalendar({date.fromisoformat(day) for day in value.get("holidays", [])},
-                                   set(value.get("workdays", range(5)))), resources, custom_fields)
+                                   set(value.get("workdays", range(5))),
+                                   exceptions(value.get("calendar_exceptions", []), CalendarException)), resources, custom_fields)
         project.validate()
         return project

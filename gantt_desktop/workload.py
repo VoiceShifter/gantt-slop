@@ -15,7 +15,7 @@ def workload_rows(project: Project, origin: date, count: int) -> list[dict]:
             "capacity": resource.capacity, "workdays": sorted(resource.workdays),
             "tasks": [], "days": [
                 {"date": day.isoformat(), "offset": i, "hours": 0.0,
-                 "capacity": resource.available(day) if day not in project.calendar.holidays else 0,
+                 "capacity": resource.available(day) if project.calendar.working_day(day) else 0,
                  "weekend": day.weekday() >= 5, "tasks": []}
                 for i, day in enumerate(dates)],
         }

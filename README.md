@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.11 adds dated calendar exceptions:** editable project holidays/working intervals and resource vacations/daily capacity ranges, overlap validation, independent availability warnings, atomic scheduling/history and export. [Calendar exceptions](docs/CALENDAR_EXCEPTIONS.md).
+
 **0.10 adds native task-date calendars and independent deadlines:** calendar buttons in properties/table, explicit Apply/Cancel, a “Крайний срок” field/column, warnings/diagram flags and export support. Deadlines never reschedule tasks. [Dates and deadlines](docs/DATES_AND_DEADLINES.md). The remaining work is tracked in the [parity plan](docs/PARITY_PLAN.md).
 
 **0.9 adds a real export preview:** full-diagram PDF/PNG, paged paper sizes/orientation, selected fields/range/scale, optional workload, typed Excel, MS Project XML and CSV. No application-window capture. [Export](docs/EXPORT.md).
@@ -59,6 +61,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Native calendar pickers for task start/finish, preserving time and scheduling constraints; explicit Apply/Cancel and atomic Undo/Redo.
 - Optional date-only deadlines independent of the schedule, including groups/milestones, a standard column, expired/planned-miss warnings, chart flags and PDF/PNG/Excel/CSV/XML export.
 - Project-local people with stable IDs, create/rename/delete, individual capacity/workdays, multi-person effort allocation and migration of existing assignee names.
+- Native holiday/exception range editors: project dates override weekdays with zero or one/two working intervals; resource ranges override daily capacity, including zero-hour vacations, without moving tasks.
 - Assignees are selected from an anchored checkbox roster, not typed as names; search only filters. Resource creation is explicit, and opening/cancelling a draft makes no assignment/history changes.
 - Platform-styled Qt Widgets modal dialogs with standard input controls, system fonts, window decorations, keyboard handling and parent-window modality; their palette follows the same app theme as the Gantt.
 - Collapsible/resizable workload below the Gantt, synchronized zoom/panning, green normal load, red overload, weekend/nonworking warnings, Hours/Percent/Tasks modes and expandable assigned-task bars.
@@ -84,6 +87,8 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Bulk edit | Toolbar ☑, then row/group checkboxes; Ctrl+A selects the current filter; Apply commits |
 | Resource workload | Click “Загрузка ресурсов” in the bottom bar; drag its top divider to resize |
 | People and calendars | Bottom “Люди…” or a person's workload calendar button |
+| Project holidays / special hours | “Люди…” → “Праздники и исключения…” → Add/Edit → Save |
+| Resource vacations / dated capacity | Select a saved person → “Отпуска и исключения…” → Add/Edit → Save |
 | Multiple assignees | Click Assignee in the table/properties → check people → Ок |
 | Assignment hours | Picker “Часы…” or task-properties ⋯ → native allocation draft → Apply |
 | New resource | Picker “＋ Добавить ресурс…” → explicit native form Save; then select it |
@@ -109,11 +114,11 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Cancel gesture | Escape |
 | Undo / redo | Toolbar or platform-standard shortcuts |
 
-The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00. Task times are local civil/project times, not UTC timestamps. Project working weekdays and each person's availability are editable through “Люди…”. JSON also persists project holidays; a full holiday/exception calendar editor remains pending. Workload warnings are diagnostic and do not silently move tasks to resolve conflicts.
+The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00. Task times are local civil/project times, not UTC timestamps. Project working weekdays and each person's availability are editable through “Люди…”. Dated project exceptions override weekdays/legacy holidays; native editors support nonworking ranges and up to two same-day working intervals. Resource exceptions override available daily hours; dates closed for the project show zero project capacity. Workload warnings are diagnostic and do not silently move tasks to resolve conflicts.
 
 ### Project-file compatibility
 
-New saves use **schema 5**, adding optional date-only task deadlines to the existing custom-field/resource data. Schema-1/2/3/4 files remain importable with no deadline; older assignee names migrate to shared resources and existing schedules/metadata are retained. App versions through 0.9 cannot read schema 5; keep a separate copy before saving with 0.10.
+New saves use **schema 6**, adding project/resource exception ranges. Schema-1/2/3/4/5 files remain importable; their holidays, deadlines and other metadata are retained. Older assignee names still migrate to shared resources. App versions through 0.10 cannot read schema 6; keep a separate copy before saving with 0.11.
 
 ## Tests and native screenshots
 
@@ -132,7 +137,7 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **453 passing tests**, including 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **532 passing tests**, including 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
@@ -142,6 +147,7 @@ The current suite has **453 passing tests**, including 22 task-calendar and 36 d
 - `gantt_desktop/dialogs.py`: platform-styled QWidget dialogs and QML/window lifecycle bridge.
 - `gantt_desktop/field_dialogs.py`: native field picker, definition and typed-value editors.
 - `gantt_desktop/date_dialog.py`: native calendar draft for start/finish/deadline dates.
+- `gantt_desktop/calendar_dialog.py`: native project/resource exception lists and transactional range editors.
 - `gantt_desktop/theme.py`: shared light/dark tokens, application/widget palette and local `QSettings` preference.
 - `gantt_desktop/exporting.py`, `interchange.py`, `export_dialog.py`: frozen export snapshots, shared vector rendering, atomic format writers and native preview/settings.
 - `gantt_desktop/qml/`: native Qt Quick interface and direct manipulation.
@@ -150,6 +156,6 @@ The current suite has **453 passing tests**, including 22 task-calendar and 36 d
 
 ## Parity boundary
 
-This is a working implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-row dragging, arbitrary multi-bar date gestures, full calendar exception/holiday editing, baselines/critical-path UI, richer scheduling modes/constraints, full date-scale/header parity, direct native-printer integration, large-project virtualization, and comprehensive accessibility/high-DPI QA. The inspected reference checkbox mode edits bulk properties, not task dates. Less-common dependency editing behaviors still need further live-reference parity testing.
+This is a working implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-row dragging, arbitrary multi-bar date gestures, recurring/overnight or resource time-of-day shift editing, baselines/critical-path UI, richer scheduling modes/constraints, full date-scale/header parity, direct native-printer integration, large-project virtualization, and comprehensive accessibility/high-DPI QA. The inspected reference checkbox mode edits bulk properties, not task dates. Less-common dependency editing behaviors still need further live-reference parity testing.
 
 Qt supports Windows, macOS and Linux, but this checkout has only been run and tested on **Linux**. Windows/macOS installation bundles, signing and platform QA have not been produced. When distributing the app, observe PySide6/Qt and other dependency licensing requirements.
