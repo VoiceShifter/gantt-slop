@@ -274,6 +274,8 @@ def write_project_xml(path: Path, source: ExportSource) -> None:
                   ("ManualDuration", duration(row["duration"]*60)))
         for name, value in values:
             element(record, name, value)
+        if task.deadline is not None:
+            element(record, "Deadline", task.deadline.isoformat() + "T23:59:59")
         notes = [task.notes, "Статус: " + row["statusText"]]
         notes.extend(f.name + ": " + source.text(row, "custom:" + f.id) for f in project.custom_fields.values()
                      if source.value(row, "custom:" + f.id) is not None)

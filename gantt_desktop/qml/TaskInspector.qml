@@ -107,7 +107,8 @@ Drawer {
                     }
                     Item { Layout.fillWidth: true }
                     ActionButton {
-                        text: "＋  Добавить зависимость"
+                        text: drawer.width < 760 ? "＋ Связь" : "＋  Добавить зависимость"
+                        hint: "Добавить зависимость"
                         enabled: !!controller.selectedId
                         onClicked: drawer.dependencyRequested("", controller.selectedId, "FS", "")
                     }
@@ -118,16 +119,18 @@ Drawer {
                     Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
                     Label { text: "Начало"; color: appTheme.colors.muted; font.pixelSize: 12; Layout.columnSpan: 2 }
                     Label { text: "Завершение"; color: appTheme.colors.muted; font.pixelSize: 12; Layout.columnSpan: 2 }
-                    CellEditor {
+                    DateField {
                         objectName: "inspectorStart"
                         Layout.fillWidth: true; text: controller.selected.start || ""; enabled: controller.selected.canMove || false
                         onEditingFinished: if (text!==controller.selected.start) controller.editField(controller.selectedId,"start",text)
+                        onCalendarRequested: nativeDialogs.showTaskDate(controller.selectedId,"start")
                     }
                     CellEditor { Layout.preferredWidth: 64; text: controller.selected.startTime || ""; enabled: (controller.selected.canMove || false) && !controller.selected.summary; onEditingFinished: if(text!==controller.selected.startTime) controller.editField(controller.selectedId,"startTime",text) }
-                    CellEditor {
+                    DateField {
                         objectName: "inspectorEnd"
                         Layout.fillWidth: true; text: controller.selected.end || ""; enabled: controller.selected.canResizeEnd || false
                         onEditingFinished: if(text!==controller.selected.end) controller.editField(controller.selectedId,"end",text)
+                        onCalendarRequested: nativeDialogs.showTaskDate(controller.selectedId,"end")
                     }
                     CellEditor { Layout.preferredWidth: 64; text: controller.selected.endTime || ""; enabled: controller.selected.canResizeEnd || false; onEditingFinished: if(text!==controller.selected.endTime) controller.editField(controller.selectedId,"endTime",text) }
                     Label { text: "Длительность, ч"; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
@@ -162,6 +165,35 @@ Drawer {
                         Layout.columnSpan: 2; Layout.fillWidth: true
                         text: String(controller.selected.costValue || 0); enabled: !controller.selected.summary
                         onEditingFinished: if(text!==String(controller.selected.costValue)) controller.editField(controller.selectedId,"cost",text)
+                    }
+                }
+                ColumnLayout {
+                    Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
+                    Label { text: "Крайний срок"; color: appTheme.colors.muted; font.pixelSize: 12 }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        DateField {
+                            objectName: "inspectorDeadline"
+                            Layout.fillWidth: true
+                            text: controller.selected.deadline || ""
+                            placeholderText: "Не задан"
+                            enabled: !!controller.selectedId
+                            onEditingFinished: if (text!==controller.selected.deadline) controller.editField(controller.selectedId,"deadline",text)
+                            onCalendarRequested: nativeDialogs.showTaskDate(controller.selectedId,"deadline")
+                        }
+                        ActionButton {
+                            objectName: "clearDeadline"
+                            text: "×"; hint: "Убрать крайний срок"
+                            visible: !!controller.selected.deadline
+                            onClicked: controller.editField(controller.selectedId,"deadline","")
+                        }
+                    }
+                    Label {
+                        objectName: "deadlineWarning"
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                        visible: !!controller.selected.deadlineMissed || !!controller.selected.deadlineOverdue
+                        text: controller.selected.deadlineMissed ? "Плановое завершение позже крайнего срока." : "Крайний срок прошёл, задача не завершена."
+                        color: appTheme.colors.danger; font.pixelSize: 12
                     }
                 }
                 Label {

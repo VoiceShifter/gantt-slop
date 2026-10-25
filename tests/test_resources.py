@@ -134,7 +134,7 @@ def test_resource_and_calendar_round_trip_current_schema():
     p.assign_resources("a", [p.tasks["a"].resource_ids[0], bob], [2, 6])
     p.calendar.workdays = set(range(7))
     data = p.to_dict()
-    assert data["version"] == 4 and "assignee" not in data["tasks"][0]
+    assert data["version"] == 5 and "assignee" not in data["tasks"][0]
     assert Project.from_dict(data).to_dict() == data
 
 

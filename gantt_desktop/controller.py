@@ -150,7 +150,9 @@ class Controller(QObject):
             status_match = (self._filter == "all" or
                             (self._filter == "incomplete" and task.progress < 100) or
                             (self._filter == "complete" and task.progress >= 100) or
-                            (self._filter == "overdue" and project.span(task.id)[1].date() < local_today() and task.progress < 100))
+                            (self._filter == "overdue" and task.progress < 100 and
+                             (project.span(task.id)[1].date() < local_today() or
+                              task.deadline is not None and task.deadline < local_today())))
             if text_match and status_match:
                 matching.add(task.id)
                 if self._query and task.kind == "group":
@@ -222,6 +224,10 @@ class Controller(QObject):
                 "resourceShares": task.resource_shares,
                 "assigneeColor": self.project.resources[task.resource_ids[0]].color if task.resource_ids else "#829da7",
                 "notes": task.notes, "canMove": not locked,
+                "deadline": f"{task.deadline.day:02}.{task.deadline.month:02}.{task.deadline.year:04}" if task.deadline else "",
+                "deadlineDay": (task.deadline - self._origin).days if task.deadline else None,
+                "deadlineMissed": task.deadline is not None and end.date() > task.deadline,
+                "deadlineOverdue": task.deadline is not None and progress < 100 and task.deadline < local_today(),
                 "canResizeStart": task.kind == "task" and not self.project.endpoint_locked(task_id, "S"),
                 "canResizeEnd": task.kind == "task" and not self.project.endpoint_locked(task_id, "F"),
                 "status": status, "statusText": STATUS_LABELS[status], "priority": task.priority,
@@ -639,7 +645,9 @@ class Controller(QObject):
             date_fields = {"start", "end", "startTime", "endTime", "duration"}
             previous = project.group_anchors() if field_name in date_fields or field_name == "parent" else {}
             parents = project.ancestors(task_id) if field_name == "parent" else set()
-            if field_name == "assignee":
+            if field_name == "deadline":
+                task.deadline = date.fromisoformat(value if "-" in value else "-".join(reversed(value.split(".")))) if value.strip() else None
+            elif field_name == "assignee":
                 project.assign_name(task_id, value)
             elif field_name in {"name", "notes", "color", "parent"}:
                 if field_name == "parent" and value and value not in project.tasks:
@@ -908,11 +916,11 @@ class Controller(QObject):
         try:
             with Path(path).open("w", encoding="utf-8-sig", newline="") as stream:
                 writer = csv.writer(stream)
-                writer.writerow(["Задача", "Начало", "Завершение", "Длительность (ч)", "Трудозатраты (ч)", "Стоимость", "Прогресс", "Исполнитель", "Статус", "Приоритет"]
+                writer.writerow(["Задача", "Начало", "Завершение", "Длительность (ч)", "Трудозатраты (ч)", "Стоимость", "Прогресс", "Исполнитель", "Статус", "Приоритет", "Крайний срок"]
                                 + [f.name for f in self.project.custom_fields.values()])
                 for task in self.project.tasks.values():
                     record = self.record(task.id)
-                    writer.writerow([task.name, record["start"], record["end"], record["duration"], record["effortHours"], record["costValue"], record["progress"], task.assignee, record["statusText"], record["priorityText"]]
+                    writer.writerow([task.name, record["start"], record["end"], record["duration"], record["effortHours"], record["costValue"], record["progress"], task.assignee, record["statusText"], record["priorityText"], record["deadline"]]
                                     + [record["customTexts"][key] for key in self.project.custom_fields])
         except OSError as error:
             self.toast.emit(str(error))

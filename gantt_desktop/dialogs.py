@@ -513,6 +513,22 @@ class NativeDialogs(QObject):
         self.present(dialog)
 
     @Slot(str, str)
+    def showTaskDate(self, task_id: str, field: str) -> None:
+        from .date_dialog import TaskDateDialog
+
+        if task_id not in self.controller.project.tasks or field not in {"start", "end", "deadline"}:
+            return
+        record = self.controller.record(task_id)
+        if field != "deadline" and not record["canMove" if field == "start" else "canResizeEnd"]:
+            return
+        dialog = self._editors.get("taskDate")
+        if not isinstance(dialog, TaskDateDialog):
+            dialog = TaskDateDialog(self.controller)
+            self._editors["taskDate"] = dialog
+        dialog.prepare(task_id, field)
+        self.present(dialog)
+
+    @Slot(str, str)
     def showFieldValue(self, task_id: str, field_id: str) -> None:
         from .field_dialogs import FieldValueDialog
 

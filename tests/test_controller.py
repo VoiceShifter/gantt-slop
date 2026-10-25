@@ -115,7 +115,7 @@ def test_save_reopen_and_dirty_marker(qapp, tmp_path):
     reopened = Controller()
     assert reopened.load_path(path)
     assert reopened.project.to_dict() == saved
-    assert json.loads(path.read_text())["version"] == 4
+    assert json.loads(path.read_text())["version"] == 5
 
 
 def test_invalid_file_keeps_open_project(qapp, tmp_path):

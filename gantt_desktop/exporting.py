@@ -38,7 +38,7 @@ PAPERS = {name: getattr(QPageSize.PageSizeId, name) for name in
 MONTHS = ("Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек")
 STOCK_COLUMNS = {"wbs": ("№", 64), "name": ("Задача", 300), "assignee": ("Исполнитель", 120),
                  "start": ("Начало", 110), "startTime": ("Время начала", 90),
-                 "end": ("Завершение", 110), "endTime": ("Время завершения", 90),
+                 "end": ("Завершение", 110), "endTime": ("Время завершения", 90), "deadline": ("Крайний срок", 120),
                  "duration": ("Длительность", 100), "effort": ("Трудозатраты", 100),
                  "cost": ("Стоимость", 110), "progress": ("Прогресс", 90), "status": ("Статус", 120),
                  "priority": ("Приоритет", 130), "predecessors": ("Предшественники", 180), "notes": ("Описание", 260)}
@@ -137,6 +137,8 @@ class ExportSource:
         if key in {"start", "end"}:
             value = row.get(key + "Value")
             return value.date() if isinstance(value, datetime) else None
+        if key == "deadline":
+            return self.project.tasks[row["taskId"]].deadline
         if key in {"duration", "effort", "cost"}:
             return row.get({"duration": "duration", "effort": "effortHours", "cost": "costValue"}[key])
         if key in {"status", "priority"}:
@@ -350,6 +352,13 @@ class ExportDocument:
             self._text(painter, label_rect, row["name"], bold=row["summary"],
                        color="#125360" if row["summary"] else "white" if self.options.labels == "inside" and not row["milestone"] else "#30363b",
                        strike=row["status"] == "closed" and self.options.strike_closed)
+        deadline = self.source.project.tasks[row["taskId"]].deadline
+        if deadline is not None and self.start <= deadline <= self.end:
+            marker_x = self.left + ((deadline - self.start).days + 1) * ppd - 1
+            marker_color = QColor("#b93d30" if row["deadlineMissed"] or row["deadlineOverdue"] else "#637c87")
+            painter.setClipRect(QRectF(self.left, y, chart_width, self.row_height), Qt.ClipOperation.IntersectClip)
+            painter.fillRect(QRectF(marker_x, y+3, 1, 24), marker_color)
+            painter.fillRect(QRectF(marker_x, y+3, 6, 5), marker_color)
         painter.restore()
 
     def _links(self, painter: QPainter, first: int) -> None:

@@ -242,6 +242,7 @@ class Task:
     resource_ids: list[str] = field(default_factory=list)
     resource_shares: list[float] = field(default_factory=list)
     custom_values: dict[str, object] = field(default_factory=dict)
+    deadline: date | None = None
     # assignee is a legacy-constructor/display cache; JSON stores resource IDs.
 
     def set_progress(self, value: float) -> None:
@@ -536,6 +537,8 @@ class Project:
                 raise ScheduleError("Неизвестный тип задачи.")
             if task.start.tzinfo is not None:
                 raise ScheduleError("Даты проекта должны быть в локальном времени, без часового пояса.")
+            if task.deadline is not None and type(task.deadline) is not date:
+                raise ScheduleError("Крайний срок должен быть календарной датой.")
             if not isinstance(task.duration, int) or task.duration < 0:
                 raise ScheduleError("Длительность должна быть неотрицательным числом минут.")
             if task.kind == "task" and task.duration == 0:
@@ -808,10 +811,11 @@ class Project:
         for task in self.tasks.values():
             item = asdict(task)
             item["start"] = task.start.isoformat(timespec="minutes")
+            item["deadline"] = task.deadline.isoformat() if task.deadline is not None else None
             item.pop("assignee")
             tasks.append(item)
         resources = [{**asdict(r), "workdays": sorted(r.workdays)} for r in self.resources.values()]
-        return {"version": 4, "name": self.name, "tasks": tasks, "resources": resources,
+        return {"version": 5, "name": self.name, "tasks": tasks, "resources": resources,
                 "custom_fields": [asdict(f) for f in self.custom_fields.values()],
                 "dependencies": [asdict(link) for link in self.dependencies],
                 "workdays": sorted(self.calendar.workdays),
@@ -819,7 +823,7 @@ class Project:
 
     @classmethod
     def from_dict(cls, value: dict) -> Project:
-        if value.get("version") not in (1, 2, 3, 4):
+        if value.get("version") not in (1, 2, 3, 4, 5):
             raise ScheduleError("Неподдерживаемая версия файла проекта.")
         tasks = {}
         for item in value["tasks"]:
@@ -827,7 +831,8 @@ class Project:
                       "resource_shares": list(item.get("resource_shares", [])),
                       "custom_values": deepcopy(item.get("custom_values", {}))}
             record.setdefault("status", status_for_progress(record.get("progress", 0)))
-            task = Task(**{**record, "start": datetime.fromisoformat(item["start"])})
+            task = Task(**{**record, "start": datetime.fromisoformat(item["start"]),
+                           "deadline": date.fromisoformat(item["deadline"]) if item.get("deadline") is not None else None})
             if task.id in tasks:
                 raise ScheduleError("Повторяющийся идентификатор задачи.")
             tasks[task.id] = task

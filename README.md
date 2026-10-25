@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.10 adds native task-date calendars and independent deadlines:** calendar buttons in properties/table, explicit Apply/Cancel, a “Крайний срок” field/column, warnings/diagram flags and export support. Deadlines never reschedule tasks. [Dates and deadlines](docs/DATES_AND_DEADLINES.md). The remaining work is tracked in the [parity plan](docs/PARITY_PLAN.md).
+
 **0.9 adds a real export preview:** full-diagram PDF/PNG, paged paper sizes/orientation, selected fields/range/scale, optional workload, typed Excel, MS Project XML and CSV. No application-window capture. [Export](docs/EXPORT.md).
 
 **0.8 replaces free-text assignees with roster dropdowns** in the table, task properties and bulk editor: multiple people, local search, Reset/OK, explicit resource creation and native per-person hours. [Assignee picker](docs/ASSIGNEES.md).
@@ -54,6 +56,8 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - “⚙ Настройки” in the top bar opens an appearance panel with a real Light/Dark switch; the local preference is restored on startup.
 - Nested groups and tasks, milestones, collapse/expand, inline table editing, per-group creation, deletion with confirmation, and grip-based row reordering/nesting with preview, Escape and auto-scroll.
 - Dates/times, working duration, separate effort, cost, resource assignments, notes, synchronized status/progress, five priority levels and task colors.
+- Native calendar pickers for task start/finish, preserving time and scheduling constraints; explicit Apply/Cancel and atomic Undo/Redo.
+- Optional date-only deadlines independent of the schedule, including groups/milestones, a standard column, expired/planned-miss warnings, chart flags and PDF/PNG/Excel/CSV/XML export.
 - Project-local people with stable IDs, create/rename/delete, individual capacity/workdays, multi-person effort allocation and migration of existing assignee names.
 - Assignees are selected from an anchored checkbox roster, not typed as names; search only filters. Resource creation is explicit, and opening/cancelling a draft makes no assignment/history changes.
 - Platform-styled Qt Widgets modal dialogs with standard input controls, system fonts, window decorations, keyboard handling and parent-window modality; their palette follows the same app theme as the Gantt.
@@ -90,6 +94,8 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Resize a column | Drag its right header boundary; Escape restores the pre-drag widths |
 | Reset column widths | “Вид” → “Сбросить ширину таблицы” |
 | Inspect task | Double-click bar; or select then Enter |
+| Choose task date | Calendar button in Start/Finish in properties or visible table columns → choose → Apply |
+| Deadline | Properties “Крайний срок” or Fields → Standard → “Крайний срок”; calendar or typed date; × clears |
 | Move free task/group | Drag the body |
 | Change task boundary | Drag an unanchored edge; FS/SS fix the start, FF/SF fix the finish |
 | Change progress | Hover, then drag the small marker below the bar |
@@ -107,7 +113,7 @@ The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00
 
 ### Project-file compatibility
 
-New saves use **schema 4**, adding typed custom-field definitions and task values to resource entities, assignment IDs/shares and project/resource workdays. Schema-1/2/3 files remain importable; older assignee names migrate to shared resources and existing schedules/metadata are retained. App versions before 0.7 cannot read schema 4; keep a separate copy if needed.
+New saves use **schema 5**, adding optional date-only task deadlines to the existing custom-field/resource data. Schema-1/2/3/4 files remain importable with no deadline; older assignee names migrate to shared resources and existing schedules/metadata are retained. App versions through 0.9 cannot read schema 5; keep a separate copy before saving with 0.10.
 
 ## Tests and native screenshots
 
@@ -126,7 +132,7 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **395 passing tests**, including 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **453 passing tests**, including 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
@@ -135,6 +141,7 @@ The current suite has **395 passing tests**, including 52 export, 19 assignee-pi
 - `gantt_desktop/workload.py`: working-time effort distribution and daily resource availability/warnings.
 - `gantt_desktop/dialogs.py`: platform-styled QWidget dialogs and QML/window lifecycle bridge.
 - `gantt_desktop/field_dialogs.py`: native field picker, definition and typed-value editors.
+- `gantt_desktop/date_dialog.py`: native calendar draft for start/finish/deadline dates.
 - `gantt_desktop/theme.py`: shared light/dark tokens, application/widget palette and local `QSettings` preference.
 - `gantt_desktop/exporting.py`, `interchange.py`, `export_dialog.py`: frozen export snapshots, shared vector rendering, atomic format writers and native preview/settings.
 - `gantt_desktop/qml/`: native Qt Quick interface and direct manipulation.

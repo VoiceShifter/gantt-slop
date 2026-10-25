@@ -24,6 +24,7 @@ Item {
     property bool showProgress: false
     property bool showStatus: false
     property bool showPriority: false
+    property bool showDeadline: false
     property var checkStates: controller.checkStates
     property var checkedIds: controller.checkedIds
     readonly property int rowHeight: 30
@@ -104,6 +105,7 @@ Item {
         if (showCost) cols.push({key:"cost", title:"Стоимость", width:100})
         if (showStart) cols.push({key:"start", title:"Начало", width:100})
         if (showEnd) cols.push({key:"end", title:"Завершение", width:100})
+        if (showDeadline) cols.push({key:"deadline", title:"Крайний срок", width:120})
         if (showDuration) cols.push({key:"duration", title:"Длительность", width:100})
         if (showProgress) cols.push({key:"progress", title:"Прогресс", width:85})
         if (showStatus) cols.push({key:"status", title:"Статус", width:120})
@@ -125,7 +127,7 @@ Item {
 
     function columnVisibility() {
         const shown={assignee:showAssignee,effort:showEffort,cost:showCost,start:showStart,end:showEnd,
-                     duration:showDuration,progress:showProgress,status:showStatus,priority:showPriority}
+                     duration:showDuration,progress:showProgress,status:showStatus,priority:showPriority,deadline:showDeadline}
         for (let f of customFields) shown[f.key]=hiddenCustomFields.indexOf(f.id)<0
         return shown
     }
@@ -135,7 +137,7 @@ Item {
             hiddenCustomFields=shown?hiddenCustomFields.filter(value=>value!==id):hiddenCustomFields.concat([id])
         } else {
             const properties={assignee:"showAssignee",effort:"showEffort",cost:"showCost",start:"showStart",
-                              end:"showEnd",duration:"showDuration",progress:"showProgress",status:"showStatus",priority:"showPriority"}
+                              end:"showEnd",duration:"showDuration",progress:"showProgress",status:"showStatus",priority:"showPriority",deadline:"showDeadline"}
             view[properties[key]]=shown
         }
     }
@@ -441,9 +443,12 @@ Item {
                                 x: modelData.offset; width: modelData.width; height: view.rowHeight; clip: true
                                 opacity: gridRow.textOpacity
                                 Rectangle { width: 1; height: parent.height; color: appTheme.colors.grid }
-                                CellEditor {
+                                DateField {
                                     id: valueField
                                     readonly property string key: columnCell.modelData.key
+                                    objectName: "task-" + key + "-" + (gridRow.rowData.taskId || "")
+                                    calendarVisible: ["start","end","deadline"].indexOf(key)>=0 && gridRow.rowData.rowKind==="task"
+                                    onCalendarRequested: { controller.select(gridRow.rowData.taskId); nativeDialogs.showTaskDate(gridRow.rowData.taskId,key) }
                                     function displayValue() {
                                         const value = gridRow.rowData[key]
                                         if (value === undefined) return ""
@@ -457,11 +462,11 @@ Item {
                                     text: displayValue()
                                     visible: !columnCell.metadata && !columnCell.custom && key!=="assignee"
                                     horizontalAlignment: ["cost","effort","duration","progress"].indexOf(key) >= 0 ? Text.AlignRight : Text.AlignLeft
-                                    color: gridRow.rowData.rowKind === "total" ? appTheme.colors.muted : appTheme.colors.text
+                                    color: key === "deadline" && (gridRow.rowData.deadlineMissed || gridRow.rowData.deadlineOverdue) ? appTheme.colors.danger : gridRow.rowData.rowKind === "total" ? appTheme.colors.muted : appTheme.colors.text
                                     font.bold: gridRow.rowData.summary || false
                                     font.strikeout: gridRow.rowData.status === "closed"
                                     readOnly: gridRow.rowData.rowKind !== "task" ||
-                                              (gridRow.rowData.summary && key !== "start") ||
+                                              (gridRow.rowData.summary && key !== "start" && key !== "deadline") ||
                                               (key === "start" && !gridRow.rowData.canMove) ||
                                               (key === "end" && !gridRow.rowData.canResizeEnd) ||
                                               (key === "duration" && gridRow.rowData.milestone)
@@ -742,6 +747,15 @@ Item {
                         Loader {
                             active: barRow.rowData.rowKind === "task"
                             sourceComponent: Component { TaskBar { task: barRow.rowData; rowIndex: barRow.index; workspace: view } }
+                        }
+                        Rectangle {
+                            objectName: "deadline-marker-" + (barRow.rowData.taskId || "")
+                            visible: barRow.rowData.rowKind === "task" && !!barRow.rowData.deadline
+                            x: ((barRow.rowData.deadlineDay || 0)+1)*view.pixelsPerDay-1
+                            y: barRow.index*view.rowHeight+3
+                            width: 1; height: 24
+                            color: barRow.rowData.deadlineMissed || barRow.rowData.deadlineOverdue ? appTheme.colors.danger : appTheme.colors.secondary
+                            Rectangle { width: 6; height: 5; color: parent.color }
                         }
                         Rectangle {
                             visible: barRow.rowData.rowKind === "total"
