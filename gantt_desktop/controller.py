@@ -1013,11 +1013,11 @@ class Controller(QObject):
         self.fileChanged.emit()
         self.projectLoaded.emit()
 
-    def load_imported_project(self, project: Project) -> None:
+    def load_imported_project(self, project: Project, format_name: str = "XML") -> None:
         self.load_project(project)
         self._clean_index = -1
         self.historyChanged.emit()
-        self.toast.emit("XML импортирован. Сохраните новым файлом .gantt.json.")
+        self.toast.emit(format_name+" импортирован. Сохраните новым файлом .gantt.json.")
 
     def preview_xml(self, path: Path) -> bool:
         from .xml_import import read_project_xml
@@ -1035,6 +1035,23 @@ class Controller(QObject):
         path, _filter = QFileDialog.getOpenFileName(None, "Импорт GanttPRO / MS Project XML", "", "MS Project XML (*.xml)")
         if path:
             self.preview_xml(Path(path))
+
+    def preview_csv(self, path: Path) -> bool:
+        from .ganttpro_csv import read_project_csv
+
+        try:
+            report = read_project_csv(path)
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError) as error:
+            self.toast.emit(f"Не удалось импортировать CSV: {error}")
+            return False
+        self.dialogs.showCsvImport(report, path)
+        return True
+
+    @Slot()
+    def importCsv(self):
+        path, _filter = QFileDialog.getOpenFileName(None, "Импорт GanttPRO CSV · 23 поля", "", "GanttPRO CSV (*.csv)")
+        if path:
+            self.preview_csv(Path(path))
 
     def load_path(self, path: Path) -> bool:
         try:

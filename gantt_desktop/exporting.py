@@ -26,6 +26,7 @@ from PySide6.QtGui import (
     QPolygonF,
 )
 
+from . import ganttpro_csv
 from .critical_path import CriticalPath, analyze
 from .domain import Baseline, Project
 from .workload import workload_rows
@@ -47,7 +48,7 @@ STOCK_COLUMNS = {"wbs": ("№", 64), "name": ("Задача", 300), "assignee": 
                  "startVariance": ("Δ начала, кал. ч", 150), "endVariance": ("Δ завершения, кал. ч", 180)}
 
 
-GANTTPRO_COLUMNS = ("wbs", "name", "start", "end", "startTime", "endTime", "duration", "notes")
+GANTTPRO_COLUMNS = ganttpro_csv.COLUMNS
 
 
 class ExportError(ValueError):
@@ -138,6 +139,8 @@ class ExportSource:
         return [r for r in self.rows if scope == "all" or r["taskId"] in self.visible_ids]
 
     def value(self, row: dict, key: str) -> object:
+        if "ganttproValues" in row and key in GANTTPRO_COLUMNS:
+            return row["ganttproValues"][GANTTPRO_COLUMNS.index(key)]
         if key.startswith("custom:"):
             return row["customValues"].get(key[7:])
         if key == "wbs":
@@ -169,6 +172,8 @@ class ExportSource:
 
     def text(self, row: dict, key: str) -> str:
         value = self.value(row, key)
+        if "ganttproValues" in row:
+            return str(value)
         if key.startswith("custom:"):
             return self.project.custom_fields[key[7:]].display(value, self.project.resources)
         if value is None:
@@ -212,13 +217,12 @@ class ExportDocument:
             self.options = replace(self.options, scope="all", columns=GANTTPRO_COLUMNS, content="table", start=None, end=None,
                                    workload=False, critical=False, baseline=False)
         self.options.validate()
-        if any(key not in self.source.columns for key in self.options.columns):
+        if self.options.format != "ganttpro_csv" and any(key not in self.source.columns for key in self.options.columns):
             raise ExportError("Неизвестное поле экспорта.")
         self.rows = self.source.selected_rows(self.options.scope)
         if self.options.format == "ganttpro_csv":
-            self.rows = [dict(row, notes=(str(row.get("notes", "")) +
-                         ("\nСвязи (создать вручную): " + str(self.source.value(row, "predecessors"))
-                          if self.source.value(row, "predecessors") else "")).strip()) for row in self.rows]
+            values = ganttpro_csv.table_rows(self.source.project, self.rows)
+            self.rows = [dict(row, ganttproValues=value) for row, value in zip(self.rows, values, strict=True)]
         if not self.rows:
             raise ExportError("Нет задач для экспорта. Проверьте фильтр.")
         if self.options.critical:
@@ -226,7 +230,11 @@ class ExportDocument:
         self.reference = self.source.project.baselines.get(self.source.project.active_baseline)
         if self.options.baseline and self.reference is None:
             raise ExportError("Выберите базовый план перед экспортом сравнения.")
-        self.columns = [self.source.columns[key] for key in self.options.columns] if self.options.content != "chart" else []
+        if self.options.format == "ganttpro_csv":
+            self.columns = [{"key": key, "title": title, "width": width}
+                            for key, title, width in zip(GANTTPRO_COLUMNS, ganttpro_csv.HEADERS, ganttpro_csv.WIDTHS, strict=True)]
+        else:
+            self.columns = [self.source.columns[key] for key in self.options.columns] if self.options.content != "chart" else []
         first = min(r["startValue"].date() for r in self.rows)
         last = max(r["endValue"].date() for r in self.rows)
         if self.options.baseline and self.reference is not None:

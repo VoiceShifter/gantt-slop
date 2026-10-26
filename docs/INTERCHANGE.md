@@ -1,6 +1,10 @@
-# GanttPRO / MS Project file transfer — 0.14
+# GanttPRO / MS Project file transfer
 
-**This is not lossless, bidirectional GanttPRO compatibility.** There are two different routes:
+**Current 0.15 CSV workflow:** [CSV.md](CSV.md) documents the actual supplied 23-column table, the new native Desktop CSV importer and matching exporter. The supplied 20-element/14-link diagram now imports from CSV with real arrows, resource names, correct 212-hour effort/38,000 cost, colors and retained source metadata. Re-export matches every reference-table cell. **The eight-column CSV procedure below is historical 0.14 behavior and has been replaced.** Website import behavior remains separately unverified for the new table; full native project state remains JSON.
+
+## Historical 0.14 investigation
+
+**This is not lossless, bidirectional GanttPRO compatibility.** The original investigation had two different routes:
 
 | Direction | Route | Verified boundary |
 |---|---|---|
@@ -9,7 +13,7 @@
 | Desktop → Desktop through XML | MSPDI writer → XML importer | Supported diagram/calendar/resource/deadline/selected-baseline fields tested; not a replacement for JSON backups |
 | Desktop → MS Project | Existing MSPDI XML export | Structural/local round-trip tests only; actual Microsoft Project runtime is not certified |
 
-GanttPRO's public importer accepts `.xlsx`, `.csv` and `.mpp`, **not `.xml`**. An XML upload is rejected by its type check. Renaming the application's XML to `.mpp` was also tested and rejected as unreadable; this application does not manufacture a fake binary MPP file. A genuinely link-preserving return path remains blocked on a verified MPP conversion/import solution.
+GanttPRO's public importer accepts `.xlsx`, `.csv` and `.mpp`, **not `.xml`**. An XML upload is rejected by its type check. Renaming the application's XML to `.mpp` was also tested and rejected as unreadable; this application does not manufacture a fake binary MPP file. A genuinely link-preserving website return path requires a verified receiving/import route. MPP conversion is one possibility, not an established requirement for matching CSV columns.
 
 ## GanttPRO → Desktop
 

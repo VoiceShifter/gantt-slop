@@ -80,13 +80,10 @@ def write_csv(path: Path, document: ExportDocument) -> None:
 
 
 def write_ganttpro_csv(path: Path, document: ExportDocument) -> None:
-    """Headerless GanttPRO wizard fields; predecessor text is not an arrow."""
-    with path.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.writer(stream, lineterminator="\n")
-        for row in document.rows:
-            values = [row["outline"], row["name"], row["startValue"].strftime("%d.%m.%Y"), row["endValue"].strftime("%d.%m.%Y"),
-                      row["startValue"].strftime("%H:%M"), row["endValue"].strftime("%H:%M"), row["duration"], row["notes"]]
-            writer.writerow(["'"+value if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")) else value for value in values])
+    """The supplied GanttPRO task table, with a real predecessor column."""
+    from .ganttpro_csv import write_rows
+
+    write_rows(path, [row["ganttproValues"] for row in document.rows])
 
 
 def worksheet(headers: list[str], rows: list[tuple[list[object], bool, int]], widths: list[float]) -> bytes:

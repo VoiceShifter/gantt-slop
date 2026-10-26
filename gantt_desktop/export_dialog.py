@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 
 FORMATS = {"pdf": ("PDF", "PDF (*.pdf)"), "png": ("PNG", "PNG (*.png)"),
            "xlsx": ("Excel", "Excel (*.xlsx)"), "xml": ("MS Project XML", "MS Project XML (*.xml)"),
-           "csv": ("CSV", "CSV (*.csv)"), "ganttpro_csv": ("GanttPRO CSV (без стрелок)", "CSV (*.csv)")}
+           "csv": ("CSV (выбранные поля)", "CSV (*.csv)"), "ganttpro_csv": ("GanttPRO CSV · 23 поля", "CSV (*.csv)")}
 
 
 class DiagramItem(QGraphicsItem):
@@ -313,9 +313,10 @@ class ExportDialog(EditorDialog):
         self.start.setEnabled(self.range.isChecked() and format_ not in {"xml", "ganttpro_csv"})
         self.end.setEnabled(self.range.isChecked() and format_ not in {"xml", "ganttpro_csv"})
         if format_ == "ganttpro_csv":
-            self.note.setText("GanttPRO CSV: весь проект, нумерация, даты/время и длительность. Стрелки НЕ импортируются сайтом: "
-                              "связи записаны текстом в описании для ручного восстановления. Календарь, назначения, базовые и пользовательские поля "
-                              "не переносятся. Файл без заголовков: в мастере выберите «В моем файле нет строки с заголовками», «Часы» и вехи.")
+            self.note.setText("Таблица GanttPRO из 23 полей с заголовками. «Предшественник» сохраняет ссылки: Desktop создаёт стрелки при импорте CSV. "
+                              "Простые номера — FS/0; остальные связи записаны с типом и лагом в рабочих минутах. "
+                              "Имена исполнителей и общий объём переносятся, но календарь, ёмкость/цвет/доли ресурсов, базовые планы и прочие пользовательские поля "
+                              "не входят в схему. Для полного проекта сохраните .gantt.json. Полный перенос через импорт самого сайта не подтверждён.")
         else:
             self.note.setText("Экспорт не меняет проект. PDF вписывается по ширине и разбивается по строкам. "
                               "XML не принимается сайтом GanttPRO для обратного импорта.")
@@ -338,7 +339,7 @@ class ExportDialog(EditorDialog):
             elif format_ == "xml":
                 detail += " · MS Project XML, весь проект"
             elif format_ == "ganttpro_csv":
-                detail += " · GanttPRO: даты/структура; стрелки только вручную"
+                detail += f" · 23 поля GanttPRO · {len(self.source.project.dependencies)} связей в «Предшественник»"
             elif format_ == "xlsx":
                 detail += " · таблица Excel" + (" + лист загрузки" if self.workload.isChecked() else "")
             self.document = document

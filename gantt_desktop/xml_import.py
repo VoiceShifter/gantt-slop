@@ -392,5 +392,5 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
     if inconsistent:
         warnings.append(f"Несогласованных по датам связей: {inconsistent}. Даты сохранены без автоматического перепланирования.")
     warnings.append("Переносятся поддержанные поля диаграммы, не все атрибуты MS Project/веб-сервиса. Сохраните исходный XML отдельно.")
-    warnings.append("Обратный импорт XML в GanttPRO заблокирован сайтом. Его CSV/XLSX импорт не создаёт стрелки зависимостей.")
+    warnings.append("Обратный импорт XML в GanttPRO заблокирован сайтом. Перенос стрелок через CSV-мастер сайта проверяется отдельно от импорта CSV в Desktop.")
     return XmlImport(project, tuple(dict.fromkeys(warnings)), "GanttPRO XML" if ganttpro else "MS Project XML")

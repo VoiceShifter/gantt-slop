@@ -1,4 +1,4 @@
-"""Transactional, native XML import review. No live data changes before Apply."""
+"""Shared transactional XML/CSV review. No live data changes before Apply."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from .dialogs import EditorDialog
 from .domain import Project
 from .field_dialogs import editor_buttons
+from .ganttpro_csv import CsvImport
 from .xml_import import XmlImport
 
 if TYPE_CHECKING:
@@ -23,40 +24,42 @@ if TYPE_CHECKING:
 
 
 class XmlImportDialog(EditorDialog):
-    def __init__(self, controller: Controller):
-        super().__init__(controller, "xmlImportDialog", "Проверка импорта XML")
-        self.report: XmlImport | None = None
+    def __init__(self, controller: Controller, format_name: str = "XML"):
+        prefix = "csvImport" if format_name == "CSV" else "xmlImport"
+        super().__init__(controller, prefix+"Dialog", "Проверка импорта "+format_name)
+        self.format_name = format_name
+        self.report: XmlImport | CsvImport | None = None
         self.resize(1080, 680)
         self.summary = QLabel()
-        self.summary.setObjectName("xmlImportSummary")
+        self.summary.setObjectName(prefix+"Summary")
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
         self.summary.setWordWrap(True)
         self.layout_root.addWidget(self.summary)
         self.name = QLineEdit()
-        self.name.setObjectName("xmlImportName")
+        self.name.setObjectName(prefix+"Name")
         self.layout_root.addWidget(self.name)
         self.table = QTreeWidget()
-        self.table.setObjectName("xmlImportTasks")
+        self.table.setObjectName(prefix+"Tasks")
         self.table.setHeaderLabels(["Элемент", "Тип", "Начало", "Завершение", "Длительность, ч"])
         self.table.setColumnWidth(0, 340)
         self.table.setColumnWidth(2, 170)
         self.table.setColumnWidth(3, 170)
         self.layout_root.addWidget(self.table, 1)
         self.warnings = QPlainTextEdit()
-        self.warnings.setObjectName("xmlImportWarnings")
+        self.warnings.setObjectName(prefix+"Warnings")
         self.warnings.setReadOnly(True)
         self.warnings.setMaximumHeight(150)
         self.layout_root.addWidget(self.warnings)
-        note = QLabel("Импорт создаёт новый несохранённый проект. XML-источник не перезаписывается; "
+        note = QLabel("Импорт создаёт новый несохранённый проект. "+format_name+"-источник не перезаписывается; "
                       "сохраните результат как .gantt.json. Отмена оставляет текущий проект без изменений.")
         note.setWordWrap(True)
         self.layout_root.addWidget(note)
         self.layout_root.addWidget(self.error)
-        buttons = editor_buttons(self, self.apply, "xmlImport")
+        buttons = editor_buttons(self, self.apply, prefix)
         save = buttons.button(buttons.StandardButton.Save)
         save.setText("Импортировать новым проектом")
 
-    def prepare(self, report: XmlImport, source: Path) -> None:
+    def prepare(self, report: XmlImport | CsvImport, source: Path) -> None:
         self.report = report
         self.error.hide()
         self.name.setText(report.project.name)
@@ -91,4 +94,4 @@ class XmlImportDialog(EditorDialog):
         if not self.controller.confirm_discard():
             return
         self.accept()
-        self.controller.load_imported_project(project)
+        self.controller.load_imported_project(project, self.format_name)

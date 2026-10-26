@@ -1,6 +1,8 @@
 # Full-diagram export — 0.9.0
 
-**0.14 update:** the dedicated **GanttPRO CSV (без стрелок)** preset exports the entire hierarchy as eight fixed, headerless fields: WBS/name/start/finish/start time/finish time/hour duration/description. Its preview includes predecessor descriptions for **manual** link reconstruction; actual arrows, calendars, assignments, baselines and other JSON data do not transfer. The final preset was imported through GanttPRO's public UI, including non-default 10:00/15:00 times. GanttPRO rejects `.xml` imports and renamed XML `.mpp` files. Desktop now imports supported XML through a separate native review. See [file transfer and exact mappings](INTERCHANGE.md). Native schema is now 8; historical counts below describe their original releases.
+**0.15 update:** **GanttPRO CSV · 23 поля** now copies the actual supplied spreadsheet's 23-column table. Headers/order, group/task name placement, colors, full date/times, resource names, effort/cost/status/priority and metadata are retained. **Предшественник is a real link column**, and the new Desktop CSV importer creates arrows. A complete fixture re-export is checked cell-for-cell against the reference. [CSV use and exact schema](CSV.md). The 0.14 eight-column preset below is historical and has been replaced; current website round-trip compatibility is not certified.
+
+**0.14 historical update:** the dedicated **GanttPRO CSV (без стрелок)** preset exports the entire hierarchy as eight fixed, headerless fields: WBS/name/start/finish/start time/finish time/hour duration/description. Its preview includes predecessor descriptions for **manual** link reconstruction; actual arrows, calendars, assignments, baselines and other JSON data do not transfer. The final preset was imported through GanttPRO's public UI, including non-default 10:00/15:00 times. GanttPRO rejects `.xml` imports and renamed XML `.mpp` files. Desktop now imports supported XML through a separate native review. See [file transfer and exact mappings](INTERCHANGE.md). Native schema is now 8; historical counts below describe their original releases.
 
 **0.13 update:** [baselines](BASELINES.md) add a selected-reference PDF/PNG overlay, four baseline/deviation fields, real Excel date/time cells and the active snapshot as MS Project XML Baseline 0. Other snapshots and deleted-element entries remain in the project JSON, now schema 7. The historical feature counts below are unchanged.
 
@@ -10,7 +12,7 @@
 
 Click **Экспорт** in the toolbar. A standard native dialog contains a vector document preview and export settings. This is **not a capture of the application window**: sidebars, toolbars, inspectors, selection overlays and scroll position are not included.
 
-1. Select **PDF, PNG, Excel, MS Project XML, CSV or GanttPRO CSV (без стрелок)**. The last preset has fixed fields/whole-project scope and an explicit loss warning.
+1. Select **PDF, PNG, Excel, MS Project XML, CSV (выбранные поля) or GanttPRO CSV · 23 поля**. The last preset has fixed fields/whole-project scope and an explicit loss warning.
 2. Choose the whole project or the currently visible task rows (current filter/collapsed groups).
 3. For graphical export, choose table + chart, chart only or table only; time scale; labels inside/right/hidden; links, closed-task strike/fade, current-date marker and optional workload.
 4. Select export fields, including the nine custom-field types. Initial fields/widths/scale come from the current workspace; changing export settings does not change the workspace.

@@ -86,6 +86,7 @@ ApplicationWindow {
         MenuItem { text: "Новый проект"; onTriggered: controller.newProject() }
         MenuItem { text: "Открыть…"; onTriggered: controller.openProject() }
         MenuItem { objectName:"importXmlMenuItem"; text: "Импорт GanttPRO / MS Project XML…"; onTriggered: controller.importXml() }
+        MenuItem { objectName:"importCsvMenuItem"; text: "Импорт GanttPRO CSV…"; onTriggered: controller.importCsv() }
         MenuSeparator {}
         MenuItem { text: "Сохранить"; onTriggered: window.saveProject() }
         MenuItem { text: "Сохранить как…"; onTriggered: controller.saveAs() }

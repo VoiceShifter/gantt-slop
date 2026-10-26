@@ -506,6 +506,16 @@ class NativeDialogs(QObject):
         dialog.prepare(report, source)
         self.present(dialog)
 
+    def showCsvImport(self, report, source) -> None:
+        from .xml_dialog import XmlImportDialog
+
+        dialog = self._editors.get("csvImport")
+        if not isinstance(dialog, XmlImportDialog):
+            dialog = XmlImportDialog(self.controller, "CSV")
+            self._editors["csvImport"] = dialog
+        dialog.prepare(report, source)
+        self.present(dialog)
+
     @Slot(dict)
     def showFields(self, shown: dict) -> None:
         from .field_dialogs import FieldsDialog
