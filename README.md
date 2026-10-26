@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.14 adds file transfer:** native GanttPRO/MSPDI XML import with hierarchy/date/link review, explicit fidelity warnings and safe new-project Save; imported weekly working intervals; and a dedicated GanttPRO CSV export preset verified through its public import wizard. **This is not lossless interchange: GanttPRO rejects XML imports and its CSV import does not create dependency arrows.** [Routes, mapping and limits](docs/INTERCHANGE.md).
+
 **0.13 adds persistent baseline snapshots:** capture/select/delete named original plans, immutable captured dates by task ID, grey comparison bars, read-only baseline/deviation fields, calendar-hour differences and all-format export. Selecting a baseline never restores task dates. [Baselines](docs/BASELINES.md).
 
 **0.12 adds critical-path analysis:** a read-only toolbar overlay, working-time total float in task properties, exact min/max summary endpoint handling, critical dependencies and independent PDF/PNG highlighting. Analysis uses the whole current plan; it does not reschedule tasks or level resources. [Rules, limits and verification](docs/CRITICAL_PATH.md).
@@ -45,7 +47,7 @@ python -m pip install -e ".[test]"
 python -m gantt_desktop
 ```
 
-On the current development machine, PySide6 is already installed, so this also works without setting up another environment:
+On the current development machine, PySide6 and defusedxml are already installed, so this also works without setting up another environment:
 
 ```sh
 cd gantt-desktop
@@ -81,6 +83,8 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Zoom, timeline panning, horizontal/vertical scrolling, adjustable table/timeline divider, optional columns, search and completion/overdue filters.
 - Drag any column's right header boundary to resize it independently; headers/cells stay aligned, minimum widths and clipping prevent overlap, and the workload split follows the table.
 - Header + / “Поля” opens a native field picker. User fields support Text, Number, Date, List, Checkbox, Color, Multi-select, People and Labels, with validation and independent values; numbers sum/average terminal tasks without double-counting groups.
+- Native XML import review for GanttPRO/MSPDI task trees, dates, calendars and supported metadata; all four link types and signed working-minute lag; accepted imports are new unsaved projects, never automatic overwrites of the XML source.
+- Dedicated GanttPRO CSV preset with whole-tree numbering, dates, separate clock times, hour duration and descriptions. Verified in a disposable website project; predecessor text is retained for manual link reconstruction, not presented as imported arrows.
 - Versioned JSON save/load and a dirty indicator; independent full-diagram PDF/PNG export with vector preview, paged paper sizes/orientation, label/style/date/range/field controls and optional resource workload.
 - Excel `.xlsx` with real numbers/booleans/dates, hierarchy and optional workload sheet; MS Project XML with calendars/links/assignments and custom metadata in Notes; CSV remains available.
 
@@ -118,6 +122,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Scroll horizontally | Horizontal scrollbar or Shift+wheel |
 | Baselines | Header “Базовые планы” (▱ in a narrow window) → capture/select/hide/delete; comparison columns are in Fields |
 | Critical path | Toolbar ⌁ → red critical elements/arrows; task properties show working-hour float; toggle off restores original colors |
+| Import XML | “Файл” → “Импорт GanttPRO / MS Project XML…” → review/warnings → import as new → Save .gantt.json |
 | Export | “Экспорт” → preview/settings → format → choose a local destination; PDF/PNG also offer a critical-path checkbox |
 | Cancel gesture | Escape |
 | Undo / redo | Toolbar or platform-standard shortcuts |
@@ -126,7 +131,9 @@ The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00
 
 ### Project-file compatibility
 
-New saves use **schema 7**, adding baseline snapshots and the selected comparison ID. Schema-1/2/3/4/5/6 files remain importable with their existing data and no baselines. Older assignee names still migrate to shared resources. App versions through 0.12 cannot read schema 7; keep a separate copy before saving with 0.13. The critical-path toggle and computed reserves remain window-local, not project data.
+New saves use **schema 8**, retaining imported per-weekday working intervals. Schema-1/2/3/4/5/6/7 files remain readable with their existing data; absent new fields keep the default calendar. Older assignee names still migrate to shared resources, and schema-7 baselines remain intact. App versions through 0.13 cannot read schema 8; keep a separate copy before saving with 0.14. The critical-path toggle and computed reserves remain window-local, not project data.
+
+Native `.gantt.json` is desktop-specific. Use the separate [XML-in / CSV-out transfer workflow](docs/INTERCHANGE.md) for GanttPRO; it does not preserve all project data or automatically recreate website links.
 
 ## Tests and native screenshots
 
@@ -145,7 +152,7 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **669 passing tests**, including 66 baseline and 71 critical-path and 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **739 passing tests**, including 70 new XML/import/calendar/transfer cases, 66 baseline and 71 critical-path and 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
@@ -158,6 +165,7 @@ The current suite has **669 passing tests**, including 66 baseline and 71 critic
 - `gantt_desktop/date_dialog.py`: native calendar draft for start/finish/deadline dates.
 - `gantt_desktop/calendar_dialog.py`: native project/resource exception lists and transactional range editors.
 - `gantt_desktop/baseline_dialog.py`: native persistent snapshot capture/selection/deletion manager.
+- `gantt_desktop/xml_import.py`, `xml_dialog.py`: bounded/offline MSPDI parsing, GanttPRO profile mapping and transactional native import review.
 - `gantt_desktop/theme.py`: shared light/dark tokens, application/widget palette and local `QSettings` preference.
 - `gantt_desktop/exporting.py`, `interchange.py`, `export_dialog.py`: frozen export snapshots, shared vector rendering, atomic format writers and native preview/settings.
 - `gantt_desktop/qml/`: native Qt Quick interface and direct manipulation.

@@ -78,6 +78,7 @@ class WorkCalendar:
     holidays: set[date] = field(default_factory=set)
     workdays: set[int] = field(default_factory=lambda: set(range(5)))
     exceptions: list[CalendarException] = field(default_factory=list)
+    weekly_periods: dict[int, list[list[int]]] = field(default_factory=dict)
 
     def validate(self) -> None:
         if not self.workdays or any(type(day) is not int or not 0 <= day <= 6 for day in self.workdays):
@@ -85,6 +86,12 @@ class WorkCalendar:
         if any(type(day) is not date for day in self.holidays):
             raise ScheduleError("Некорректная дата праздника.")
         validate_exceptions(self.exceptions, CalendarException)
+        if not isinstance(self.weekly_periods, dict) or any(type(day) is not int or not 0 <= day <= 6 for day in self.weekly_periods):
+            raise ScheduleError("Некорректные недельные интервалы проекта.")
+        for day, periods in self.weekly_periods.items():
+            validate_exceptions([CalendarException(str(day), date.min, date.min, periods=periods)], CalendarException)
+        if not any(self.weekly_periods.get(day, [[540, 780], [840, 1080]]) for day in self.workdays):
+            raise ScheduleError("У проекта должен быть регулярный рабочий интервал.")
 
     def working_day(self, day: date) -> bool:
         return bool(self.segments(day))
@@ -94,7 +101,7 @@ class WorkCalendar:
         if override is not None:
             periods = override.periods
         elif day.weekday() in self.workdays and day not in self.holidays:
-            periods = [[540, 780], [840, 1080]]
+            periods = self.weekly_periods.get(day.weekday(), [[540, 780], [840, 1080]])
         else:
             periods = []
         midnight = datetime.combine(day, time())
@@ -550,7 +557,7 @@ class Project:
             return
         previous = self.calendar
         self.calendar = deepcopy(calendar)
-        if (calendar.workdays == previous.workdays and calendar.holidays == previous.holidays and
+        if (calendar.workdays == previous.workdays and calendar.holidays == previous.holidays and calendar.weekly_periods == previous.weekly_periods and
                 [(item.start, item.end, item.periods) for item in calendar.exceptions] ==
                 [(item.start, item.end, item.periods) for item in previous.exceptions]):
             return
@@ -961,7 +968,8 @@ class Project:
         baselines = [{"id": item.id, "name": item.name, "created": item.created.isoformat(),
                       "tasks": [{**asdict(entry), "start": entry.start.isoformat(), "end": entry.end.isoformat()}
                                 for entry in item.tasks.values()]} for item in self.baselines.values()]
-        return {"version": 7, "name": self.name, "tasks": tasks, "resources": resources,
+        return {"version": 8, "name": self.name, "tasks": tasks, "resources": resources,
+                "weekly_periods": deepcopy(self.calendar.weekly_periods),
                 "baselines": baselines, "active_baseline": self.active_baseline,
                 "calendar_exceptions": exceptions(self.calendar.exceptions),
                 "custom_fields": [asdict(f) for f in self.custom_fields.values()],
@@ -971,7 +979,7 @@ class Project:
 
     @classmethod
     def from_dict(cls, value: dict) -> Project:
-        if value.get("version") not in (1, 2, 3, 4, 5, 6, 7):
+        if value.get("version") not in (1, 2, 3, 4, 5, 6, 7, 8):
             raise ScheduleError("Неподдерживаемая версия файла проекта.")
         def exceptions(items, kind):
             return [kind(**{**deepcopy(item), "start": date.fromisoformat(item["start"]), "end": date.fromisoformat(item["end"])})
@@ -1017,7 +1025,8 @@ class Project:
                       [Dependency(**item) for item in value["dependencies"]],
                       WorkCalendar({date.fromisoformat(day) for day in value.get("holidays", [])},
                                    set(value.get("workdays", range(5))),
-                                   exceptions(value.get("calendar_exceptions", []), CalendarException)), resources, custom_fields,
+                                   exceptions(value.get("calendar_exceptions", []), CalendarException),
+                                   {int(day): deepcopy(periods) for day, periods in value.get("weekly_periods", {}).items()}), resources, custom_fields,
                       baselines, value.get("active_baseline", ""))
         project.validate()
         return project

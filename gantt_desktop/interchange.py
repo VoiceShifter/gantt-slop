@@ -79,6 +79,16 @@ def write_csv(path: Path, document: ExportDocument) -> None:
             writer.writerow(values)
 
 
+def write_ganttpro_csv(path: Path, document: ExportDocument) -> None:
+    """Headerless GanttPRO wizard fields; predecessor text is not an arrow."""
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream, lineterminator="\n")
+        for row in document.rows:
+            values = [row["outline"], row["name"], row["startValue"].strftime("%d.%m.%Y"), row["endValue"].strftime("%d.%m.%Y"),
+                      row["startValue"].strftime("%H:%M"), row["endValue"].strftime("%H:%M"), row["duration"], row["notes"]]
+            writer.writerow(["'"+value if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")) else value for value in values])
+
+
 def worksheet(headers: list[str], rows: list[tuple[list[object], bool, int]], widths: list[float]) -> bytes:
     if len(headers) > 16384 or len(rows) + 1 > 1048576:
         raise ExportError("Превышен предел строк или столбцов Excel.")
@@ -243,7 +253,7 @@ def write_project_xml(path: Path, source: ExportSource) -> None:
             working = (day_type+5) % 7 in days
             element(day, "DayWorking", int(working))
             if working:
-                working_times(day, [[540, 780], [840, 1080]])
+                working_times(day, project.calendar.weekly_periods.get((day_type+5) % 7, [[540, 780], [840, 1080]]) if base else [[540, 780], [840, 1080]])
         ranges = [(item.start, item.end, item.periods if base else [[540, 780], [840, 1080]] if item.capacity else [])
                   for item in exceptions]
         if base:

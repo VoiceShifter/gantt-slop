@@ -420,6 +420,8 @@ class Controller(QObject):
     @Property(str, notify=viewChanged)
     def calendarLabel(self):
         base = "Пн–Пт · 8ч/день" if self.project.calendar.workdays == set(range(5)) else f"{len(self.project.calendar.workdays)} дн/нед · 8ч/день"
+        if self.project.calendar.weekly_periods:
+            base = f"{len(self.project.calendar.workdays)} дн/нед · интервалы из XML"
         count = len(self.project.calendar.holidays) + len(self.project.calendar.exceptions)
         return base + (f" · исключений: {count}" if count else "")
 
@@ -1010,6 +1012,29 @@ class Controller(QObject):
         self.refresh()
         self.fileChanged.emit()
         self.projectLoaded.emit()
+
+    def load_imported_project(self, project: Project) -> None:
+        self.load_project(project)
+        self._clean_index = -1
+        self.historyChanged.emit()
+        self.toast.emit("XML импортирован. Сохраните новым файлом .gantt.json.")
+
+    def preview_xml(self, path: Path) -> bool:
+        from .xml_import import read_project_xml
+
+        try:
+            report = read_project_xml(path, local_today())
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError) as error:
+            self.toast.emit(f"Не удалось импортировать XML: {error}")
+            return False
+        self.dialogs.showXmlImport(report, path)
+        return True
+
+    @Slot()
+    def importXml(self):
+        path, _filter = QFileDialog.getOpenFileName(None, "Импорт GanttPRO / MS Project XML", "", "MS Project XML (*.xml)")
+        if path:
+            self.preview_xml(Path(path))
 
     def load_path(self, path: Path) -> bool:
         try:

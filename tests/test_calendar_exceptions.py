@@ -255,7 +255,7 @@ def test_schema_migration_keeps_old_holidays_and_empty_exception_lists(version):
     restored = Project.from_dict(data)
     assert restored.calendar.holidays == p.calendar.holidays
     assert not restored.calendar.exceptions and all(not r.exceptions for r in restored.resources.values())
-    assert restored.to_dict()["version"] == 7
+    assert restored.to_dict()["version"] == 8
 
 
 def test_schema_six_roundtrip_history_and_file_save(qapp, tmp_path):
@@ -264,7 +264,7 @@ def test_schema_six_roundtrip_history_and_file_save(qapp, tmp_path):
     assert save(c, periods=[[600, 780], [840, 960]])
     assert save(c, rid, start="2026-01-07", end="2026-01-09", capacity="2.001")
     data = c.project.to_dict()
-    assert data["version"] == 7 and Project.from_dict(json.loads(json.dumps(data))).to_dict() == data
+    assert data["version"] == 8 and Project.from_dict(json.loads(json.dumps(data))).to_dict() == data
     path = tmp_path / "calendar.json"
     assert c.save_path(path)
     other = Controller()

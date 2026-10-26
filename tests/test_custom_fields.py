@@ -46,7 +46,7 @@ def test_typed_values_round_trip_and_clear_without_schedule_or_assignment_change
     expected = value.lower() if kind == "color" else ["Todo", "Done"] if kind == "multi" else value
     assert p.custom_value("a", "extra") == expected
     data = p.to_dict()
-    assert data["version"] == 7
+    assert data["version"] == 8
     restored = Project.from_dict(data)
     assert restored.to_dict() == data
     assert [(t.start, t.duration, t.effort, t.resource_ids) for t in p.tasks.values()] == before
@@ -145,7 +145,7 @@ def test_existing_schemas_without_custom_data_remain_importable(version):
         task.pop("custom_values")
     restored = Project.from_dict(data)
     assert not restored.custom_fields
-    assert restored.to_dict()["version"] == 7
+    assert restored.to_dict()["version"] == 8
 
 
 @pytest.mark.parametrize("damage", ["unknown-field", "duplicate-field", "invalid-value"])

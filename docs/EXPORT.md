@@ -1,5 +1,7 @@
 # Full-diagram export — 0.9.0
 
+**0.14 update:** the dedicated **GanttPRO CSV (без стрелок)** preset exports the entire hierarchy as eight fixed, headerless fields: WBS/name/start/finish/start time/finish time/hour duration/description. Its preview includes predecessor descriptions for **manual** link reconstruction; actual arrows, calendars, assignments, baselines and other JSON data do not transfer. The final preset was imported through GanttPRO's public UI, including non-default 10:00/15:00 times. GanttPRO rejects `.xml` imports and renamed XML `.mpp` files. Desktop now imports supported XML through a separate native review. See [file transfer and exact mappings](INTERCHANGE.md). Native schema is now 8; historical counts below describe their original releases.
+
 **0.13 update:** [baselines](BASELINES.md) add a selected-reference PDF/PNG overlay, four baseline/deviation fields, real Excel date/time cells and the active snapshot as MS Project XML Baseline 0. Other snapshots and deleted-element entries remain in the project JSON, now schema 7. The historical feature counts below are unchanged.
 
 **0.12 update:** PDF/PNG now include a real [critical-path option](CRITICAL_PATH.md), computed from the frozen whole project rather than filtered rows. Its initial checkbox follows the workspace and can be changed independently. Invalid/over-budget analysis disables graphical export until the option is unchecked. Schema is now 6; the counts/package below remain the historical 0.9 checkpoint.
@@ -8,7 +10,7 @@
 
 Click **Экспорт** in the toolbar. A standard native dialog contains a vector document preview and export settings. This is **not a capture of the application window**: sidebars, toolbars, inspectors, selection overlays and scroll position are not included.
 
-1. Select **PDF, PNG, Excel, MS Project XML or CSV**.
+1. Select **PDF, PNG, Excel, MS Project XML, CSV or GanttPRO CSV (без стрелок)**. The last preset has fixed fields/whole-project scope and an explicit loss warning.
 2. Choose the whole project or the currently visible task rows (current filter/collapsed groups).
 3. For graphical export, choose table + chart, chart only or table only; time scale; labels inside/right/hidden; links, closed-task strike/fade, current-date marker and optional workload.
 4. Select export fields, including the nine custom-field types. Initial fields/widths/scale come from the current workspace; changing export settings does not change the workspace.
@@ -39,7 +41,7 @@ The CLI **`--screenshot`** option intentionally remains a raw window-capture too
 
 The rendered GanttPRO export page was inspected in the shared **headless** browser: PDF/PNG/XML/EXCEL, document preview, Full-size and named paper formats, landscape/portrait, scale, label placement, styling/date/workload switches and field choices. Excel exposed its task filter; XML had no additional settings. The initial PDF format was restored and the export view closed without pressing final Export, downloading a file or editing project data; the checklist was audited complete. No application source, private state or downloaded assets were used.
 
-Features not present in this application's engine are not offered as fake export controls: account creator/comment/file indicators and actual time/cost tracking. Critical-path highlighting was added in 0.12; general reserve columns are not part of the export field picker. Native printer integration, horizontal PDF tiling, exhaustive Office application compatibility and very large project/complex arrow-routing parity remain pending. No new runtime dependency is required.
+Features not present in this application's engine are not offered as fake export controls: account creator/comment/file indicators and actual time/cost tracking. Critical-path highlighting was added in 0.12; general reserve columns are not part of the export field picker. Native printer integration, horizontal PDF tiling, exhaustive Office application compatibility and very large project/complex arrow-routing parity remain pending. The export writers need no additional runtime dependency; the separate XML importer added in 0.14 uses `defusedxml`.
 
 ## Verification
 

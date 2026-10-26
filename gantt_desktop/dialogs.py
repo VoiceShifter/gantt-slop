@@ -496,6 +496,16 @@ class NativeDialogs(QObject):
         dialog.prepare(context)
         self.present(dialog)
 
+    def showXmlImport(self, report, source) -> None:
+        from .xml_dialog import XmlImportDialog
+
+        dialog = self._editors.get("xmlImport")
+        if not isinstance(dialog, XmlImportDialog):
+            dialog = XmlImportDialog(self.controller)
+            self._editors["xmlImport"] = dialog
+        dialog.prepare(report, source)
+        self.present(dialog)
+
     @Slot(dict)
     def showFields(self, shown: dict) -> None:
         from .field_dialogs import FieldsDialog

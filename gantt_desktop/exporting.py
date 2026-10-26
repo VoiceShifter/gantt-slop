@@ -6,7 +6,7 @@ import os
 import tempfile
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -47,6 +47,9 @@ STOCK_COLUMNS = {"wbs": ("№", 64), "name": ("Задача", 300), "assignee": 
                  "startVariance": ("Δ начала, кал. ч", 150), "endVariance": ("Δ завершения, кал. ч", 180)}
 
 
+GANTTPRO_COLUMNS = ("wbs", "name", "start", "end", "startTime", "endTime", "duration", "notes")
+
+
 class ExportError(ValueError):
     pass
 
@@ -72,7 +75,7 @@ class ExportOptions:
     baseline: bool = False
 
     def validate(self) -> None:
-        if self.format not in {"pdf", "png", "xlsx", "xml", "csv"} or self.scope not in {"all", "visible"}:
+        if self.format not in {"pdf", "png", "xlsx", "xml", "csv", "ganttpro_csv"} or self.scope not in {"all", "visible"}:
             raise ExportError("Некорректный формат или состав задач.")
         if self.content not in {"both", "table", "chart"} or self.labels not in {"inside", "right", "none"}:
             raise ExportError("Некорректные настройки отображения.")
@@ -205,10 +208,17 @@ class ExportDocument:
     row_height: int = 30
 
     def __post_init__(self) -> None:
+        if self.options.format == "ganttpro_csv":
+            self.options = replace(self.options, scope="all", columns=GANTTPRO_COLUMNS, content="table", start=None, end=None,
+                                   workload=False, critical=False, baseline=False)
         self.options.validate()
         if any(key not in self.source.columns for key in self.options.columns):
             raise ExportError("Неизвестное поле экспорта.")
         self.rows = self.source.selected_rows(self.options.scope)
+        if self.options.format == "ganttpro_csv":
+            self.rows = [dict(row, notes=(str(row.get("notes", "")) +
+                         ("\nСвязи (создать вручную): " + str(self.source.value(row, "predecessors"))
+                          if self.source.value(row, "predecessors") else "")).strip()) for row in self.rows]
         if not self.rows:
             raise ExportError("Нет задач для экспорта. Проверьте фильтр.")
         if self.options.critical:
@@ -568,6 +578,9 @@ def export_file(path: Path, document: ExportDocument) -> None:
             write_xlsx(target, document)
         elif format_ == "xml":
             write_project_xml(target, document.source)
+        elif format_ == "ganttpro_csv":
+            from .interchange import write_ganttpro_csv
+            write_ganttpro_csv(target, document)
         else:
             write_csv(target, document)
     atomic_export(Path(path), write)
