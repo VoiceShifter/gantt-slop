@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.19 adds an opt-in local MCP server:** connect an LLM client to the running desktop over authenticated Streamable HTTP. Read-only by default; optional task, assignment, dependency and Undo/Redo tools use the existing document transactions. No automatic saves or arbitrary file/command access. [Enable, connect, tools and safety](docs/MCP.md). **1,088 tests pass.**
+
 **0.18 adds combined and saved task filters:** combine type, assignee/unassigned, status, priority, colors and inclusive date ranges with the existing search/quick filters. Matching rows retain their hierarchy; hidden descendants remain protected during bulk edits. Named presets are project-local, transactional and undoable; applying a filter only changes the view. [Rules, native controls and verification](docs/FILTERS.md). Cascade sorting remains pending: the inspected website action is not a multi-key sort editor.
 
 **0.17 adds direct GanttPRO Excel import/export and a separate CSV/Excel website-wizard layout:** retain the actual 23-column report, or explicitly choose the 25-column adaptation with separate date/time fields and optional headerless output. Native review is transactional; local round-trips retain editable links and every reference cell. The real website return retained 20 elements / 212h / 38,000, but **lost all 14 links and the milestone assignment**; these losses are disclosed, not repaired by invention. [CSV/Excel workflow, exact mappings and verified limits](docs/CSV.md). **953 tests pass. MPP work is discontinued.**
@@ -55,12 +57,7 @@ python -m pip install -e ".[test]"
 python -m gantt_desktop
 ```
 
-On the current development machine, PySide6 and defusedxml are already installed, so this also works without setting up another environment:
-
-```sh
-cd gantt-desktop
-python3 -m gantt_desktop
-```
+When upgrading, rerun `python -m pip install -e ".[test]"` in the environment used to launch the app: 0.19 adds the official `mcp` Python SDK. MCP stays off until explicitly enabled in **Файл → MCP-сервер…**.
 
 Open a saved project with `python -m gantt_desktop path/to/project.gantt.json`.
 
@@ -87,6 +84,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Downstream rescheduling with preserved working durations; derived group dates/effort/cost/progress.
 - Current-plan critical tasks, milestones, groups and dependency arrows; working-time float under FS/SS/FF/SF and signed lags, including summary min/max alternatives. The view is non-mutating, global across filters/collapse, and reports unavailable analysis instead of partial guesses when its exact-search budget is exceeded.
 - Whole-transaction Python undo/redo, including every task changed by propagated scheduling; no-op/invalid edits do not create history entries.
+- Opt-in localhost MCP access with a fresh bearer token per enable, read-only default, optional undoable edits, revision-conflict checks, GUI-thread dispatch and automatic revocation on project changes/exit.
 - Named baselines stored in the project independently of Undo: captured task/group/milestone dates and kinds, persistent selected reference, grey chart comparison and four read-only date/calendar-hour deviation columns. New elements have no invented baseline values; deleted entries remain archived in the snapshot.
 - Zoom, timeline panning, horizontal/vertical scrolling, adjustable table/timeline divider, optional columns, search and completion/overdue filters.
 - Combined task filters: type, multiple assignees/unassigned, status, priority, colors and inclusive overlap/start/finish date bounds. Project-local named presets, native Apply/Cancel, one-step history for preset changes, preserved parent context and protected hidden tasks.
@@ -137,12 +135,13 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Export | “Экспорт” → preview/settings → format → choose a local destination; PDF/PNG also offer a critical-path checkbox |
 | Cancel gesture | Escape |
 | Undo / redo | Toolbar or platform-standard shortcuts |
+| LLM access | “Файл” → “MCP-сервер…” → enable → copy client configuration; optional write permission; active indicator in the bottom bar |
 
 The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00. Task times are local civil/project times, not UTC timestamps. Project working weekdays and each person's availability are editable through “Люди…”. Dated project exceptions override weekdays/legacy holidays; native editors support nonworking ranges and up to two same-day working intervals. Resource exceptions override available daily hours; dates closed for the project show zero project capacity. Workload warnings are diagnostic and do not silently move tasks to resolve conflicts.
 
 ### Project-file compatibility
 
-New saves use **schema 9**, adding project-local named filter definitions. Schemas **1–9** remain readable; absent filter definitions default to an empty set. Existing calendars, assignments and baselines remain intact. App versions through 0.17 cannot read schema 9; keep a separate copy before saving with 0.18. Active filter conditions, the critical-path toggle and computed reserves remain window-local, not project data.
+New saves use **schema 9**, adding project-local named filter definitions. Schemas **1–9** remain readable; absent filter definitions default to an empty set. Existing calendars, assignments and baselines remain intact. App versions through 0.17 cannot read schema 9; keep a separate copy before saving with 0.18 or newer. Active filter conditions, the critical-path toggle and computed reserves remain window-local, not project data. MCP does not change the schema; access settings and tokens are never stored in the project.
 
 Native `.gantt.json` is desktop-specific. Use the separate [XML/CSV/Excel transfer workflows](docs/INTERCHANGE.md) and [23-column table contract / 25-column wizard adaptation](docs/CSV.md) for GanttPRO; it does not preserve all project data or automatically recreate website links.
 
@@ -163,7 +162,7 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **1,024 passing tests**, including 71 new filter/preset checks in 0.18, 64 Excel/wizard checks in 0.17, 55 XML fidelity checks in 0.16, 95 additional CSV application checks in 0.15 and 70 XML/import/calendar/transfer cases from 0.14, 66 baseline and 71 critical-path and 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **1,088 passing tests**, including 64 MCP protocol/security/GUI checks in 0.19 and 71 filter/preset checks in 0.18, 64 Excel/wizard checks in 0.17, 55 XML fidelity checks in 0.16, 95 additional CSV application checks in 0.15 and 70 XML/import/calendar/transfer cases from 0.14, 66 baseline and 71 critical-path and 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
@@ -177,6 +176,7 @@ The current suite has **1,024 passing tests**, including 71 new filter/preset ch
 - `gantt_desktop/calendar_dialog.py`: native project/resource exception lists and transactional range editors.
 - `gantt_desktop/baseline_dialog.py`: native persistent snapshot capture/selection/deletion manager.
 - `gantt_desktop/filter_dialog.py`: native combined-filter drafts and project-local named preset editor.
+- `gantt_desktop/mcp_server.py`, `mcp_transport.py`, `mcp_dialog.py`: Qt-thread document bridge, authenticated official-SDK HTTP transport and native opt-in controls.
 - `gantt_desktop/xml_import.py`, `xml_dialog.py`: bounded/offline MSPDI parsing, GanttPRO profile mapping and shared transactional XML/CSV/Excel native import review.
 - `gantt_desktop/ganttpro_csv.py`: exact supplied 23-column table schema, separate 25-column wizard layout, bounded CSV parsing, dependency/resource/metadata mapping and reversible literal-safe writing.
 - `gantt_desktop/ganttpro_xlsx.py`: bounded offline Excel ZIP/XML table reader, shared/inline strings, numeric dates/RGB fills and common CSV-domain validation.

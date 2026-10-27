@@ -94,6 +94,8 @@ ApplicationWindow {
         MenuItem { text: "Сохранить как…"; onTriggered: controller.saveAs() }
         MenuSeparator {}
         MenuItem { text: "Открыть демонстрационный проект"; onTriggered: controller.loadExample() }
+        MenuSeparator {}
+        MenuItem { objectName:"mcpMenuItem"; text:"MCP-сервер…"; onTriggered:{gantt.cancelInteractions();nativeDialogs.showMcp()} }
     }
     Menu {
         id: taskMenu
@@ -333,6 +335,7 @@ ApplicationWindow {
                     ActionButton { objectName:"resourcesButton"; text:"Люди…"; implicitHeight:24; font.pixelSize:11; onClicked:window.showResources("") }
                     Text { text:controller.taskCount+" задач · "+controller.calendarLabel; font.pixelSize:11; color:appTheme.colors.muted }
                     Item { Layout.fillWidth:true }
+                    ActionButton { objectName:"mcpIndicator"; visible:!!nativeDialogs.mcpStatus; text:nativeDialogs.mcpStatus; implicitHeight:24; font.pixelSize:11; checked:true; onClicked:{gantt.cancelInteractions();nativeDialogs.showMcp()} }
                     Text { text:controller.selectedId?(controller.selected.start+" — "+controller.selected.end):"Двойной щелчок — свойства задачи"; font.pixelSize:11; color:appTheme.colors.muted }
                 }
             }

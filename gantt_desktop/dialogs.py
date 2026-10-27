@@ -32,6 +32,7 @@ from shiboken6 import isValid
 
 if TYPE_CHECKING:
     from .controller import Controller
+    from .mcp_server import McpServer
 
 DAY_NAMES = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 RELATIONS = ("FS", "SS", "FF", "SF")
@@ -424,6 +425,7 @@ class DependencyDialog(EditorDialog):
 class NativeDialogs(QObject):
     modalChanged = Signal()
     columnVisibilityChanged = Signal(str, bool)
+    mcpChanged = Signal()
 
     def __init__(self, controller: Controller):
         super().__init__(controller)
@@ -433,6 +435,7 @@ class NativeDialogs(QObject):
         self._active: set[QDialog] = set()
         self._actions: dict[QMessageBox, Callable[[], object]] = {}
         self._link_id = ""
+        self._mcp: McpServer | None = None
         controller.projectLoaded.connect(self.closeAll)
 
     @property
@@ -444,6 +447,10 @@ class NativeDialogs(QObject):
     @Property(bool, notify=modalChanged)
     def modalOpen(self):
         return bool(self._active)
+
+    @Property(str, notify=mcpChanged)
+    def mcpStatus(self):
+        return self._mcp.label if self._mcp is not None else ""
 
     @Property(str, notify=modalChanged)
     def activeLinkId(self):
@@ -524,6 +531,22 @@ class NativeDialogs(QObject):
             dialog = XmlImportDialog(self.controller, "CSV")
             self._editors["csvImport"] = dialog
         dialog.prepare(report, source)
+        self.present(dialog)
+
+    @Slot()
+    def showMcp(self) -> None:
+        from .mcp_dialog import McpDialog
+        from .mcp_server import McpServer
+
+        if self._mcp is None:
+            self._mcp = McpServer(self.controller)
+            self._mcp.changed.connect(self.mcpChanged)
+        dialog = self._editors.get("mcp")
+        if not isinstance(dialog, McpDialog):
+            dialog = McpDialog(self.controller, self._mcp)
+            self._editors["mcp"] = dialog
+        dialog.error.hide()
+        dialog.refresh()
         self.present(dialog)
 
     @Slot()
@@ -753,6 +776,8 @@ class NativeDialogs(QObject):
 
     @Slot()
     def dispose(self) -> None:
+        if self._mcp is not None:
+            self._mcp.stop()
         self.closeAll()
         for dialog in self._editors.values():
             if isValid(dialog):
