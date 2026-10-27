@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import math
+import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -88,19 +89,22 @@ def write_ganttpro_csv(path: Path, document: ExportDocument) -> None:
     """The supplied GanttPRO task table, with a real predecessor column."""
     from .ganttpro_csv import write_rows
 
-    write_rows(path, [row["ganttproValues"] for row in document.rows])
+    write_rows(path, [row["ganttproValues"] for row in document.rows],
+               tuple(column["title"] for column in document.columns), document.options.table_headers)
 
 
-def worksheet(headers: list[str], rows: list[tuple[list[object], bool, int]], widths: list[float]) -> bytes:
+def worksheet(headers: list[str], rows: list[tuple[list[object], bool, int]], widths: list[float], include_header: bool = True) -> bytes:
     if len(headers) > 16384 or len(rows) + 1 > 1048576:
         raise ExportError("Превышен предел строк или столбцов Excel.")
     root = ET.Element("worksheet", {"xmlns": SS})
     sheet_pr = element(root, "sheetPr")
     element(sheet_pr, "outlinePr", summaryBelow="0")
-    element(root, "dimension", ref=f"A1:{column_name(len(headers))}{len(rows)+1}")
+    offset = int(include_header)
+    element(root, "dimension", ref=f"A1:{column_name(len(headers))}{len(rows)+offset}")
     views = element(root, "sheetViews")
     view = element(views, "sheetView", workbookViewId="0")
-    element(view, "pane", xSplit="1", ySplit="1", topLeftCell="B2", activePane="bottomRight", state="frozen")
+    if include_header:
+        element(view, "pane", xSplit="1", ySplit="1", topLeftCell="B2", activePane="bottomRight", state="frozen")
     columns = element(root, "cols")
     for index, width in enumerate(widths, 1):
         element(columns, "col", min=str(index), max=str(index), width=f"{max(8,min(100,width/7)):g}", customWidth="1")
@@ -133,13 +137,16 @@ def worksheet(headers: list[str], rows: list[tuple[list[object], bool, int]], wi
             else:
                 cell = element(record, "c", t="inlineStr", **attrs)
                 string = element(cell, "is")
-                entry = element(string, "t", value.isoformat() if isinstance(value, date) else value)
+                value = value.isoformat() if isinstance(value, date) else str(value)
+                entry = element(string, "t", re.sub(r"_(?=x[0-9a-fA-F]{4}_)", "_x005F_", value))
                 entry.set("xml:space", "preserve")
-    add_row(1, list(headers), 1, 0)
-    for index, (values, summary, level) in enumerate(rows, 2):
+    if include_header:
+        add_row(1, list(headers), 1, 0)
+    for index, (values, summary, level) in enumerate(rows, 1+offset):
         add_row(index, values, 3 if summary else 0, level)
-    element(root, "autoFilter", ref=f"A1:{column_name(len(headers))}{len(rows)+1}")
-    return xml_bytes(root)
+    if include_header:
+        element(root, "autoFilter", ref=f"A1:{column_name(len(headers))}{len(rows)+1}")
+    return xml_bytes(root).replace(b"\r", b"&#13;")
 
 
 def styles() -> bytes:
@@ -173,10 +180,24 @@ def write_xlsx(path: Path, document: ExportDocument) -> None:
     keys = document.options.columns
     if not keys:
         raise ExportError("Выберите поля таблицы.")
+    task_table = document.options.format == "ganttpro_xlsx"
+    rows = []
+    for row in document.rows:
+        if task_table:
+            values: list[object] = list(row["ganttproValues"])
+            for index in (8, 9, 10, 16, 22):
+                values[index] = csv_number(str(values[index]))
+            if not document.options.site_import:
+                for index in (5, 6):
+                    values[index] = csv_timestamp(str(values[index]))
+                if values[7]:
+                    values[7] = date.fromisoformat(str(values[7]))
+        else:
+            values = [tabular_value(document, row, key) for key in keys]
+        rows.append((values, row["summary"], row["level"]))
     sheets = [("Задачи", worksheet(
-        [document.source.columns[key]["title"] for key in keys],
-        [([tabular_value(document, row, key) for key in keys], row["summary"], row["level"]) for row in document.rows],
-        [document.source.columns[key]["width"] for key in keys]))]
+        [column["title"] for column in document.columns], rows,
+        [column["width"] for column in document.columns], document.options.table_headers if task_table else True))]
     if document.options.workload:
         resources = document.resources or workload_rows(document.source.project, document.start, len(document.dates))
         rows = []

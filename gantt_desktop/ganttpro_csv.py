@@ -33,6 +33,9 @@ WIDTHS = (100, 80, 210, 300, 180, 180, 180, 130, 100, 130, 140, 160, 120, 120, 2
 METADATA = ((11, "ganttpro_spent_minutes"), (17, "ganttpro_actual_cost"),
             (18, "ganttpro_created"), (19, "ganttpro_creator"))
 KINDS = {"проект": "group", "задача": "task", "веха": "milestone"}
+SITE_HEADERS = (*HEADERS, "Время начала", "Время окончания")
+SITE_COLUMNS = (*COLUMNS, "startTime", "endTime")
+SITE_WIDTHS = (*WIDTHS, 120, 120)
 MAX_BYTES = 16*1024*1024
 MAX_TASKS = 2000
 MAX_LINKS = 10000
@@ -145,7 +148,7 @@ def parse_project_csv(data: bytes, fallback_name: str = "Импорт CSV") -> C
     if "\x00" in text:
         raise CsvImportError("CSV содержит нулевые байты.")
     try:
-        delimiter = next((d for d in (",", ";", "\t") if tuple(next(csv.reader(io.StringIO(text), delimiter=d), ())) == HEADERS), None)
+        delimiter = next((d for d in (",", ";", "\t") if tuple(next(csv.reader(io.StringIO(text), delimiter=d), ())) in {HEADERS, SITE_HEADERS}), None)
     except csv.Error as error:
         raise CsvImportError("Повреждённая строка заголовков CSV.") from error
     if delimiter is None:
@@ -153,14 +156,23 @@ def parse_project_csv(data: bytes, fallback_name: str = "Импорт CSV") -> C
     records = {}
     try:
         reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, strict=True)
-        next(reader)
+        site_import = tuple(next(reader)) == SITE_HEADERS
         for row in reader:
             if not any(row):
                 continue
             line = reader.line_num
-            if len(row) != len(HEADERS):
-                raise CsvImportError(f"Строка {line}: требуется 23 столбца.")
+            width = len(SITE_HEADERS) if site_import else len(HEADERS)
+            if len(row) != width:
+                raise CsvImportError(f"Строка {line}: требуется {width} столбца.")
             row = [unliteral(value) for value in row]
+            if site_import:
+                for column, clock in ((5, 23), (6, 24)):
+                    row[column] = timestamp(row[column]+" "+row[clock]).isoformat(sep=" ", timespec="seconds")
+                if row[20] == "проект":
+                    if row[2] != row[3] or row[12] != STATUS_LABELS[status_for_progress(number(row[8]))] or row[13] != PRIORITY_LABELS["medium"]:
+                        raise CsvImportError("Противоречащие поля группы в таблице для мастера GanttPRO.")
+                    row[3], row[12], row[13] = "", "", ""
+                row = row[:23]
             wbs = row[1].strip()
             if not _WBS.fullmatch(wbs) or len(wbs) > 256 or wbs in records or wbs.count(".") >= 64:
                 raise CsvImportError(f"Строка {line}: некорректная или повторяющаяся структура задач.")
@@ -295,7 +307,7 @@ def parse_project_csv(data: bytes, fallback_name: str = "Импорт CSV") -> C
     inconsistent = sum(project.calendar.between(project.span(d.source)[d.kind[0] == "F"], project.span(d.target)[d.kind[1] == "F"]) < d.lag for d in project.dependencies)
     if inconsistent:
         warnings.append(f"Несогласованных по датам связей: {inconsistent}. Даты сохранены без перепланирования.")
-    return CsvImport(project, tuple(dict.fromkeys(warnings)))
+    return CsvImport(project, tuple(dict.fromkeys(warnings)), "GanttPRO CSV · мастер (25 полей)" if site_import else "GanttPRO CSV · 23 поля")
 
 
 def table_rows(project: Project, records: list[dict]) -> list[list[str]]:
@@ -337,8 +349,24 @@ def table_rows(project: Project, records: list[dict]) -> list[list[str]]:
     return result
 
 
-def write_rows(path: Path, rows: list[list[str]]) -> None:
+def site_rows(rows: list[list[str]]) -> list[list[str]]:
+    """Adapt the report to the observed website wizard, without changing the source."""
+    result = []
+    for source in rows:
+        row = source.copy()
+        start, end = timestamp(row[5]), timestamp(row[6])
+        row[3] = row[2] or row[3]
+        row[5], row[6] = start.strftime("%d.%m.%Y"), end.strftime("%d.%m.%Y")
+        if row[20] == "проект":
+            row[12] = STATUS_LABELS[status_for_progress(number(row[8]))]
+            row[13] = PRIORITY_LABELS["medium"]
+        result.append([*row, start.strftime("%H:%M"), end.strftime("%H:%M")])
+    return result
+
+
+def write_rows(path: Path, rows: list[list[str]], headers: tuple[str, ...] = HEADERS, include_header: bool = True) -> None:
     with path.open("w", encoding="utf-8-sig", newline="") as stream:
         writer = csv.writer(stream)
-        writer.writerow(HEADERS)
+        if include_header:
+            writer.writerow(headers)
         writer.writerows([[literal(value) for value in row] for row in rows])

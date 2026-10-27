@@ -45,8 +45,9 @@ if TYPE_CHECKING:
     from .controller import Controller
 
 FORMATS = {"pdf": ("PDF", "PDF (*.pdf)"), "png": ("PNG", "PNG (*.png)"),
-           "xlsx": ("Excel", "Excel (*.xlsx)"), "xml": ("MS Project XML", "MS Project XML (*.xml)"),
-           "csv": ("CSV (выбранные поля)", "CSV (*.csv)"), "ganttpro_csv": ("GanttPRO CSV · 23 поля", "CSV (*.csv)")}
+           "xlsx": ("Excel (выбранные поля)", "Excel (*.xlsx)"), "xml": ("MS Project XML", "MS Project XML (*.xml)"),
+           "csv": ("CSV (выбранные поля)", "CSV (*.csv)"), "ganttpro_csv": ("GanttPRO CSV · 23 поля", "CSV (*.csv)"),
+           "ganttpro_xlsx": ("GanttPRO Excel · 23 поля", "Excel (*.xlsx)")}
 
 
 class DiagramItem(QGraphicsItem):
@@ -137,6 +138,10 @@ class ExportDialog(EditorDialog):
         self.format.setObjectName("exportFormat")
         for key, (label, _filter) in FORMATS.items():
             self.format.addItem(label, key)
+        self.site_import = QCheckBox("Подготовить для мастера импорта GanttPRO")
+        self.site_import.setObjectName("exportSiteImport")
+        self.table_headers = QCheckBox("Строка заголовков в файле")
+        self.table_headers.setObjectName("exportTableHeaders")
         self.scope = QComboBox()
         self.scope.setObjectName("exportScope")
         self.scope.addItem("Весь проект", "all")
@@ -184,7 +189,8 @@ class ExportDialog(EditorDialog):
         self.fields = QListWidget()
         self.fields.setObjectName("exportFields")
         self.fields.setMinimumHeight(190)
-        for label, widget in (("Формат", self.format), ("Задачи", self.scope), ("Содержание", self.content),
+        for label, widget in (("Формат", self.format), ("", self.site_import), ("", self.table_headers),
+                              ("Задачи", self.scope), ("Содержание", self.content),
                               ("Шкала времени", self.scale), ("Размер бумаги", self.paper), ("Ориентация", self.orientation),
                               ("Имя задачи", self.labels), ("", self.range), ("Начало", self.start), ("Завершение", self.end),
                               ("", self.links), ("", self.today), ("", self.workload), ("", self.critical), ("", self.baseline), ("", self.strike), ("", self.fade),
@@ -225,7 +231,8 @@ class ExportDialog(EditorDialog):
         self.timer.timeout.connect(self.update_preview)
         for widget in (self.format, self.scope, self.content, self.scale, self.paper, self.orientation, self.labels):
             widget.currentIndexChanged.connect(self.schedule)
-        for widget in (self.range, self.links, self.today, self.workload, self.critical, self.baseline, self.strike, self.fade):
+        for widget in (self.range, self.links, self.today, self.workload, self.critical, self.baseline, self.strike, self.fade,
+                       self.site_import, self.table_headers):
             widget.toggled.connect(self.schedule)
         self.start.dateChanged.connect(self.schedule)
         self.end.dateChanged.connect(self.schedule)
@@ -238,6 +245,8 @@ class ExportDialog(EditorDialog):
         self.preview.set_document(None)
         self.source = ExportSource.capture(self.controller, context)
         self.format.setCurrentIndex(max(0, self.format.findData(context.get("format", "pdf"))))
+        self.site_import.setChecked(False)
+        self.table_headers.setChecked(True)
         self.scope.setCurrentIndex(0)
         self.content.setCurrentIndex(0)
         self.paper.setCurrentIndex(0)
@@ -279,18 +288,21 @@ class ExportDialog(EditorDialog):
         columns = tuple(self.fields.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.fields.count())
                         if self.fields.item(i).checkState() == Qt.CheckState.Checked)
         start, end = self.start.date(), self.end.date()
-        return ExportOptions(format=format_, scope="all" if format_ in {"xml", "ganttpro_csv"} else self.scope.currentData(),
-                             columns=self.source.default_columns if format_ in {"xml", "ganttpro_csv"} else columns,
+        fixed = format_ in {"xml", "ganttpro_csv", "ganttpro_xlsx"}
+        return ExportOptions(format=format_, scope="all" if fixed else self.scope.currentData(),
+                             columns=self.source.default_columns if fixed else columns,
                              content=self.content.currentData() if visual else "table",
                              pixels_per_day=self.scale.currentData(),
-                             start=date(start.year(), start.month(), start.day()) if self.range.isChecked() and format_ not in {"xml", "ganttpro_csv"} else None,
-                             end=date(end.year(), end.month(), end.day()) if self.range.isChecked() and format_ not in {"xml", "ganttpro_csv"} else None,
+                             start=date(start.year(), start.month(), start.day()) if self.range.isChecked() and not fixed else None,
+                             end=date(end.year(), end.month(), end.day()) if self.range.isChecked() and not fixed else None,
                              paper=self.paper.currentData(), landscape=self.orientation.currentData(),
                              labels=self.labels.currentData(), links=self.links.isChecked(), today=self.today.isChecked(),
                              workload=self.workload.isChecked() and format_ in {"pdf", "png", "xlsx"},
                              strike_closed=self.strike.isChecked(), fade_closed=self.fade.isChecked(),
                              critical=self.critical.isChecked() and visual and self.content.currentData() != "table",
-                             baseline=self.baseline.isChecked() and visual and self.content.currentData() != "table")
+                             baseline=self.baseline.isChecked() and visual and self.content.currentData() != "table",
+                             site_import=self.site_import.isChecked() and format_ in {"ganttpro_csv", "ganttpro_xlsx"},
+                             table_headers=self.table_headers.isChecked())
 
     def update_preview(self) -> None:
         if self.source is None:
@@ -298,8 +310,13 @@ class ExportDialog(EditorDialog):
         self.error.hide()
         format_ = self.format.currentData()
         visual = format_ in {"pdf", "png"}
+        task_table = format_ in {"ganttpro_csv", "ganttpro_xlsx"}
+        fixed = task_table or format_ == "xml"
+        self.site_import.setVisible(task_table)
+        self.table_headers.setVisible(task_table)
+        self.table_headers.setEnabled(task_table and self.site_import.isChecked())
         for widget, value in ((self.content, "table" if not visual else self.content.currentData()),
-                              (self.scope, "all" if format_ in {"xml", "ganttpro_csv"} else self.scope.currentData())):
+                              (self.scope, "all" if fixed else self.scope.currentData())):
             widget.blockSignals(True)
             widget.setCurrentIndex(widget.findData(value))
             widget.blockSignals(False)
@@ -307,16 +324,19 @@ class ExportDialog(EditorDialog):
             widget.setEnabled(visual)
         self.paper.setEnabled(format_ == "pdf")
         self.orientation.setEnabled(format_ == "pdf" and self.paper.currentData() != "Full")
-        self.scope.setEnabled(format_ not in {"xml", "ganttpro_csv"})
-        self.fields.setEnabled(format_ not in {"xml", "ganttpro_csv"})
-        self.range.setEnabled(format_ not in {"xml", "ganttpro_csv"})
-        self.start.setEnabled(self.range.isChecked() and format_ not in {"xml", "ganttpro_csv"})
-        self.end.setEnabled(self.range.isChecked() and format_ not in {"xml", "ganttpro_csv"})
-        if format_ == "ganttpro_csv":
-            self.note.setText("Таблица GanttPRO из 23 полей с заголовками. «Предшественник» сохраняет ссылки: Desktop создаёт стрелки при импорте CSV. "
-                              "Простые номера — FS/0; остальные связи записаны с типом и лагом в рабочих минутах. "
-                              "Имена исполнителей и общий объём переносятся, но календарь, ёмкость/цвет/доли ресурсов, базовые планы и прочие пользовательские поля "
-                              "не входят в схему. Для полного проекта сохраните .gantt.json. Полный перенос через импорт самого сайта не подтверждён.")
+        self.scope.setEnabled(not fixed)
+        self.fields.setEnabled(not fixed)
+        self.range.setEnabled(not fixed)
+        self.start.setEnabled(self.range.isChecked() and not fixed)
+        self.end.setEnabled(self.range.isChecked() and not fixed)
+        if task_table:
+            self.note.setText("Таблица GanttPRO: 23 поля; Desktop восстанавливает стрелки из «Предшественник». "
+                              "Календари, ёмкости/доли ресурсов, базовые планы и прочие пользовательские поля не входят в схему: сохраните .gantt.json. "
+                              "Режим мастера: имя группы также в названии задачи, даты ДД.ММ.ГГГГ и два отдельных столбца времени ЧЧ:ММ; "
+                              "длительность и трудозатраты сопоставьте в часах. "
+                              "На сайте стрелки не восстановились; назначение на веху, цвета, сроки и исходные авторы не переносятся этим мастером. "
+                              "Если предпросмотр заголовков сайта пуст, отключите строку заголовков и выберите «В моем файле нет строки с заголовками». "
+                              "Заголовки предпросмотра Desktop служат подсказкой даже для такого файла; его обратный импорт в Desktop требует заголовков.")
         elif format_ == "xml":
             self.note.setText("MSPDI XML: весь проект, дерево, даты, связи, календари, ресурсы и назначения. "
                               "Text/Number/Date/Flag — типизированные поля; сложные типы становятся текстом. "
@@ -325,7 +345,7 @@ class ExportDialog(EditorDialog):
                               "Для полного проекта сохраните .gantt.json. GanttPRO не принимает XML; приём MS Project отдельно не подтверждён.")
         else:
             self.note.setText("Экспорт не меняет проект. PDF вписывается по ширине и разбивается по строкам.")
-        transfer = format_ in {"xml", "ganttpro_csv"}
+        transfer = fixed
         self.transfer_warning.setText(self.note.text() if transfer else "")
         self.transfer_warning.setVisible(transfer)
         self.note.setVisible(not transfer)
@@ -344,8 +364,11 @@ class ExportDialog(EditorDialog):
                 detail += f" · {math.ceil(document.body_rows/count)} стр."
             elif format_ == "xml":
                 detail += " · MS Project XML, весь проект"
-            elif format_ == "ganttpro_csv":
-                detail += f" · 23 поля GanttPRO · {len(self.source.project.dependencies)} связей в «Предшественник»"
+            elif task_table:
+                detail += (" · 25 полей GanttPRO" if self.site_import.isChecked() else " · 23 поля GanttPRO")
+                detail += f" · {len(self.source.project.dependencies)} связей в «Предшественник»"
+                if self.site_import.isChecked() and not self.table_headers.isChecked():
+                    detail += " · файл без заголовков"
             elif format_ == "xlsx":
                 detail += " · таблица Excel" + (" + лист загрузки" if self.workload.isChecked() else "")
             self.document = document
@@ -376,7 +399,7 @@ class ExportDialog(EditorDialog):
         format_ = self.format.currentData()
         label, filter_ = FORMATS[format_]
         name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", self.controller.project.name).strip() or "project"
-        extension = "csv" if format_ == "ganttpro_csv" else format_
+        extension = {"ganttpro_csv": "csv", "ganttpro_xlsx": "xlsx"}.get(format_, str(format_))
         path, _selected = QFileDialog.getSaveFileName(self, "Экспорт " + label, name + "." + extension, filter_)
         if not path:
             return

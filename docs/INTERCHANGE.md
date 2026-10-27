@@ -1,8 +1,10 @@
 # GanttPRO / MS Project file transfer
 
+**Current 0.17 CSV/Excel workflow:** [CSV.md](CSV.md) documents direct `.xlsx`/CSV import and export, the retained 23-column report and separate 25-column website-wizard adaptation. Local round-trips preserve every reference cell and editable dependencies. Actual CSV → website → downloaded Excel → Desktop retained 20 elements / 212 effort hours / 38,000 cost, but **lost all 14 predecessors and the milestone assignment**. Production XLSX was accepted by the website with the same visible assignment loss; its return download failed, so no second file round-trip is certified. Both test projects were deleted; the original was restored. **953 local tests pass. MPP development/conversion is discontinued; no converter is planned.**
+
 **Current 0.16 XML workflow:** [XML.md](XML.md) supersedes the historical XML mapping below: identified exporter-unit correction (212 effort hours), typed custom fields, named color/status/exact-progress/baseline metadata and inherited calendar/availability overrides. Every reference CSV table cell survives local CSV → XML → CSV transfer. The original XML itself lacks people/cost/color data; missing data are not invented. **GanttPRO still rejects XML; Microsoft Project runtime acceptance is unverified.**
 
-**Current 0.15 CSV workflow:** [CSV.md](CSV.md) documents the actual supplied 23-column table, the new native Desktop CSV importer and matching exporter. The supplied 20-element/14-link diagram now imports from CSV with real arrows, resource names, correct 212-hour effort/38,000 cost, colors and retained source metadata. Re-export matches every reference-table cell. **The eight-column CSV procedure below is historical 0.14 behavior and has been replaced.** Website import behavior remains separately unverified for the new table; full native project state remains JSON.
+**0.15 CSV checkpoint:** [CSV.md](CSV.md) documents the actual supplied 23-column table, the new native Desktop CSV importer and matching exporter. The supplied 20-element/14-link diagram now imports from CSV with real arrows, resource names, correct 212-hour effort/38,000 cost, colors and retained source metadata. Re-export matches every reference-table cell. **The eight-column CSV procedure below is historical 0.14 behavior and has been replaced.** The 0.17 website results above supersede that checkpoint's unverified receiver status; full native project state remains JSON.
 
 ## Historical 0.14 investigation
 
@@ -15,7 +17,7 @@
 | Desktop → Desktop through XML | MSPDI writer → XML importer | Supported diagram/calendar/resource/deadline/selected-baseline fields tested; not a replacement for JSON backups |
 | Desktop → MS Project | Existing MSPDI XML export | Structural/local round-trip tests only; actual Microsoft Project runtime is not certified |
 
-GanttPRO's public importer accepts `.xlsx`, `.csv` and `.mpp`, **not `.xml`**. An XML upload is rejected by its type check. Renaming the application's XML to `.mpp` was also tested and rejected as unreadable; this application does not manufacture a fake binary MPP file. A genuinely link-preserving website return path requires a verified receiving/import route. MPP conversion is one possibility, not an established requirement for matching CSV columns.
+GanttPRO's public importer accepts `.xlsx`, `.csv` and `.mpp`, **not `.xml`**. An XML upload is rejected by its type check. Renaming the application's XML to `.mpp` was also tested and rejected as unreadable; this application does not manufacture a fake binary MPP file. A genuinely link-preserving website return path requires a verified receiving/import route. MPP work has since been discontinued; the following investigation is historical, not a conversion plan.
 
 ## GanttPRO → Desktop
 
@@ -67,7 +69,7 @@ Parsing is offline with `defusedxml`: DTD, entities and external resolution are 
 
 The preset always exports the **whole hierarchy** with fixed fields, irrespective of workspace filtering or generic export range/field drafts. Its table preview uses those fields and the same augmented description data. It writes UTF-8, LF-separated, headerless CSV, quoted by the standard CSV writer; formula-like user text remains literal. Generic CSV behavior is unchanged.
 
-This route does **not** transfer project/resource calendars, assignments, deadlines, baselines, custom fields, progress/priority/cost or the application's full JSON state. Match the receiving project's working calendar yourself and inspect the result; dates/durations may be interpreted differently under a different GanttPRO calendar. There is no automatic web synchronization, binary MPP writer, or CSV/Excel import into Desktop.
+This route does **not** transfer project/resource calendars, assignments, deadlines, baselines, custom fields, progress/priority/cost or the application's full JSON state. Match the receiving project's working calendar yourself and inspect the result; dates/durations may be interpreted differently under a different GanttPRO calendar. At this historical 0.14 checkpoint there was no CSV/Excel import into Desktop; direct CSV arrived in 0.15 and direct Excel in 0.17. There is still no automatic web synchronization or binary MPP writer.
 
 ## Verification
 

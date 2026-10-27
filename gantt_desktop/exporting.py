@@ -75,9 +75,11 @@ class ExportOptions:
     fade_closed: bool = True
     critical: bool = False
     baseline: bool = False
+    site_import: bool = False
+    table_headers: bool = True
 
     def validate(self) -> None:
-        if self.format not in {"pdf", "png", "xlsx", "xml", "csv", "ganttpro_csv"} or self.scope not in {"all", "visible"}:
+        if self.format not in {"pdf", "png", "xlsx", "xml", "csv", "ganttpro_csv", "ganttpro_xlsx"} or self.scope not in {"all", "visible"}:
             raise ExportError("Некорректный формат или состав задач.")
         if self.content not in {"both", "table", "chart"} or self.labels not in {"inside", "right", "none"}:
             raise ExportError("Некорректные настройки отображения.")
@@ -140,8 +142,8 @@ class ExportSource:
         return [r for r in self.rows if scope == "all" or r["taskId"] in self.visible_ids]
 
     def value(self, row: dict, key: str) -> object:
-        if "ganttproValues" in row and key in GANTTPRO_COLUMNS:
-            return row["ganttproValues"][GANTTPRO_COLUMNS.index(key)]
+        if "ganttproValues" in row and key in ganttpro_csv.SITE_COLUMNS[:len(row["ganttproValues"])]:
+            return row["ganttproValues"][ganttpro_csv.SITE_COLUMNS.index(key)]
         if key.startswith("custom:"):
             return row["customValues"].get(key[7:])
         if key == "wbs":
@@ -214,9 +216,12 @@ class ExportDocument:
     row_height: int = 30
 
     def __post_init__(self) -> None:
-        if self.options.format == "ganttpro_csv":
-            self.options = replace(self.options, scope="all", columns=GANTTPRO_COLUMNS, content="table", start=None, end=None,
-                                   workload=False, critical=False, baseline=False)
+        task_table = self.options.format in {"ganttpro_csv", "ganttpro_xlsx"}
+        keys = ganttpro_csv.SITE_COLUMNS if self.options.site_import else GANTTPRO_COLUMNS
+        if task_table:
+            self.options = replace(self.options, scope="all", columns=keys, content="table", start=None, end=None,
+                                   workload=False, critical=False, baseline=False,
+                                   table_headers=self.options.table_headers if self.options.site_import else True)
         if self.options.format == "xml":
             self.options = replace(self.options, scope="all", content="table", start=None, end=None,
                                    workload=False, critical=False, baseline=False)
@@ -225,11 +230,13 @@ class ExportDocument:
             except ValueError as error:
                 raise ExportError(str(error)) from error
         self.options.validate()
-        if self.options.format != "ganttpro_csv" and any(key not in self.source.columns for key in self.options.columns):
+        if not task_table and any(key not in self.source.columns for key in self.options.columns):
             raise ExportError("Неизвестное поле экспорта.")
         self.rows = self.source.selected_rows(self.options.scope)
-        if self.options.format == "ganttpro_csv":
+        if task_table:
             values = ganttpro_csv.table_rows(self.source.project, self.rows)
+            if self.options.site_import:
+                values = ganttpro_csv.site_rows(values)
             self.rows = [dict(row, ganttproValues=value) for row, value in zip(self.rows, values, strict=True)]
         if not self.rows:
             raise ExportError("Нет задач для экспорта. Проверьте фильтр.")
@@ -238,9 +245,11 @@ class ExportDocument:
         self.reference = self.source.project.baselines.get(self.source.project.active_baseline)
         if self.options.baseline and self.reference is None:
             raise ExportError("Выберите базовый план перед экспортом сравнения.")
-        if self.options.format == "ganttpro_csv":
+        if task_table:
+            headers = ganttpro_csv.SITE_HEADERS if self.options.site_import else ganttpro_csv.HEADERS
+            widths = ganttpro_csv.SITE_WIDTHS if self.options.site_import else ganttpro_csv.WIDTHS
             self.columns = [{"key": key, "title": title, "width": width}
-                            for key, title, width in zip(GANTTPRO_COLUMNS, ganttpro_csv.HEADERS, ganttpro_csv.WIDTHS, strict=True)]
+                            for key, title, width in zip(keys, headers, widths, strict=True)]
         else:
             self.columns = [self.source.columns[key] for key in self.options.columns] if self.options.content != "chart" else []
         first = min(r["startValue"].date() for r in self.rows)
@@ -590,7 +599,7 @@ def export_file(path: Path, document: ExportDocument) -> None:
                 raise ExportError("Не удалось записать PNG: " + writer.errorString())
         elif format_ == "pdf":
             document.write_pdf(target)
-        elif format_ == "xlsx":
+        elif format_ in {"xlsx", "ganttpro_xlsx"}:
             write_xlsx(target, document)
         elif format_ == "xml":
             write_project_xml(target, document.source)

@@ -1036,6 +1036,23 @@ class Controller(QObject):
         if path:
             self.preview_xml(Path(path))
 
+    def preview_xlsx(self, path: Path) -> bool:
+        from .ganttpro_xlsx import read_project_xlsx
+
+        try:
+            report = read_project_xlsx(path)
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError) as error:
+            self.toast.emit(f"Не удалось импортировать Excel: {error}")
+            return False
+        self.dialogs.showXlsxImport(report, path)
+        return True
+
+    @Slot()
+    def importXlsx(self):
+        path, _filter = QFileDialog.getOpenFileName(None, "Импорт GanttPRO Excel · 23 поля", "", "GanttPRO Excel (*.xlsx)")
+        if path:
+            self.preview_xlsx(Path(path))
+
     def preview_csv(self, path: Path) -> bool:
         from .ganttpro_csv import read_project_csv
 

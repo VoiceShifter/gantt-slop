@@ -1,4 +1,4 @@
-"""Shared transactional XML/CSV review. No live data changes before Apply."""
+"""Shared transactional XML/CSV/XLSX review. No live data changes before Apply."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 class XmlImportDialog(EditorDialog):
     def __init__(self, controller: Controller, format_name: str = "XML"):
-        prefix = "csvImport" if format_name == "CSV" else "xmlImport"
+        prefix = format_name.lower()+"Import"
         super().__init__(controller, prefix+"Dialog", "Проверка импорта "+format_name)
         self.format_name = format_name
         self.report: XmlImport | CsvImport | None = None
@@ -41,7 +41,7 @@ class XmlImportDialog(EditorDialog):
         self.table = QTreeWidget()
         self.table.setObjectName(prefix+"Tasks")
         self.table.setHeaderLabels(["Элемент", "Тип", "Начало", "Завершение", "Длительность, ч"]+
-                                   (["Трудозатраты, ч", "Стоимость"] if format_name == "XML" else []))
+                                   (["Трудозатраты, ч", "Стоимость"] if format_name in {"XML", "XLSX"} else []))
         self.table.setColumnWidth(0, 340)
         self.table.setColumnWidth(2, 170)
         self.table.setColumnWidth(3, 170)
@@ -66,7 +66,7 @@ class XmlImportDialog(EditorDialog):
         self.name.setText(report.project.name)
         self.summary.setText(f"{source.name} · {report.profile} · {len(report.project.tasks)} элементов · "
                              f"{len(report.project.dependencies)} связей · {len(report.project.resources)} ресурсов")
-        if self.format_name == "XML":
+        if self.format_name in {"XML", "XLSX"}:
             leaves = [task for task in report.project.tasks.values() if task.kind != "group"]
             self.summary.setText(self.summary.text()+f" · {sum(task.effort for task in leaves):g} ч · стоимость {sum(task.cost for task in leaves):g}")
         self.warnings.setPlainText("\n".join("• "+text for text in report.warnings))
@@ -77,7 +77,7 @@ class XmlImportDialog(EditorDialog):
                 values = [task.name, {"task": "Задача", "group": "Группа", "milestone": "Веха"}[task.kind],
                           start.strftime("%d.%m.%Y %H:%M"), end.strftime("%d.%m.%Y %H:%M"),
                           f"{report.project.calendar.between(start, end)/60:g}"]
-                if self.format_name == "XML":
+                if self.format_name in {"XML", "XLSX"}:
                     members = list(report.project.descendants(task.id)) if task.kind == "group" else [task]
                     leaves = [member for member in members if member.kind != "group"]
                     values += [f"{sum(member.effort for member in leaves):g}", f"{sum(member.cost for member in leaves):g}"]

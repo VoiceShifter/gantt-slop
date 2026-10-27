@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.17 adds direct GanttPRO Excel import/export and a separate CSV/Excel website-wizard layout:** retain the actual 23-column report, or explicitly choose the 25-column adaptation with separate date/time fields and optional headerless output. Native review is transactional; local round-trips retain editable links and every reference cell. The real website return retained 20 elements / 212h / 38,000, but **lost all 14 links and the milestone assignment**; these losses are disclosed, not repaired by invention. [CSV/Excel workflow, exact mappings and verified limits](docs/CSV.md). **953 tests pass. MPP work is discontinued.**
+
 **0.16 strengthens XML import/export:** correct 212-hour effort for the identified GanttPRO exporter, real typed MSPDI fields instead of appended Notes, retained colors/closed status/fractional progress, selected-baseline metadata, inherited calendar/availability overrides and safe full-tree export. Every reference CSV cell survives CSV → XML → CSV. The supplied XML itself omits resources/costs; they are reported, not invented. [XML workflow, mapping and limits](docs/XML.md). **889 tests pass; native JSON remains the complete backup format.**
 
 **0.15 replaces the CSV shortcut with the supplied GanttPRO table:** exact 23-column headers/order, a native CSV import review, real predecessor links/arrows, hierarchy/type/level, colors, times, effort/cost/status/priority and retained source metadata. Import/re-export reproduces every reference-table cell; all 14 supplied links are checked against XML. [CSV contract, use and limits](docs/CSV.md). This supersedes the eight-column 0.14 preset; it is not a claim that the website accepts every field.
@@ -88,7 +90,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Drag any column's right header boundary to resize it independently; headers/cells stay aligned, minimum widths and clipping prevent overlap, and the workload split follows the table.
 - Header + / “Поля” opens a native field picker. User fields support Text, Number, Date, List, Checkbox, Color, Multi-select, People and Labels, with validation and independent values; numbers sum/average terminal tasks without double-counting groups.
 - Native XML import review for GanttPRO/MSPDI task trees, dates, calendars and supported metadata; all four link types and signed working-minute lag; accepted imports are new unsaved projects, never automatic overwrites of the XML source.
-- GanttPRO-shaped 23-column CSV import/export, based on the supplied real spreadsheet table: real predecessor references, colors, hierarchy/type/level, dates with times, resource names, progress/status/priority, effort, cost, deadlines and descriptions. Desktop import creates editable arrows; nondefault link types/lags retain a documented minute syntax. Source spent-time/actual-cost/creation/author values persist as text custom fields. Warnings distinguish unsupported project state from fields present in the table.
+- GanttPRO-shaped 23-column CSV and Excel import/export, based on the supplied real spreadsheet table: real predecessor references, colors, hierarchy/type/level, dates with times, resource names, progress/status/priority, effort, cost, deadlines and descriptions. Desktop import creates editable arrows; nondefault link types/lags retain a documented minute syntax. Source spent-time/actual-cost/creation/author values persist as text custom fields. Warnings distinguish unsupported project state from fields present in the table. A separate 25-column wizard mode adapts group names/date/time fields, optionally without headers; observed website losses remain explicit.
 - Versioned JSON save/load and a dirty indicator; independent full-diagram PDF/PNG export with vector preview, paged paper sizes/orientation, label/style/date/range/field controls and optional resource workload.
 - Excel `.xlsx` with real numbers/booleans/dates, hierarchy and optional workload sheet; MS Project XML with calendars/links/assignments, typed Text/Number/Date/Flag fields and named color/status/progress/baseline metadata; CSV remains available.
 
@@ -127,7 +129,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Baselines | Header “Базовые планы” (▱ in a narrow window) → capture/select/hide/delete; comparison columns are in Fields |
 | Critical path | Toolbar ⌁ → red critical elements/arrows; task properties show working-hour float; toggle off restores original colors |
 | Import XML | “Файл” → “Импорт GanttPRO / MS Project XML…” → review/warnings → import as new → Save .gantt.json |
-| Import/export GanttPRO CSV | “Файл” → “Импорт GanttPRO CSV…”; export format “GanttPRO CSV · 23 поля”; retain the header and blank third column |
+| Import/export GanttPRO tables | “Файл” → “Импорт GanttPRO CSV…” / “Импорт GanttPRO Excel…”; export “GanttPRO CSV · 23 поля” / “GanttPRO Excel · 23 поля”; preserve report headers, or explicitly choose the separate website-wizard layout |
 | Export | “Экспорт” → preview/settings → format → choose a local destination; PDF/PNG also offer a critical-path checkbox |
 | Cancel gesture | Escape |
 | Undo / redo | Toolbar or platform-standard shortcuts |
@@ -138,7 +140,7 @@ The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00
 
 New saves use **schema 8**, retaining imported per-weekday working intervals. Schema-1/2/3/4/5/6/7 files remain readable with their existing data; absent new fields keep the default calendar. Older assignee names still migrate to shared resources, and schema-7 baselines remain intact. App versions through 0.13 cannot read schema 8; keep a separate copy before saving with 0.14. The critical-path toggle and computed reserves remain window-local, not project data.
 
-Native `.gantt.json` is desktop-specific. Use the separate [XML/CSV transfer workflows](docs/INTERCHANGE.md) and [23-column CSV contract](docs/CSV.md) for GanttPRO; it does not preserve all project data or automatically recreate website links.
+Native `.gantt.json` is desktop-specific. Use the separate [XML/CSV/Excel transfer workflows](docs/INTERCHANGE.md) and [23-column table contract / 25-column wizard adaptation](docs/CSV.md) for GanttPRO; it does not preserve all project data or automatically recreate website links.
 
 ## Tests and native screenshots
 
@@ -157,7 +159,7 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **834 passing tests**, including 95 additional CSV application checks in 0.15 and 70 XML/import/calendar/transfer cases from 0.14, 66 baseline and 71 critical-path and 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **953 passing tests**, including 64 new Excel/wizard checks in 0.17, 55 XML fidelity checks in 0.16, 95 additional CSV application checks in 0.15 and 70 XML/import/calendar/transfer cases from 0.14, 66 baseline and 71 critical-path and 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
@@ -170,8 +172,9 @@ The current suite has **834 passing tests**, including 95 additional CSV applica
 - `gantt_desktop/date_dialog.py`: native calendar draft for start/finish/deadline dates.
 - `gantt_desktop/calendar_dialog.py`: native project/resource exception lists and transactional range editors.
 - `gantt_desktop/baseline_dialog.py`: native persistent snapshot capture/selection/deletion manager.
-- `gantt_desktop/xml_import.py`, `xml_dialog.py`: bounded/offline MSPDI parsing, GanttPRO profile mapping and shared transactional XML/CSV native import review.
-- `gantt_desktop/ganttpro_csv.py`: exact supplied 23-column table schema, bounded CSV parsing, dependency/resource/metadata mapping and reversible literal-safe writing.
+- `gantt_desktop/xml_import.py`, `xml_dialog.py`: bounded/offline MSPDI parsing, GanttPRO profile mapping and shared transactional XML/CSV/Excel native import review.
+- `gantt_desktop/ganttpro_csv.py`: exact supplied 23-column table schema, separate 25-column wizard layout, bounded CSV parsing, dependency/resource/metadata mapping and reversible literal-safe writing.
+- `gantt_desktop/ganttpro_xlsx.py`: bounded offline Excel ZIP/XML table reader, shared/inline strings, numeric dates/RGB fills and common CSV-domain validation.
 - `gantt_desktop/theme.py`: shared light/dark tokens, application/widget palette and local `QSettings` preference.
 - `gantt_desktop/exporting.py`, `interchange.py`, `export_dialog.py`: frozen export snapshots, shared vector rendering, atomic format writers and native preview/settings.
 - `gantt_desktop/qml/`: native Qt Quick interface and direct manipulation.

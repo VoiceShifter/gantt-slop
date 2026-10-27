@@ -506,6 +506,16 @@ class NativeDialogs(QObject):
         dialog.prepare(report, source)
         self.present(dialog)
 
+    def showXlsxImport(self, report, source) -> None:
+        from .xml_dialog import XmlImportDialog
+
+        dialog = self._editors.get("xlsxImport")
+        if not isinstance(dialog, XmlImportDialog):
+            dialog = XmlImportDialog(self.controller, "XLSX")
+            self._editors["xlsxImport"] = dialog
+        dialog.prepare(report, source)
+        self.present(dialog)
+
     def showCsvImport(self, report, source) -> None:
         from .xml_dialog import XmlImportDialog
 
