@@ -4,6 +4,8 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.18 adds combined and saved task filters:** combine type, assignee/unassigned, status, priority, colors and inclusive date ranges with the existing search/quick filters. Matching rows retain their hierarchy; hidden descendants remain protected during bulk edits. Named presets are project-local, transactional and undoable; applying a filter only changes the view. [Rules, native controls and verification](docs/FILTERS.md). Cascade sorting remains pending: the inspected website action is not a multi-key sort editor.
+
 **0.17 adds direct GanttPRO Excel import/export and a separate CSV/Excel website-wizard layout:** retain the actual 23-column report, or explicitly choose the 25-column adaptation with separate date/time fields and optional headerless output. Native review is transactional; local round-trips retain editable links and every reference cell. The real website return retained 20 elements / 212h / 38,000, but **lost all 14 links and the milestone assignment**; these losses are disclosed, not repaired by invention. [CSV/Excel workflow, exact mappings and verified limits](docs/CSV.md). **953 tests pass. MPP work is discontinued.**
 
 **0.16 strengthens XML import/export:** correct 212-hour effort for the identified GanttPRO exporter, real typed MSPDI fields instead of appended Notes, retained colors/closed status/fractional progress, selected-baseline metadata, inherited calendar/availability overrides and safe full-tree export. Every reference CSV cell survives CSV → XML → CSV. The supplied XML itself omits resources/costs; they are reported, not invented. [XML workflow, mapping and limits](docs/XML.md). **889 tests pass; native JSON remains the complete backup format.**
@@ -87,6 +89,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Whole-transaction Python undo/redo, including every task changed by propagated scheduling; no-op/invalid edits do not create history entries.
 - Named baselines stored in the project independently of Undo: captured task/group/milestone dates and kinds, persistent selected reference, grey chart comparison and four read-only date/calendar-hour deviation columns. New elements have no invented baseline values; deleted entries remain archived in the snapshot.
 - Zoom, timeline panning, horizontal/vertical scrolling, adjustable table/timeline divider, optional columns, search and completion/overdue filters.
+- Combined task filters: type, multiple assignees/unassigned, status, priority, colors and inclusive overlap/start/finish date bounds. Project-local named presets, native Apply/Cancel, one-step history for preset changes, preserved parent context and protected hidden tasks.
 - Drag any column's right header boundary to resize it independently; headers/cells stay aligned, minimum widths and clipping prevent overlap, and the workload split follows the table.
 - Header + / “Поля” opens a native field picker. User fields support Text, Number, Date, List, Checkbox, Color, Multi-select, People and Labels, with validation and independent values; numbers sum/average terminal tasks without double-counting groups.
 - Native XML import review for GanttPRO/MSPDI task trees, dates, calendars and supported metadata; all four link types and signed working-minute lag; accepted imports are new unsaved projects, never automatic overwrites of the XML source.
@@ -101,6 +104,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 | Select | Click a row/bar |
 | Appearance | Top “⚙ Настройки” → “Тёмная тема”; applies immediately and persists locally |
 | Bulk edit | Toolbar ☑, then row/group checkboxes; Ctrl+A selects the current filter; Apply commits |
+| Combined/saved filters | “Фильтр” → “Расширенные и сохранённые…” → select conditions/preset → Apply; “Очистить все условия” resets the view |
 | Resource workload | Click “Загрузка ресурсов” in the bottom bar; drag its top divider to resize |
 | People and calendars | Bottom “Люди…” or a person's workload calendar button |
 | Project holidays / special hours | “Люди…” → “Праздники и исключения…” → Add/Edit → Save |
@@ -138,7 +142,7 @@ The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00
 
 ### Project-file compatibility
 
-New saves use **schema 8**, retaining imported per-weekday working intervals. Schema-1/2/3/4/5/6/7 files remain readable with their existing data; absent new fields keep the default calendar. Older assignee names still migrate to shared resources, and schema-7 baselines remain intact. App versions through 0.13 cannot read schema 8; keep a separate copy before saving with 0.14. The critical-path toggle and computed reserves remain window-local, not project data.
+New saves use **schema 9**, adding project-local named filter definitions. Schemas **1–9** remain readable; absent filter definitions default to an empty set. Existing calendars, assignments and baselines remain intact. App versions through 0.17 cannot read schema 9; keep a separate copy before saving with 0.18. Active filter conditions, the critical-path toggle and computed reserves remain window-local, not project data.
 
 Native `.gantt.json` is desktop-specific. Use the separate [XML/CSV/Excel transfer workflows](docs/INTERCHANGE.md) and [23-column table contract / 25-column wizard adaptation](docs/CSV.md) for GanttPRO; it does not preserve all project data or automatically recreate website links.
 
@@ -159,7 +163,7 @@ For isolated Linux GUI automation (no interaction with the physical desktop):
 
 The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
 
-The current suite has **953 passing tests**, including 64 new Excel/wizard checks in 0.17, 55 XML fidelity checks in 0.16, 95 additional CSV application checks in 0.15 and 70 XML/import/calendar/transfer cases from 0.14, 66 baseline and 71 critical-path and 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The current suite has **1,024 passing tests**, including 71 new filter/preset checks in 0.18, 64 Excel/wizard checks in 0.17, 55 XML fidelity checks in 0.16, 95 additional CSV application checks in 0.15 and 70 XML/import/calendar/transfer cases from 0.14, 66 baseline and 71 critical-path and 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
 
 ## Code map
 
@@ -172,6 +176,7 @@ The current suite has **953 passing tests**, including 64 new Excel/wizard check
 - `gantt_desktop/date_dialog.py`: native calendar draft for start/finish/deadline dates.
 - `gantt_desktop/calendar_dialog.py`: native project/resource exception lists and transactional range editors.
 - `gantt_desktop/baseline_dialog.py`: native persistent snapshot capture/selection/deletion manager.
+- `gantt_desktop/filter_dialog.py`: native combined-filter drafts and project-local named preset editor.
 - `gantt_desktop/xml_import.py`, `xml_dialog.py`: bounded/offline MSPDI parsing, GanttPRO profile mapping and shared transactional XML/CSV/Excel native import review.
 - `gantt_desktop/ganttpro_csv.py`: exact supplied 23-column table schema, separate 25-column wizard layout, bounded CSV parsing, dependency/resource/metadata mapping and reversible literal-safe writing.
 - `gantt_desktop/ganttpro_xlsx.py`: bounded offline Excel ZIP/XML table reader, shared/inline strings, numeric dates/RGB fills and common CSV-domain validation.

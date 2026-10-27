@@ -36,6 +36,7 @@ from .domain import (
     ResourceException,
     ScheduleError,
     Task,
+    TaskFilter,
     new_id,
     status_for_progress,
 )
@@ -99,6 +100,7 @@ class Controller(QObject):
     inspectRequested = Signal()
     focusRequested = Signal(float)
     customFieldCreated = Signal(str)
+    filterChanged = Signal()
 
     def __init__(self, project: Project | None = None):
         super().__init__()
@@ -112,6 +114,7 @@ class Controller(QObject):
         self._collapsed: set[str] = set()
         self._query = ""
         self._filter = "all"
+        self._advanced = TaskFilter()
         self._critical_path = False
         self._critical: CriticalPath | None = None
         self._critical_error = ""
@@ -141,6 +144,10 @@ class Controller(QObject):
     dirty = Property(bool, lambda self: self._history_index != self._clean_index, notify=historyChanged)
     fileName = Property(str, lambda self: self._path.name if self._path else "Без файла", notify=fileChanged)
     taskCount = Property(int, lambda self: sum(t.kind != "group" for t in self.project.tasks.values()), notify=viewChanged)
+
+    filterActive = Property(bool, lambda self: bool(self._query or self._filter != "all" or self._advanced.extra_active), notify=viewChanged)
+    filterQuery = Property(str, lambda self: self._query, notify=filterChanged)
+    quickFilter = Property(str, lambda self: self._filter, notify=viewChanged)
 
     criticalPath = Property(bool, lambda self: self._critical_path, notify=viewChanged)
     criticalPathError = Property(str, lambda self: self._critical_error, notify=viewChanged)
@@ -227,25 +234,26 @@ class Controller(QObject):
         self._baseline_range_id = project.active_baseline
         self._day_count = min(max(180, (last - self._origin).days + 60), (date.max-self._origin).days+1)
         matching = set()
+        query_groups = {task.id for task in project.tasks.values() if self._query and task.kind == "group"
+                        and self._query in f"{task.name} {task.assignee} {task.notes}".casefold()}
         for task in project.tasks.values():
-            text_match = self._query in f"{task.name} {task.assignee} {task.notes}".casefold()
+            text_match = (self._query in f"{task.name} {task.assignee} {task.notes}".casefold()
+                          or bool(query_groups & project.ancestors(task.id)))
             status_match = (self._filter == "all" or
                             (self._filter == "incomplete" and task.progress < 100) or
                             (self._filter == "complete" and task.progress >= 100) or
                             (self._filter == "overdue" and task.progress < 100 and
                              (project.span(task.id)[1].date() < local_today() or
                               task.deadline is not None and task.deadline < local_today())))
-            if text_match and status_match:
+            if text_match and status_match and self._advanced.matches(project, task):
                 matching.add(task.id)
-                if self._query and task.kind == "group":
-                    matching.update(t.id for t in project.descendants(task.id))
         included = set(matching)
         for task_id in matching:
             parent = project.tasks[task_id].parent
             while parent:
                 included.add(parent)
                 parent = project.tasks[parent].parent
-        active_filter = bool(self._query or self._filter != "all")
+        active_filter = self.filterActive
         records = []
         leaves = [t for t in project.tasks.values() if t.kind != "group"]
         if leaves:
@@ -546,7 +554,7 @@ class Controller(QObject):
 
         def visible(task_id):
             while task_id not in rows and task_id in self.project.tasks:
-                if self._query or self._filter != "all":
+                if self.filterActive:
                     return ""
                 task_id = self.project.tasks[task_id].parent
             return task_id if task_id in rows else ""
@@ -605,7 +613,7 @@ class Controller(QObject):
 
     def _selection_scope(self) -> set[str]:
         visible = {r["taskId"] for r in self._rows.records if r["rowKind"] == "task"}
-        if not self._query and self._filter == "all":
+        if not self.filterActive:
             for task_id in list(visible):
                 visible.update(t.id for t in self.project.descendants(task_id))
         return visible
@@ -616,7 +624,7 @@ class Controller(QObject):
         if task_id not in self.project.tasks:
             return set()
         members = {task_id, *(t.id for t in self.project.descendants(task_id))}
-        return members & self._selection_scope() if self._query or self._filter != "all" else members
+        return members & self._selection_scope() if self.filterActive else members
 
     @Slot(bool)
     def setBulkMode(self, enabled):
@@ -715,6 +723,32 @@ class Controller(QObject):
     def expandAll(self, expanded):
         self._collapsed = set() if expanded else {t.id for t in self.project.tasks.values() if t.kind == "group"}
         self.refresh()
+
+    def filter_state(self) -> TaskFilter:
+        criteria = deepcopy(self._advanced)
+        criteria.query, criteria.quick = self._query, self._filter
+        return criteria
+
+    def apply_filter(self, criteria: TaskFilter, saved: dict[str, TaskFilter] | None = None) -> bool:
+        try:
+            criteria.validate()
+        except (ValueError, TypeError) as error:
+            self.toast.emit(str(error))
+            return False
+        if saved is not None and not self.edit("Сохранённые фильтры", lambda p: setattr(p, "saved_filters", deepcopy(saved))):
+            return False
+        criteria = deepcopy(criteria)
+        criteria.query = criteria.query.strip().casefold()
+        if criteria != self.filter_state():
+            self._checked.clear()
+        self._query, self._filter, self._advanced = criteria.query, criteria.quick, criteria
+        self.refresh()
+        self.filterChanged.emit()
+        return True
+
+    @Slot()
+    def clearFilters(self):
+        self.apply_filter(TaskFilter())
 
     @Slot(str)
     def search(self, query):
@@ -1005,6 +1039,7 @@ class Controller(QObject):
         self._checked.clear()
         self._collapsed.clear()
         self._query, self._filter = "", "all"
+        self._advanced = TaskFilter()
         self._history = [("", project.to_dict())]
         self._history_index = self._clean_index = 0
         self.historyChanged.emit()

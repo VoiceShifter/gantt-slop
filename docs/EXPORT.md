@@ -38,7 +38,7 @@ Preview fits to width initially; Ctrl+wheel zooms, dragging/scrollbars pan. The 
 
 Group summaries retain the application's full-group calculations even when only some rows are visible. Workload, when included, uses the whole project's assignments, just like the on-screen workload panel; hiding a task does not hide its load.
 
-Exports use an independent snapshot. No option/filter/preview/write operation changes task schedules, resource assignments, project data, dirty state or Undo history. Successful export does not save the project itself. Current project JSON uses **schema 8** (the original 0.9 checkpoint used schema 4).
+Exports use an independent snapshot. No option/filter/preview/write operation changes task schedules, resource assignments, project data, dirty state or Undo history. Successful export does not save the project itself. Current project JSON uses **schema 9**, including named filter definitions, which are not included in CSV/XLSX/XML exports (the original 0.9 checkpoint used schema 4). Combined filters affect only the existing “Visible tasks” scope; full-tree presets remain full-tree. [Filter behavior](FILTERS.md).
 
 Writes are staged in the chosen destination directory and replace the destination only after successful completion. Failure removes the temporary file and preserves an existing file. Invalid ranges, empty row selections, unknown fields, unsupported options and invalid XML characters report errors without producing a partial output. Cancel leaves the export dialog/project unchanged. A destination with the wrong extension is rejected rather than silently changing a filename after overwrite confirmation.
 

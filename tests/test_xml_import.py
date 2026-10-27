@@ -105,7 +105,7 @@ def test_imported_weekly_hours_and_dated_calendars_survive_native_and_xml_roundt
     assert imported.span("xml-task-1") == p.span("a")
     assert imported.calendar.weekly_periods == p.calendar.weekly_periods
     assert Project.from_dict(imported.to_dict()).to_dict() == imported.to_dict()
-    assert imported.to_dict()["version"] == 8
+    assert imported.to_dict()["version"] == 9
 
 
 def test_resource_vacation_and_extra_capacity_roundtrip(qapp, tmp_path):
@@ -209,7 +209,7 @@ def test_native_schemas_one_through_seven_keep_default_clock(version):
     data.pop("weekly_periods")
     restored = Project.from_dict(data)
     assert not restored.calendar.weekly_periods
-    assert restored.span("a") == p.span("a") and restored.to_dict()["version"] == 8
+    assert restored.span("a") == p.span("a") and restored.to_dict()["version"] == 9
 
 
 @pytest.mark.parametrize("periods", [{7: [[600, 840]]}, {True: [[600, 840]]}, {0: []},

@@ -526,6 +526,17 @@ class NativeDialogs(QObject):
         dialog.prepare(report, source)
         self.present(dialog)
 
+    @Slot()
+    def showFilters(self) -> None:
+        from .filter_dialog import FilterDialog
+
+        dialog = self._editors.get("filters")
+        if not isinstance(dialog, FilterDialog):
+            dialog = FilterDialog(self.controller)
+            self._editors["filters"] = dialog
+        dialog.prepare()
+        self.present(dialog)
+
     @Slot(dict)
     def showFields(self, shown: dict) -> None:
         from .field_dialogs import FieldsDialog

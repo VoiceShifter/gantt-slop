@@ -29,7 +29,7 @@ ApplicationWindow {
     font.pixelSize: 13
     property bool allowClose: false
     property bool sidebarVisible: true
-    property string filterCode: "all"
+    readonly property string filterCode: controller.quickFilter
     property bool workloadVisible: false
     property real workloadHeight: 230
     readonly property bool editingText: activeFocusItem && activeFocusItem.cursorPosition !== undefined
@@ -56,7 +56,8 @@ ApplicationWindow {
         target: controller
         function onToast(message) { notification.text=message; notice.visible=true; toastTimer.restart() }
         function onInspectRequested() { inspector.open(); controller.focusTask(controller.selectedId) }
-        function onProjectLoaded() { inspector.close(); search.text=""; window.filterCode="all"; gantt.scrollX=0; gantt.hiddenCustomFields=[] }
+        function onProjectLoaded() { inspector.close(); search.text=""; gantt.scrollX=0; gantt.hiddenCustomFields=[] }
+        function onFilterChanged() { search.text=controller.filterQuery }
         function onBulkChanged() {
             if (controller.bulkMode) {
                 inspector.close()
@@ -111,10 +112,14 @@ ApplicationWindow {
     }
     Menu {
         id: filterMenu
-        MenuItem { text:"Все задачи"; checkable:true; checked:window.filterCode==="all"; onTriggered:{window.filterCode="all";controller.setFilter("all")} }
-        MenuItem { text:"Незавершённые"; checkable:true; checked:window.filterCode==="incomplete"; onTriggered:{window.filterCode="incomplete";controller.setFilter("incomplete")} }
-        MenuItem { text:"Завершённые"; checkable:true; checked:window.filterCode==="complete"; onTriggered:{window.filterCode="complete";controller.setFilter("complete")} }
-        MenuItem { text:"Просроченные"; checkable:true; checked:window.filterCode==="overdue"; onTriggered:{window.filterCode="overdue";controller.setFilter("overdue")} }
+        MenuItem { objectName:"advancedFiltersMenuItem"; text:"Расширенные и сохранённые…"; onTriggered:{gantt.cancelInteractions();nativeDialogs.showFilters()} }
+        MenuSeparator {}
+        MenuItem { text:"Без быстрого фильтра"; checkable:true; checked:window.filterCode==="all"; onTriggered:controller.setFilter("all") }
+        MenuItem { text:"Незавершённые"; checkable:true; checked:window.filterCode==="incomplete"; onTriggered:controller.setFilter("incomplete") }
+        MenuItem { text:"Завершённые"; checkable:true; checked:window.filterCode==="complete"; onTriggered:controller.setFilter("complete") }
+        MenuItem { text:"Просроченные"; checkable:true; checked:window.filterCode==="overdue"; onTriggered:controller.setFilter("overdue") }
+        MenuSeparator {}
+        MenuItem { objectName:"clearFiltersMenuItem"; text:"Очистить все условия"; enabled:controller.filterActive; onTriggered:controller.clearFilters() }
     }
     Menu {
         id: viewMenu
@@ -242,7 +247,7 @@ ApplicationWindow {
                         background:Rectangle { color:search.activeFocus?appTheme.colors.input:appTheme.colors.raised; radius:3; border.color:search.activeFocus?appTheme.colors.link:appTheme.colors.border }
                     }
                     ActionButton { text:"Поля"; objectName:"fieldsButton"; onClicked:window.showFields() }
-                    ActionButton { text:"Фильтр"; objectName:"filterButton"; checked:window.filterCode!=="all"; onClicked:filterMenu.popup() }
+                    ActionButton { text:"Фильтр"; objectName:"filterButton"; checked:controller.filterActive; onClicked:filterMenu.popup() }
                     Slider {
                         id: zoom
                         objectName:"zoomSlider"

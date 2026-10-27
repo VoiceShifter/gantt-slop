@@ -58,7 +58,7 @@ def test_native_xml_export_and_review_restore_the_editable_full_diagram(gui, tmp
     assert c.project.to_dict() == imported
     native = tmp_path / "imported.gantt.json"
     assert c.save_path(native)
-    assert json.loads(native.read_text())["version"] == 8
+    assert json.loads(native.read_text())["version"] == 9
     assert c.load_path(native) and c.project.to_dict() == imported
 
 

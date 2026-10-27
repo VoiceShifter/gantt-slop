@@ -185,7 +185,7 @@ def test_analysis_flag_and_results_are_not_serialized_or_a_schema_change(qapp, t
     c = Controller(diamond())
     c.setCriticalPath(True)
     before = c.project.to_dict()
-    assert before["version"] == 8
+    assert before["version"] == 9
     assert "critical" not in before and all("critical" not in row for row in before["tasks"])
     path = tmp_path / "critical.json"
     assert c.save_path(path)

@@ -46,7 +46,7 @@ def test_deadline_round_trips_as_optional_iso_date_without_schedule_changes(valu
     p.tasks["a"].deadline = value
     p.validate()
     data = p.to_dict()
-    assert data["version"] == 8
+    assert data["version"] == 9
     assert data["tasks"][0]["deadline"] == (value.isoformat() if value else None)
     restored = Project.from_dict(data)
     assert restored.tasks["a"].deadline == value and restored.to_dict() == data
@@ -69,7 +69,7 @@ def test_older_schemas_without_deadlines_remain_readable(qapp, version):
         task.pop("deadline")
     restored = Project.from_dict(data)
     assert all(t.deadline is None for t in restored.tasks.values())
-    assert restored.to_dict()["version"] == 8
+    assert restored.to_dict()["version"] == 9
 
 
 @pytest.mark.parametrize("task_id", ["sensor", "controller", "components", "planning"])

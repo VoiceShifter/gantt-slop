@@ -166,7 +166,7 @@ def test_snapshot_json_deep_copy_and_full_datetime_precision():
     p.tasks["a"].start += timedelta(seconds=12)
     key = p.capture_baseline("Precise", DAY)
     data = p.to_dict()
-    assert data["version"] == 8
+    assert data["version"] == 9
     original = deepcopy(data)
     restored = Project.from_dict(json.loads(json.dumps(data)))
     assert restored.baselines[key].tasks["a"].start.second == 12
@@ -182,7 +182,7 @@ def test_old_schemas_load_without_baselines(version):
     data.pop("active_baseline")
     restored = Project.from_dict(data)
     assert restored.baselines == {} and restored.active_baseline == ""
-    assert restored.to_dict()["version"] == 8
+    assert restored.to_dict()["version"] == 9
 
 
 @pytest.mark.parametrize("damage", ["duplicate-baseline", "duplicate-entry", "duplicate-name", "bad-id", "bad-name", "bad-kind", "bad-dates", "timezone", "active", "created"])

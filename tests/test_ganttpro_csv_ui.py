@@ -61,7 +61,7 @@ def test_accept_creates_editable_diagram_with_arrows_metadata_history_and_safe_n
     native = tmp_path / "imported.gantt.json"
     assert c.save_path(native) and not c.dirty
     expected = c.project.to_dict()
-    assert json.loads(native.read_text())["version"] == 8
+    assert json.loads(native.read_text())["version"] == 9
     assert c.load_path(native) and c.project.to_dict() == expected and not c.canUndo
     assert sha256(FIXTURE.read_bytes()).hexdigest() == digest and window.isVisible()
 

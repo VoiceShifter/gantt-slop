@@ -338,6 +338,71 @@ class Task:
         self.progress = {"open": 0, "in_progress": 50, "completed": 100, "closed": 100}[value]
 
 
+@dataclass
+class TaskFilter:
+    query: str = ""
+    quick: str = "all"
+    kinds: list[str] = field(default_factory=list)
+    resources: list[str] = field(default_factory=list)
+    unassigned: bool = False
+    statuses: list[str] = field(default_factory=list)
+    priorities: list[str] = field(default_factory=list)
+    colors: list[str] = field(default_factory=list)
+    ranges: dict[str, list[str]] = field(default_factory=dict)
+
+    @property
+    def extra_active(self) -> bool:
+        return bool(self.kinds or self.resources or self.unassigned or self.statuses or
+                    self.priorities or self.colors or self.ranges)
+
+    def validate(self) -> None:
+        if not isinstance(self.query, str) or self.quick not in ("all", "incomplete", "complete", "overdue"):
+            raise ScheduleError("Некорректный поиск или быстрый фильтр.")
+        if type(self.unassigned) is not bool:
+            raise ScheduleError("Некорректный фильтр неназначенных задач.")
+        for values, allowed in ((self.kinds, {"task", "milestone"}), (self.resources, None),
+                                (self.statuses, STATUS_LABELS), (self.priorities, PRIORITY_LABELS),
+                                (self.colors, None)):
+            if (not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values)
+                    or len(set(values)) != len(values) or allowed is not None and any(v not in allowed for v in values)):
+                raise ScheduleError("Некорректные значения фильтра.")
+        if any(not re.fullmatch(r"#[0-9a-fA-F]{6}", value) for value in self.colors):
+            raise ScheduleError("Цвет фильтра должен иметь формат #RRGGBB.")
+        if not isinstance(self.ranges, dict):
+            raise ScheduleError("Некорректные диапазоны фильтра.")
+        for key, bounds in self.ranges.items():
+            if (key not in {"span", "start", "end"} or not isinstance(bounds, list) or len(bounds) != 2
+                    or any(not isinstance(v, str) for v in bounds) or not any(bounds)):
+                raise ScheduleError("Некорректный диапазон фильтра.")
+            for value in bounds:
+                if value and date.fromisoformat(value).isoformat() != value:
+                    raise ScheduleError("Дата фильтра должна иметь формат ГГГГ-ММ-ДД.")
+            if all(bounds) and bounds[0] > bounds[1]:
+                raise ScheduleError("Начало диапазона фильтра должно быть не позже завершения.")
+
+    def matches(self, project: Project, task: Task) -> bool:
+        if not self.extra_active:
+            return True
+        if task.kind == "group":
+            return False  # Summary rows are included as context for matching descendants.
+        if self.kinds and task.kind not in self.kinds:
+            return False
+        if (self.resources or self.unassigned) and not (
+                set(self.resources).intersection(task.resource_ids) or self.unassigned and not task.resource_ids):
+            return False
+        if self.statuses and task.status not in self.statuses or self.priorities and task.priority not in self.priorities:
+            return False
+        if self.colors and task.color.casefold() not in {v.casefold() for v in self.colors}:
+            return False
+        if self.ranges:
+            start, end = (value.date().isoformat() for value in project.span(task.id))
+            for key, (lower, upper) in self.ranges.items():
+                first, last = (start, end) if key == "span" else (start, start) if key == "start" else (end, end)
+                if lower and last < lower or upper and first > upper:
+                    return False
+        return True
+
+
 @dataclass(frozen=True)
 class BaselineEntry:
     task_id: str
@@ -396,6 +461,7 @@ class Project:
     custom_fields: dict[str, CustomField] = field(default_factory=dict)
     baselines: dict[str, Baseline] = field(default_factory=dict)
     active_baseline: str = ""
+    saved_filters: dict[str, TaskFilter] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for task in self.tasks.values():
@@ -645,6 +711,15 @@ class Project:
         if not isinstance(self.name, str) or not self.name.strip():
             raise ScheduleError("Укажите название проекта.")
         self.calendar.validate()
+        filter_names = set()
+        if not isinstance(self.saved_filters, dict):
+            raise ScheduleError("Некорректные сохранённые фильтры.")
+        for name, criteria in self.saved_filters.items():
+            if (not isinstance(name, str) or not name.strip() or name != name.strip()
+                    or name.casefold() in filter_names or not isinstance(criteria, TaskFilter)):
+                raise ScheduleError("Укажите уникальное название фильтра.")
+            criteria.validate()
+            filter_names.add(name.casefold())
         baseline_names = set()
         for key, baseline in self.baselines.items():
             baseline.validate()
@@ -968,7 +1043,8 @@ class Project:
         baselines = [{"id": item.id, "name": item.name, "created": item.created.isoformat(),
                       "tasks": [{**asdict(entry), "start": entry.start.isoformat(), "end": entry.end.isoformat()}
                                 for entry in item.tasks.values()]} for item in self.baselines.values()]
-        return {"version": 8, "name": self.name, "tasks": tasks, "resources": resources,
+        return {"version": 9, "name": self.name, "tasks": tasks, "resources": resources,
+                "saved_filters": {name: asdict(criteria) for name, criteria in self.saved_filters.items()},
                 "weekly_periods": deepcopy(self.calendar.weekly_periods),
                 "baselines": baselines, "active_baseline": self.active_baseline,
                 "calendar_exceptions": exceptions(self.calendar.exceptions),
@@ -979,7 +1055,7 @@ class Project:
 
     @classmethod
     def from_dict(cls, value: dict) -> Project:
-        if value.get("version") not in (1, 2, 3, 4, 5, 6, 7, 8):
+        if value.get("version") not in (1, 2, 3, 4, 5, 6, 7, 8, 9):
             raise ScheduleError("Неподдерживаемая версия файла проекта.")
         def exceptions(items, kind):
             return [kind(**{**deepcopy(item), "start": date.fromisoformat(item["start"]), "end": date.fromisoformat(item["end"])})
@@ -1027,6 +1103,7 @@ class Project:
                                    set(value.get("workdays", range(5))),
                                    exceptions(value.get("calendar_exceptions", []), CalendarException),
                                    {int(day): deepcopy(periods) for day, periods in value.get("weekly_periods", {}).items()}), resources, custom_fields,
-                      baselines, value.get("active_baseline", ""))
+                      baselines, value.get("active_baseline", ""),
+                      {name: TaskFilter(**deepcopy(criteria)) for name, criteria in value.get("saved_filters", {}).items()})
         project.validate()
         return project
