@@ -1,195 +1,185 @@
 # Gantt Desktop
 
-An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. This is a new application, not a patch, port, or wrapper around GanttProject. Its visual/interaction reference is the user-provided synthetic GanttPRO diagram, inspected through the browser. No GanttPRO application code, logos, fonts, or other downloaded assets are included.
+A local desktop task planner and Gantt editor built with **Python, PySide6 and Qt Quick**. Plan tasks, connect dependencies, manage project resources and inspect workload without an account.
 
-**Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
+This is an independent application, not a wrapper around the legacy GanttProject engine. Its visual reference is a synthetic GanttPRO project; no GanttPRO source code, branding or downloaded assets are included.
 
-**0.19 adds an opt-in local MCP server:** connect an LLM client to the running desktop over authenticated Streamable HTTP. Read-only by default; optional task, assignment, dependency and Undo/Redo tools use the existing document transactions. No automatic saves or arbitrary file/command access. [Enable, connect, tools and safety](docs/MCP.md). **1,088 tests pass.**
+**Version:** 0.19.0 · **Python:** 3.11+ · **Verified platform:** Linux
 
-**0.19 audit:** the existing suite still passes, but targeted probes found five open save/load and editing edge cases, including failed edits that can escape rollback/revision tracking. [Findings, reproductions and priorities](docs/AUDIT.md). Keep MCP read-only for important documents until the transaction issues are fixed.
+![Gantt Desktop: task hierarchy, dependency arrows and milestones in the dark theme](docs/screenshots/mcp-diagram.png)
 
-**0.18 adds combined and saved task filters:** combine type, assignee/unassigned, status, priority, colors and inclusive date ranges with the existing search/quick filters. Matching rows retain their hierarchy; hidden descendants remain protected during bulk edits. Named presets are project-local, transactional and undoable; applying a filter only changes the view. [Rules, native controls and verification](docs/FILTERS.md). Cascade sorting remains pending: the inspected website action is not a multi-key sort editor.
+> [!WARNING]
+> This is an experimental application. The [0.19 audit](docs/AUDIT.md) found **five unresolved save/load and editing defects**, including failed date edits that can escape rollback/revision tracking. Keep independent backups and use **read-only MCP for important projects** until these issues are fixed. The existing 1,088 passing tests do not cover every failure path.
 
-**0.17 adds direct GanttPRO Excel import/export and a separate CSV/Excel website-wizard layout:** retain the actual 23-column report, or explicitly choose the 25-column adaptation with separate date/time fields and optional headerless output. Native review is transactional; local round-trips retain editable links and every reference cell. The real website return retained 20 elements / 212h / 38,000, but **lost all 14 links and the milestone assignment**; these losses are disclosed, not repaired by invention. [CSV/Excel workflow, exact mappings and verified limits](docs/CSV.md). **953 tests pass. MPP work is discontinued.**
+## Features
 
-**0.16 strengthens XML import/export:** correct 212-hour effort for the identified GanttPRO exporter, real typed MSPDI fields instead of appended Notes, retained colors/closed status/fractional progress, selected-baseline metadata, inherited calendar/availability overrides and safe full-tree export. Every reference CSV cell survives CSV → XML → CSV. The supplied XML itself omits resources/costs; they are reported, not invented. [XML workflow, mapping and limits](docs/XML.md). **889 tests pass; native JSON remains the complete backup format.**
+- **Interactive Gantt chart:** tasks, nested groups, milestones, row reordering, bar movement/resizing, progress editing and dependency arrows.
+- **Scheduling:** FS, SS, FF and SF dependencies, signed working-time lag, cycle detection and downstream date propagation.
+- **Task details:** notes, status, priority, colors, effort, cost, deadlines and nine custom-field types.
+- **Resources:** project-local people, multiple assignees, effort allocation, daily capacity and workload/overload visualization. No automatic resource leveling.
+- **Calendars:** working weekdays, imported weekly intervals, holidays and dated project/resource exceptions.
+- **Analysis:** bounded current-plan critical-path calculation and immutable baseline snapshots with date comparisons.
+- **Views:** light/dark themes, resizable columns, search, combined filters and project-local saved filter presets.
+- **Editing history:** document-level snapshot Undo/Redo, bulk property editing and native dialogs.
+- **Files:** native JSON projects, PDF/PNG diagram export, CSV/Excel task tables and supported MS Project XML interchange.
+- **LLM integration:** opt-in, authenticated local MCP access using the standard protocol—not a pi-specific integration.
 
-**0.15 replaces the CSV shortcut with the supplied GanttPRO table:** exact 23-column headers/order, a native CSV import review, real predecessor links/arrows, hierarchy/type/level, colors, times, effort/cost/status/priority and retained source metadata. Import/re-export reproduces every reference-table cell; all 14 supplied links are checked against XML. [CSV contract, use and limits](docs/CSV.md). This supersedes the eight-column 0.14 preset; it is not a claim that the website accepts every field.
+The scope is tasks, Gantt charts and project-local resources. There is no account system, Board, portfolio or cross-project service. Application labels are currently primarily Russian.
 
-**0.14 adds file transfer:** native GanttPRO/MSPDI XML import with hierarchy/date/link review, explicit fidelity warnings and safe new-project Save; imported weekly working intervals; and a dedicated GanttPRO CSV export preset verified through its public import wizard. **This is not lossless interchange: GanttPRO rejects XML imports; the original eight-column CSV browser experiment did not create dependency arrows.** [Routes, mapping and limits](docs/INTERCHANGE.md).
+## Quick start
 
-**0.13 adds persistent baseline snapshots:** capture/select/delete named original plans, immutable captured dates by task ID, grey comparison bars, read-only baseline/deviation fields, calendar-hour differences and all-format export. Selecting a baseline never restores task dates. [Baselines](docs/BASELINES.md).
+Run these commands from the directory containing `pyproject.toml` and `requirements.txt`. In the current parent checkout, that directory is **`gantt-desktop/`**. If publishing this directory as its own repository, its contents can form the repository root.
 
-**0.12 adds critical-path analysis:** a read-only toolbar overlay, working-time total float in task properties, exact min/max summary endpoint handling, critical dependencies and independent PDF/PNG highlighting. Analysis uses the whole current plan; it does not reschedule tasks or level resources. [Rules, limits and verification](docs/CRITICAL_PATH.md).
-
-**0.11 adds dated calendar exceptions:** editable project holidays/working intervals and resource vacations/daily capacity ranges, overlap validation, independent availability warnings, atomic scheduling/history and export. [Calendar exceptions](docs/CALENDAR_EXCEPTIONS.md).
-
-**0.10 adds native task-date calendars and independent deadlines:** calendar buttons in properties/table, explicit Apply/Cancel, a “Крайний срок” field/column, warnings/diagram flags and export support. Deadlines never reschedule tasks. [Dates and deadlines](docs/DATES_AND_DEADLINES.md). The remaining work is tracked in the [parity plan](docs/PARITY_PLAN.md).
-
-**0.9 adds a real export preview:** full-diagram PDF/PNG, paged paper sizes/orientation, selected fields/range/scale, optional workload, typed Excel, MS Project XML and CSV. No application-window capture. [Export](docs/EXPORT.md).
-
-**0.8 replaces free-text assignees with roster dropdowns** in the table, task properties and bulk editor: multiple people, local search, Reset/OK, explicit resource creation and native per-person hours. [Assignee picker](docs/ASSIGNEES.md).
-
-**0.7 makes the header + functional:** show/hide standard columns and create project-local fields of nine types, with typed editors, numeric group rollups, rename/delete, JSON persistence, CSV and Undo/Redo. [Custom fields](docs/CUSTOM_FIELDS.md).
-
-**0.6 adds individually resizable table columns and fixes the creation row:** “Добавить задачу / Добавить веху” stays centered inside the Task column in narrow and wide layouts. [Columns and verification](docs/COLUMNS.md).
-
-**0.5 adds Settings → “Тёмная тема”:** one saved light/dark choice for the workspace, panels, menus and QWidget dialogs. Light is the default; switching is immediate and never modifies the project. [Themes and settings](docs/THEMES.md).
-
-0.4.1 introduced platform-styled `QDialog`/`QMessageBox` editors, confirmations and help, with standard controls/system fonts. [Native dialogs](docs/NATIVE_DIALOGS.md).
-
-**0.4 adds people as persistent entities and the bottom “Загрузка ресурсов” panel:** multi-person assignments, daily capacity, overload/weekend warnings and working-day settings. [Resource usage and verification](docs/RESOURCES.md).
-
-0.3 introduced [task/summary dependency arrows and anchored resizing](docs/DEPENDENCY_ARROWS.md).
-
-0.2 introduced [checkbox bulk editing, status/priority and row reordering/nesting](docs/SELECTION_AND_ROWS.md).
-
-## Run
-
-Python **3.11+** is required. From this directory:
+### Linux / macOS
 
 ```sh
-python -m venv .venv
-# Linux / macOS:
+python3 -m venv .venv
 . .venv/bin/activate
-# Windows PowerShell instead:
-# .venv\Scripts\Activate.ps1
-
-python -m pip install -e ".[test]"
+python -m pip install -r requirements.txt
 python -m gantt_desktop
 ```
 
-When upgrading, rerun `python -m pip install -e ".[test]"` in the environment used to launch the app: 0.19 adds the official `mcp` Python SDK. MCP stays off until explicitly enabled in **Файл → MCP-сервер…**.
+### Windows PowerShell
 
-Open a saved project with `python -m gantt_desktop path/to/project.gantt.json`.
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m gantt_desktop
+```
 
-The initial project is a disposable device-planning example. **Use Save / Ctrl+S to persist edits**; closing a modified project offers Save / Discard / Cancel. This version does not silently autosave to the source project or use the old application's file format.
+Use Python **3.11 or newer** when creating the environment. Windows/macOS commands are provided for setup, but those platforms have **not** been runtime-verified. Linux needs the usual system libraries for a Qt graphical application.
 
-## Implemented
+The application opens a disposable demonstration project. Use **Сохранить / Save** to save your own `.gantt.json` file; there is no automatic project saving.
 
-- Light/dark split grid/timeline, cyan **#50c7d6** task/summary bars, orange connectors, magenta milestones, blue assignee badges, compact toolbar, and a right-side task editor.
-- “⚙ Настройки” in the top bar opens an appearance panel with a real Light/Dark switch; the local preference is restored on startup.
-- Nested groups and tasks, milestones, collapse/expand, inline table editing, per-group creation, deletion with confirmation, and grip-based row reordering/nesting with preview, Escape and auto-scroll.
-- Dates/times, working duration, separate effort, cost, resource assignments, notes, synchronized status/progress, five priority levels and task colors.
-- Native calendar pickers for task start/finish, preserving time and scheduling constraints; explicit Apply/Cancel and atomic Undo/Redo.
-- Optional date-only deadlines independent of the schedule, including groups/milestones, a standard column, expired/planned-miss warnings, chart flags and PDF/PNG/Excel/CSV/XML export.
-- Project-local people with stable IDs, create/rename/delete, individual capacity/workdays, multi-person effort allocation and migration of existing assignee names.
-- Native holiday/exception range editors: project dates override weekdays with zero or one/two working intervals; resource ranges override daily capacity, including zero-hour vacations, without moving tasks.
-- Assignees are selected from an anchored checkbox roster, not typed as names; search only filters. Resource creation is explicit, and opening/cancelling a draft makes no assignment/history changes.
-- Platform-styled Qt Widgets modal dialogs with standard input controls, system fonts, window decorations, keyboard handling and parent-window modality; their palette follows the same app theme as the Gantt.
-- Collapsible/resizable workload below the Gantt, synchronized zoom/panning, green normal load, red overload, weekend/nonworking warnings, Hours/Percent/Tasks modes and expandable assigned-task bars.
-- Checkbox/group/select-all bulk editing with explicit Apply/Cancel and one-step Undo; protected deletion never removes an unchecked child through a partially selected parent.
-- Body movement for unconstrained tasks and groups; dependency-anchored tasks give an explanatory message instead of silently breaking their links.
-- Edge resizing, progress-handle dragging, live non-mutating date previews, three-pixel drag threshold, rapid select-then-drag, double-click inspection, and Escape cancellation.
-- Reachable endpoint circles on tasks, milestones and summary groups; drag or click-pair creation, live preview, edge auto-scroll, FS/SS/FF/SF, positive/negative working-hour lag and multiple predecessors.
-- Click an arrow to edit its type/lag or delete it; stable link IDs, anchored endpoint protection, hierarchy-aware cycle rejection and one-step Undo.
-- Downstream rescheduling with preserved working durations; derived group dates/effort/cost/progress.
-- Current-plan critical tasks, milestones, groups and dependency arrows; working-time float under FS/SS/FF/SF and signed lags, including summary min/max alternatives. The view is non-mutating, global across filters/collapse, and reports unavailable analysis instead of partial guesses when its exact-search budget is exceeded.
-- Whole-transaction Python undo/redo, including every task changed by propagated scheduling; no-op/invalid edits do not create history entries.
-- Opt-in localhost MCP access with a fresh bearer token per enable, read-only default, optional undoable edits, revision-conflict checks, GUI-thread dispatch and automatic revocation on project changes/exit.
-- Named baselines stored in the project independently of Undo: captured task/group/milestone dates and kinds, persistent selected reference, grey chart comparison and four read-only date/calendar-hour deviation columns. New elements have no invented baseline values; deleted entries remain archived in the snapshot.
-- Zoom, timeline panning, horizontal/vertical scrolling, adjustable table/timeline divider, optional columns, search and completion/overdue filters.
-- Combined task filters: type, multiple assignees/unassigned, status, priority, colors and inclusive overlap/start/finish date bounds. Project-local named presets, native Apply/Cancel, one-step history for preset changes, preserved parent context and protected hidden tasks.
-- Drag any column's right header boundary to resize it independently; headers/cells stay aligned, minimum widths and clipping prevent overlap, and the workload split follows the table.
-- Header + / “Поля” opens a native field picker. User fields support Text, Number, Date, List, Checkbox, Color, Multi-select, People and Labels, with validation and independent values; numbers sum/average terminal tasks without double-counting groups.
-- Native XML import review for GanttPRO/MSPDI task trees, dates, calendars and supported metadata; all four link types and signed working-minute lag; accepted imports are new unsaved projects, never automatic overwrites of the XML source.
-- GanttPRO-shaped 23-column CSV and Excel import/export, based on the supplied real spreadsheet table: real predecessor references, colors, hierarchy/type/level, dates with times, resource names, progress/status/priority, effort, cost, deadlines and descriptions. Desktop import creates editable arrows; nondefault link types/lags retain a documented minute syntax. Source spent-time/actual-cost/creation/author values persist as text custom fields. Warnings distinguish unsupported project state from fields present in the table. A separate 25-column wizard mode adapts group names/date/time fields, optionally without headers; observed website losses remain explicit.
-- Versioned JSON save/load and a dirty indicator; independent full-diagram PDF/PNG export with vector preview, paged paper sizes/orientation, label/style/date/range/field controls and optional resource workload.
-- Excel `.xlsx` with real numbers/booleans/dates, hierarchy and optional workload sheet; MS Project XML with calendars/links/assignments, typed Text/Number/Date/Flag fields and named color/status/progress/baseline metadata; CSV remains available.
-
-### Gestures
-
-| Action | Input |
-|---|---|
-| Select | Click a row/bar |
-| Appearance | Top “⚙ Настройки” → “Тёмная тема”; applies immediately and persists locally |
-| Bulk edit | Toolbar ☑, then row/group checkboxes; Ctrl+A selects the current filter; Apply commits |
-| Combined/saved filters | “Фильтр” → “Расширенные и сохранённые…” → select conditions/preset → Apply; “Очистить все условия” resets the view |
-| Resource workload | Click “Загрузка ресурсов” in the bottom bar; drag its top divider to resize |
-| People and calendars | Bottom “Люди…” or a person's workload calendar button |
-| Project holidays / special hours | “Люди…” → “Праздники и исключения…” → Add/Edit → Save |
-| Resource vacations / dated capacity | Select a saved person → “Отпуска и исключения…” → Add/Edit → Save |
-| Multiple assignees | Click Assignee in the table/properties → check people → Ок |
-| Assignment hours | Picker “Часы…” or task-properties ⋯ → native allocation draft → Apply |
-| New resource | Picker “＋ Добавить ресурс…” → explicit native form Save; then select it |
-| Reorder/nest rows | Drag the six-dot left grip; use row edges or a group's name area |
-| Edit name/field | Click the table cell |
-| Choose/create columns | Header + or “Поля”; select Standard/Custom, create/edit/delete fields |
-| Edit a custom value | Click its cell; checkboxes also toggle directly; “Не задано” clears a value |
-| Resize a column | Drag its right header boundary; Escape restores the pre-drag widths |
-| Reset column widths | “Вид” → “Сбросить ширину таблицы” |
-| Inspect task | Double-click bar; or select then Enter |
-| Choose task date | Calendar button in Start/Finish in properties or visible table columns → choose → Apply |
-| Deadline | Properties “Крайний срок” or Fields → Standard → “Крайний срок”; calendar or typed date; × clears |
-| Move free task/group | Drag the body |
-| Change task boundary | Drag an unanchored edge; FS/SS fix the start, FF/SF fix the finish |
-| Change progress | Hover, then drag the small marker below the bar |
-| Add dependency | Hover a bar, then drag a side circle to the target's start/finish circle; works on groups too |
-| Alternative creation | Click source then target circles; Escape cancels |
-| Edit/delete dependency | Click its orange connector or use task properties |
-| Pan | Drag empty chart space |
-| Zoom | Slider or Ctrl+wheel |
-| Scroll horizontally | Horizontal scrollbar or Shift+wheel |
-| Baselines | Header “Базовые планы” (▱ in a narrow window) → capture/select/hide/delete; comparison columns are in Fields |
-| Critical path | Toolbar ⌁ → red critical elements/arrows; task properties show working-hour float; toggle off restores original colors |
-| Import XML | “Файл” → “Импорт GanttPRO / MS Project XML…” → review/warnings → import as new → Save .gantt.json |
-| Import/export GanttPRO tables | “Файл” → “Импорт GanttPRO CSV…” / “Импорт GanttPRO Excel…”; export “GanttPRO CSV · 23 поля” / “GanttPRO Excel · 23 поля”; preserve report headers, or explicitly choose the separate website-wizard layout |
-| Export | “Экспорт” → preview/settings → format → choose a local destination; PDF/PNG also offer a critical-path checkbox |
-| Cancel gesture | Escape |
-| Undo / redo | Toolbar or platform-standard shortcuts |
-| LLM access | “Файл” → “MCP-сервер…” → enable → copy client configuration; optional write permission; active indicator in the bottom bar |
-
-The default working calendar is Monday–Friday, 09:00–13:00 and 14:00–18:00. Task times are local civil/project times, not UTC timestamps. Project working weekdays and each person's availability are editable through “Люди…”. Dated project exceptions override weekdays/legacy holidays; native editors support nonworking ranges and up to two same-day working intervals. Resource exceptions override available daily hours; dates closed for the project show zero project capacity. Workload warnings are diagnostic and do not silently move tasks to resolve conflicts.
-
-### Project-file compatibility
-
-New saves use **schema 9**, adding project-local named filter definitions. Schemas **1–9** remain readable; absent filter definitions default to an empty set. Existing calendars, assignments and baselines remain intact. App versions through 0.17 cannot read schema 9; keep a separate copy before saving with 0.18 or newer. Active filter conditions, the critical-path toggle and computed reserves remain window-local, not project data. MCP does not change the schema; access settings and tokens are never stored in the project.
-
-Native `.gantt.json` is desktop-specific. Use the separate [XML/CSV/Excel transfer workflows](docs/INTERCHANGE.md) and [23-column table contract / 25-column wizard adaptation](docs/CSV.md) for GanttPRO; it does not preserve all project data or automatically recreate website links.
-
-## Tests and native screenshots
+To open a saved project, using your virtual environment's Python:
 
 ```sh
+python -m gantt_desktop path/to/project.gantt.json
+```
+
+On Windows, substitute `.\.venv\Scripts\python.exe` for `python` unless the environment is activated.
+
+Alternatively, install the application package itself:
+
+```sh
+python -m pip install -e .
+gantt-desktop
+```
+
+This installs the same runtime dependencies and registers the `gantt-desktop` command. On Windows, activate the environment first or use the executables under `.venv\Scripts\`.
+
+### Dependencies
+
+[requirements.txt](requirements.txt) contains only the application's direct runtime dependencies:
+
+| Package | Version range | Purpose |
+| --- | --- | --- |
+| PySide6 | `>=6.8,<7` | Qt desktop interface and rendering |
+| defusedxml | `>=0.7.1,<1` | Hardened XML parsing for interchange |
+| mcp | `>=2.3,<3` | Official MCP SDK and HTTP transport dependencies |
+
+These constraints match [pyproject.toml](pyproject.toml); they are **not** a frozen transitive dependency lockfile. Test tools are installed separately via the `test` extra. Rerun your chosen installation command after updating the checkout.
+
+## Basic use
+
+| Action | How |
+| --- | --- |
+| Create tasks or milestones | Use the add controls below the task table or within a group |
+| Edit task properties | Double-click a bar or select a task and press Enter |
+| Move or resize a task | Drag its bar or an unlocked edge; dependencies can constrain movement |
+| Create a dependency | Drag between endpoint circles, or click the source and target endpoints |
+| Edit a dependency | Click its arrow |
+| Cancel an interaction | Press Escape |
+| Undo / redo | Use the toolbar or platform-standard shortcuts |
+| Manage resources/calendars | Open **Люди…** in the bottom bar |
+| Filter tasks | Use **Фильтр**; advanced conditions and named presets are available |
+| Export | Open **Экспорт** for format options and a document preview |
+| Enable LLM access | Open **Файл → MCP-сервер…** |
+
+The default calendar is Monday–Friday, **09:00–13:00 and 14:00–18:00**. Dates and times are local civil values, not UTC. Resource availability affects workload calculations, not automatic task leveling.
+
+## MCP: Gemini and other LLM clients
+
+The server uses **standard MCP over Streamable HTTP**. It has no pi dependency and does not restrict the model provider. Use a local MCP-capable host that supports HTTP and custom authorization headers.
+
+1. Open **Файл → MCP-сервер…**.
+2. Leave write permission unchecked; click **Включить**.
+3. Click **Копировать конфигурацию** and adapt the entry to your client's configuration format.
+4. Connect the client while the desktop remains open.
+
+**Gemini CLI uses `httpUrl`, not `url`, for Streamable HTTP.** See the [Gemini CLI configuration example](docs/MCP.md#gemini-cli-and-other-clients). That format has been checked against official documentation; a live Gemini session has not yet been verified.
+
+The listener binds only to `127.0.0.1` and requires a fresh bearer token on every enable. Closing the MCP dialog leaves it running; **Выключить**, a successful project switch or application exit stops it. Tokens/access settings are not saved in project files.
+
+Read-only mode exposes `get_project`. Optional write mode adds task, assignment, dependency and shared Undo/Redo tools; it never automatically saves a file. Because of the [open audit findings](docs/AUDIT.md), a write error does not always imply rollback.
+
+**Privacy:** a trusted host can read the whole open project, including hidden tasks and notes, and may send it to its model provider. Do not publish copied configurations or tokens. A cloud-only chat cannot directly reach your computer's localhost. This server is not an Internet/OAuth service; direct browser-origin and stdio-only clients are unsupported without an appropriate local integration.
+
+[Full MCP setup, tools, units and security boundaries →](docs/MCP.md)
+
+## Project files and interchange
+
+- **`.gantt.json` is the authoritative native project/backup format.** Current saves use schema 9; schemas 1–9 are readable. Versions through 0.17 cannot read schema 9. Keep separate backups when upgrading.
+- **PDF/PNG** export the rendered document, not just the application window.
+- **CSV/XLSX** support selected-field reports and the documented GanttPRO-shaped 23-column task table. A separate 25-column adaptation targets the website import wizard.
+- **XML** supports a bounded, reviewed subset of MS Project XML/MSPDI, including the documented GanttPRO exporter profile.
+- **Interchange is not synchronization or universally lossless.** The tested GanttPRO CSV/XLSX wizard did not restore dependency arrows and lost a milestone assignment. Native calendars, baselines and other metadata may not survive other formats.
+- **MPP support is discontinued.** No MPP conversion or commercial converter is included.
+
+See [interchange limits](docs/INTERCHANGE.md), [CSV/Excel contracts](docs/CSV.md), [XML support](docs/XML.md) and [export options](docs/EXPORT.md).
+
+## Development and tests
+
+From the application directory, using the virtual environment:
+
+```sh
+python -m pip install -e ".[test]"
 python -m pytest -q
 ```
 
-For isolated Linux GUI automation (no interaction with the physical desktop):
+For isolated Linux GUI testing, install **Xvfb and xauth**, then use:
 
 ```sh
-./tools/isolated-gui.sh python3 -m pytest -q
-
-./tools/isolated-gui.sh python3 -m gantt_desktop --size 1920x960 \
-  --screenshot docs/screenshots/overview-current.png
+./tools/isolated-gui.sh python -m pytest -q
 ```
 
-The wrapper creates a private Xvfb display, forces Qt's **offscreen** plugin/software renderer and removes desktop-session variables. Tests also force offscreen themselves and refuse an onscreen QApplication, including background-runner invocation. A desktop user does **not** need this wrapper to launch the app normally.
+The wrapper uses a private Xvfb display, Qt's offscreen platform and software rendering, without interacting with the physical desktop. The test fixtures also enforce offscreen Qt. The wrapper is for automation, not normal application use.
 
-The current suite has **1,088 passing tests**, including 64 MCP protocol/security/GUI checks in 0.19 and 71 filter/preset checks in 0.18, 64 Excel/wizard checks in 0.17, 55 XML fidelity checks in 0.16, 95 additional CSV application checks in 0.15 and 70 XML/import/calendar/transfer cases from 0.14, 66 baseline and 71 critical-path and 79 calendar-exception, 22 task-calendar and 36 deadline regressions, as well as 52 export, 19 assignee-picker, 67 custom-field, 25 column/layout and 22 theme/settings regressions. See [dependency verification](docs/DEPENDENCY_ARROWS.md), [0.2 selection/row verification](docs/SELECTION_AND_ROWS.md), [reference observations](docs/REFERENCE.md) and the [historical baseline verification](docs/VERIFICATION.md).
+The latest [Linux audit](docs/AUDIT.md) ran **1,088 existing tests**, Ruff, full-source Pyright and dependency-consistency checks successfully. Additional targeted probes nevertheless reproduced the five open defects. Do not interpret the test count as a claim that those defects are fixed or that Windows/macOS are verified.
 
-## Code map
+### Project structure
 
-- `gantt_desktop/domain.py`: Qt-independent calendar, hierarchy, dependencies and mutations.
-- `gantt_desktop/controller.py`: Qt list model, atomic edits, Python snapshot history, filtering and file operations.
-- `gantt_desktop/critical_path.py`: read-only current-plan float analysis, DAG passes and exact bounded summary alternatives.
-- `gantt_desktop/workload.py`: working-time effort distribution and daily resource availability/warnings.
-- `gantt_desktop/dialogs.py`: platform-styled QWidget dialogs and QML/window lifecycle bridge.
-- `gantt_desktop/field_dialogs.py`: native field picker, definition and typed-value editors.
-- `gantt_desktop/date_dialog.py`: native calendar draft for start/finish/deadline dates.
-- `gantt_desktop/calendar_dialog.py`: native project/resource exception lists and transactional range editors.
-- `gantt_desktop/baseline_dialog.py`: native persistent snapshot capture/selection/deletion manager.
-- `gantt_desktop/filter_dialog.py`: native combined-filter drafts and project-local named preset editor.
-- `gantt_desktop/mcp_server.py`, `mcp_transport.py`, `mcp_dialog.py`: Qt-thread document bridge, authenticated official-SDK HTTP transport and native opt-in controls.
-- `gantt_desktop/xml_import.py`, `xml_dialog.py`: bounded/offline MSPDI parsing, GanttPRO profile mapping and shared transactional XML/CSV/Excel native import review.
-- `gantt_desktop/ganttpro_csv.py`: exact supplied 23-column table schema, separate 25-column wizard layout, bounded CSV parsing, dependency/resource/metadata mapping and reversible literal-safe writing.
-- `gantt_desktop/ganttpro_xlsx.py`: bounded offline Excel ZIP/XML table reader, shared/inline strings, numeric dates/RGB fills and common CSV-domain validation.
-- `gantt_desktop/theme.py`: shared light/dark tokens, application/widget palette and local `QSettings` preference.
-- `gantt_desktop/exporting.py`, `interchange.py`, `export_dialog.py`: frozen export snapshots, shared vector rendering, atomic format writers and native preview/settings.
-- `gantt_desktop/qml/`: native Qt Quick interface and direct manipulation.
-- `gantt_desktop/sample.py`: independent synthetic fixture based on visible sample labels/dates.
-- `tests/`: scheduling, transaction, persistence and real Qt mouse/keyboard regressions.
+```text
+gantt_desktop/
+  app.py                Application entry point
+  domain.py             Tasks, calendars, hierarchy and scheduling
+  controller.py         Qt models, editing history, filters and files
+  mcp_*.py              MCP transport, Qt-thread bridge and native controls
+  *_dialog.py           Native editors and review dialogs
+  qml/                  Qt Quick workspace and interaction components
+tests/                  Domain, protocol and isolated GUI tests
+docs/                   Feature guides, audit findings and screenshots
+tools/isolated-gui.sh    Private-display automation launcher
+pyproject.toml          Package metadata and canonical dependency constraints
+requirements.txt        Direct runtime dependency constraints
+```
 
-## Parity boundary
+## Documentation and roadmap
 
-This is a working implementation, **not a claim of complete GanttPRO parity**. Still pending: multi-row dragging, arbitrary multi-bar date gestures, recurring/overnight or resource time-of-day shift editing, baseline restoration/cost tracking, richer scheduling modes/constraints, full date-scale/header parity, direct native-printer integration, large-project virtualization, and comprehensive accessibility/high-DPI QA. The inspected reference checkbox mode edits bulk properties, not task dates. Less-common dependency editing behaviors still need further live-reference parity testing.
+- [Audit findings and fix priorities](docs/AUDIT.md)
+- [Parity plan and remaining work](docs/PARITY_PLAN.md)
+- [Task selection, bulk editing and row movement](docs/SELECTION_AND_ROWS.md)
+- [Dependency arrows and editing](docs/DEPENDENCY_ARROWS.md)
+- [Resources/workload](docs/RESOURCES.md) and [assignments](docs/ASSIGNEES.md)
+- [Dates/deadlines](docs/DATES_AND_DEADLINES.md) and [calendar exceptions](docs/CALENDAR_EXCEPTIONS.md)
+- [Critical path](docs/CRITICAL_PATH.md) and [baselines](docs/BASELINES.md)
+- [Combined/saved filters](docs/FILTERS.md), [custom fields](docs/CUSTOM_FIELDS.md) and [columns](docs/COLUMNS.md)
+- [Themes](docs/THEMES.md) and [native dialogs](docs/NATIVE_DIALOGS.md)
+- [Controlled cascade-sort research](docs/CASCADE_SORTING.md) — Desktop sorting is not implemented yet
+- [Reference observations](docs/REFERENCE.md) and [historical verification](docs/VERIFICATION.md)
 
-Qt supports Windows, macOS and Linux, but this checkout has only been run and tested on **Linux**. Windows/macOS installation bundles, signing and platform QA have not been produced. When distributing the app, observe PySide6/Qt and other dependency licensing requirements.
+This is not complete GanttPRO parity. Remaining work includes the audit fixes, cascade sorting, branch copying/conversion, an actual-time journal, hourly timeline, large-project virtualization and broader platform/accessibility QA. Installers, signing and Windows/macOS runtime verification are not provided.
+
+## Publishing and licensing
+
+Before publishing this standalone directory as its own GitHub repository, confirm and include the intended project `LICENSE`; this README does not assign or change a license. Observe dependency licensing requirements, including PySide6/Qt. Do not publish local MCP tokens, credentials, virtual environments or private project documents.

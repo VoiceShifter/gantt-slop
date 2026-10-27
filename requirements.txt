@@ -1,0 +1,6 @@
+# Runtime dependencies for Python 3.11+.
+# Keep these constraints synchronized with [project].dependencies in pyproject.toml.
+# For test dependencies and an editable install: python -m pip install -e ".[test]"
+PySide6>=6.8,<7
+defusedxml>=0.7.1,<1
+mcp>=2.3,<3
