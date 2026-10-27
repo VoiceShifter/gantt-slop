@@ -30,6 +30,7 @@ from . import ganttpro_csv
 from .critical_path import CriticalPath, analyze
 from .domain import Baseline, Project
 from .workload import workload_rows
+from .xml_fields import export_fields
 
 if TYPE_CHECKING:
     from .controller import Controller
@@ -216,6 +217,13 @@ class ExportDocument:
         if self.options.format == "ganttpro_csv":
             self.options = replace(self.options, scope="all", columns=GANTTPRO_COLUMNS, content="table", start=None, end=None,
                                    workload=False, critical=False, baseline=False)
+        if self.options.format == "xml":
+            self.options = replace(self.options, scope="all", content="table", start=None, end=None,
+                                   workload=False, critical=False, baseline=False)
+            try:
+                export_fields(self.source.project)
+            except ValueError as error:
+                raise ExportError(str(error)) from error
         self.options.validate()
         if self.options.format != "ganttpro_csv" and any(key not in self.source.columns for key in self.options.columns):
             raise ExportError("Неизвестное поле экспорта.")

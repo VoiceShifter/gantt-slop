@@ -5,8 +5,8 @@ import math
 import re
 from collections import defaultdict
 from copy import deepcopy
-from dataclasses import dataclass
-from datetime import date, datetime, time
+from dataclasses import dataclass, replace
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -16,9 +16,11 @@ from defusedxml.common import DefusedXmlException
 from defusedxml.ElementTree import iterparse
 
 from .domain import (
+    STATUS_LABELS,
     Baseline,
     BaselineEntry,
     CalendarException,
+    CustomField,
     Dependency,
     Project,
     Resource,
@@ -26,7 +28,10 @@ from .domain import (
     Task,
     WorkCalendar,
     status_for_progress,
+    validate_exceptions,
 )
+from .ganttpro_csv import HEADERS, METADATA
+from .xml_fields import METADATA_FIELDS
 
 MSP = "http://schemas.microsoft.com/project"
 MAX_XML_BYTES = 16 * 1024 * 1024
@@ -73,6 +78,20 @@ def read_project_xml(path: Path, imported_on: date) -> XmlImport:
     return parse_project_xml(data, path.stem, imported_on)
 
 
+def _overlay(entries, override):
+    """A child calendar/availability range overrides, rather than overlaps, its base."""
+    result = []
+    for item in entries:
+        if item.end < override.start or item.start > override.end:
+            result.append(item)
+            continue
+        if item.start < override.start:
+            result.append(replace(deepcopy(item), id=item.id+"-left-"+override.id, end=override.start-timedelta(days=1)))
+        if item.end > override.end:
+            result.append(replace(deepcopy(item), id=item.id+"-right-"+override.id, start=override.end+timedelta(days=1)))
+    return sorted([*result, override], key=lambda item: item.start)
+
+
 def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> XmlImport:
     if len(data) > MAX_XML_BYTES:
         raise XmlImportError("XML превышает допустимые 16 MiB.")
@@ -99,9 +118,11 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
     namespace = "{"+MSP+"}" if root.tag.startswith("{") else ""
     def elements(node, path):
         return node.findall("/".join(namespace+part for part in path.split("/")))
-    def value(node, name, default=""):
+    def value(node, name, default="", *, strip=True):
         found = node.find(namespace+name)
-        return found.text.strip() if found is not None and found.text else default
+        if found is None or found.text is None:
+            return default
+        return found.text.strip() if strip else found.text
     def flag(node, name, default=False):
         text = value(node, name, "1" if default else "0").lower()
         if text not in {"0", "1", "true", "false"}:
@@ -147,6 +168,7 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
         node = calendar_nodes[uid]
         parent = value(node, "BaseCalendarUID", "-1")
         result = deepcopy(calendar(parent, (*trail, uid))) if parent not in {"-1", ""} else WorkCalendar()
+        own_ranges = []
         for item in elements(node, "WeekDays/WeekDay"):
             kind = integer(value(item, "DayType"))
             working = flag(item, "DayWorking")
@@ -157,7 +179,12 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
                     raise XmlImportError("У датированного календаря нет диапазона.")
                 start = local_datetime(value(period[0], "FromDate"), minute_precision=False).date()
                 end = local_datetime(value(period[0], "ToDate"), minute_precision=False).date()
-                result.exceptions.append(CalendarException(f"xml-{uid}-{len(result.exceptions)}", start, end, "Из XML", slots))
+                if end < start or (end-start).days > 36600:
+                    raise XmlImportError("Диапазон исключения XML некорректен или превышает 100 лет.")
+                if any(a <= end and start <= b for a, b in own_ranges):
+                    raise XmlImportError("Пересекающиеся исключения одного календаря XML.")
+                own_ranges.append((start, end))
+                result.exceptions = _overlay(result.exceptions, CalendarException(f"xml-{uid}-{len(own_ranges)}", start, end, "Из XML", slots))
             elif 1 <= kind <= 7:
                 day = (kind+5) % 7
                 if working:
@@ -173,11 +200,16 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
                 raise XmlImportError("Неподдерживаемый тип дня XML.")
         if elements(node, "Exceptions/Exception"):
             raise XmlImportError("Повторяющиеся/расширенные календарные Exception не поддержаны; используйте датированные WeekDay/TimePeriod.")
-        result.validate()
+        if result.workdays:
+            result.validate()
+        else:
+            # A resource can have no regular workdays; a scheduling calendar cannot.
+            validate_exceptions(result.exceptions, CalendarException)
         resolved[uid] = result
         return result
     selected_calendar = value(root, "CalendarUID", next(iter(calendar_nodes), "1"))
     project_calendar = deepcopy(calendar(selected_calendar)) if calendar_nodes else WorkCalendar()
+    project_calendar.validate()
     if not calendar_nodes:
         warnings.append("В XML нет календаря: используются Пн–Пт, 09–13/14–18. Проверьте даты.")
     def calendar_signature(item):
@@ -196,10 +228,59 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
         warnings.append("Служебная сводка проекта исключена; пользовательская иерархия сохранена.")
     if ganttpro:
         warnings += ["Профиль GanttPRO: при отсутствии Finish окончания вычисляются из Start/Duration и календаря.",
-                     "GanttPRO Work импортируется буквально по XML (в проверенном файле часы были записаны как минуты). Проверьте трудозатраты.",
                      "GanttPRO XML не гарантирует сохранение цветов/веб-метаданных."]
         if not elements(root, "Resources/Resource") and not elements(root, "Assignments/Assignment"):
             warnings.append("GanttPRO XML не содержит ресурсов/назначений: они не восстановлены.")
+    # Correct only the identified GanttPRO Export Tool v2 minute/hour defect.
+    # Ordinary MSPDI and unrecognized exporters always retain literal ISO Work.
+    work_scale = 60 if (ganttpro and value(root, "Author") == "Export Tool v.2.1.0.0" and
+                        value(root, "WorkFormat") == "2" and
+                        not elements(root, "Resources/Resource") and not elements(root, "Assignments/Assignment")) else 1
+    if work_scale == 60:
+        warnings.append("Исправлен известный профиль Export Tool v.2.1.0.0: Work ×60; записанные минуты означают часы GanttPRO. Проверьте трудозатраты в таблице.")
+    elif ganttpro:
+        warnings.append("Work импортируется буквально по ISO XML; неизвестный профиль экспортёра не пересчитывается.")
+    if ganttpro and not any(value(record, "Cost") or value(record, "FixedCost") for record in records):
+        warnings.append("В GanttPRO XML нет стоимости: сохранено 0, значения из других файлов не подставляются.")
+    custom_fields = {}
+    field_map = {}
+    metadata_map = {}
+    field_names = {}
+    source_metadata = {HEADERS[column]: key for column, key in METADATA}
+    for definition in elements(root, "ExtendedAttributes/ExtendedAttribute"):
+        uid = value(definition, "FieldID")
+        if not uid:
+            warnings.append("Определение XML-поля без FieldID не поддержано; значения останутся в описании.")
+            continue
+        if uid in field_names:
+            raise XmlImportError("Повторяющийся FieldID пользовательского поля XML.")
+        name = value(definition, "Alias", value(definition, "FieldName", "XML поле "+uid), strip=False)
+        field_names[uid] = name
+        cf_type = value(definition, "CFType")
+        native = next((key for key, slot, _label, alias, type_ in METADATA_FIELDS
+                       if uid == str(slot) and name == alias and cf_type == str(type_)), "")
+        if native:
+            metadata_map[uid] = native
+            continue
+        kind = {"0": "number", "1": "date", "4": "checkbox", "5": "number", "7": "text"}.get(cf_type)
+        if not kind:
+            kind = next((kind_ for label, kind_ in (("Text", "text"), ("Number", "number"), ("Date", "date"), ("Flag", "checkbox"))
+                         if re.fullmatch(label+r"\d+", value(definition, "FieldName")) and not cf_type), None)
+        rollup = value(definition, "RollupType", "3")
+        if kind is None or kind == "number" and rollup not in {"3", "4"}:
+            warnings.append("Неподдержанный тип/агрегация XML-поля сохранится в описании: "+name)
+            continue
+        if any(item.name.casefold() == name.casefold() for item in custom_fields.values()):
+            name += " ("+uid+")"
+            warnings.append("Одинаковые названия XML-полей различены по FieldID.")
+        key = source_metadata.get(name, "xml-field-"+uid) if kind == "text" else "xml-field-"+uid
+        field_ = CustomField(key, name, kind, aggregate=("average" if rollup == "4" else "sum") if kind == "number" else "")
+        field_.validate()
+        custom_fields[key] = field_
+        field_map[uid] = key
+        if elements(definition, "ValueList") or value(definition, "LookupTable"):
+            warnings.append("Справочник XML-поля не переносится как список опций: "+name)
+    task_metadata = {}
     tasks = {}
     uid_map = {}
     source_records = {}
@@ -249,14 +330,76 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
         if kind != "task":
             duration = 0
         progress = number(value(record, "PercentComplete", "0"))
-        effort = float(duration_minutes(value(record, "Work", "PT0M"))/60)
+        effort = float(duration_minutes(value(record, "Work", "PT0M"))*work_scale/60)
+        metadata = {}
+        custom_values = {}
+        extra_notes = []
+        seen_fields = set()
+        for item in elements(record, "ExtendedAttribute"):
+            field_id = value(item, "FieldID")
+            if field_id in seen_fields:
+                raise XmlImportError("Повторяющееся значение XML-поля задачи.")
+            seen_fields.add(field_id)
+            raw = value(item, "Value", value(item, "ValueGUID"), strip=False)
+            if field_id in metadata_map:
+                metadata[metadata_map[field_id]] = raw
+            elif field_id in field_map:
+                field_ = custom_fields[field_map[field_id]]
+                if not raw:
+                    continue
+                parsed: object = raw
+                if field_.kind == "number":
+                    parsed = number(raw)
+                elif field_.kind == "checkbox":
+                    if raw.lower() not in {"0", "1", "true", "false"}:
+                        raise XmlImportError("Некорректный флажок пользовательского XML-поля.")
+                    parsed = raw.lower() in {"1", "true"}
+                elif field_.kind == "date":
+                    parsed_date = local_datetime(raw, minute_precision=False)
+                    if parsed_date.time() != time():
+                        raise XmlImportError("Дата пользовательского XML-поля содержит неподдержанное время суток.")
+                    parsed = parsed_date.date().isoformat()
+                if not summary or field_.kind != "number":
+                    custom_values[field_.id] = field_.normalize(parsed, {})
+            else:
+                extra_notes.append(field_names.get(field_id, "XML поле "+field_id)+": "+raw)
+                warnings.append("Неподдержанные XML-поля сохранены текстом в описании, не как пользовательские поля.")
+        for column, field_id, tag in ((11, "ganttpro_spent_minutes", "ActualWork"),
+                                      (17, "ganttpro_actual_cost", "ActualCost"),
+                                      (18, "ganttpro_created", "CreateDate")):
+            raw = value(record, tag)
+            if not raw or field_id in custom_values:
+                continue
+            if tag == "ActualWork":
+                raw = str(duration_minutes(raw))
+            elif tag == "ActualCost":
+                if number(raw) < 0:
+                    raise XmlImportError("Фактическая стоимость XML не может быть отрицательной.")
+            else:
+                raw = local_datetime(raw, minute_precision=False).isoformat(sep=" ")
+            custom_fields.setdefault(field_id, CustomField(field_id, HEADERS[column]))
+            custom_values[field_id] = raw
+        if "progress" in metadata:
+            exact_progress = number(metadata["progress"])
+            if round(exact_progress) != progress:
+                raise XmlImportError("Метаданные прогресса XML противоречат PercentComplete.")
+            progress = exact_progress
+        color = metadata.get("color", "#d65ab1" if milestone else "#50c7d6")
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+            raise XmlImportError("Некорректный цвет задачи в метаданных XML.")
+        status = metadata.get("status", status_for_progress(progress))
+        if status not in STATUS_LABELS or (status in {"completed", "closed"}) != (progress >= 100) or (status == "open") != (progress == 0):
+            raise XmlImportError("Статус XML противоречит прогрессу задачи.")
         priority = number(value(record, "Priority", "500"))
         priority_name = min(((0, "lowest"), (250, "low"), (500, "medium"), (750, "high"), (1000, "highest")), key=lambda pair: abs(pair[0]-priority))[1]
-        task = Task(key, value(record, "Name", "Задача "+uid), start, duration, parent, kind,
+        task = Task(key, value(record, "Name", "Задача "+uid, strip=False), start, duration, parent, kind,
                     progress=progress, effort=effort if kind != "group" else 0,
-                    cost=number(value(record, "FixedCost", value(record, "Cost", "0"))) if kind != "group" else 0,
-                    color="#d65ab1" if milestone else "#50c7d6", notes=value(record, "Notes"),
-                    status=status_for_progress(progress), priority=priority_name)
+                    cost=number(value(record, "Cost", value(record, "FixedCost", "0"))) if kind != "group" else 0,
+                    color=color, notes=value(record, "Notes", strip=False),
+                    status=status, priority=priority_name, custom_values=custom_values)
+        if extra_notes:
+            task.notes += ("\n" if task.notes else "")+"\n".join(extra_notes)
+        task_metadata[key] = metadata
         deadline = value(record, "Deadline")
         if deadline:
             task.deadline = local_datetime(deadline, minute_precision=False).date()
@@ -270,10 +413,8 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
         stack.append(key)
         if value(record, "ConstraintType", "0") != "0":
             warnings.append("Ограничение даты не переносится как правило планировщика: " + task.name)
-        if elements(record, "ExtendedAttribute"):
-            task.notes += "\n" + "\n".join("XML поле " + value(item, "FieldID") + ": " + value(item, "Value") for item in elements(record, "ExtendedAttribute"))
-            warnings.append("Типизированные поля XML сохранены текстом в описании, не как пользовательские поля.")
-    project = Project(value(root, "Name", value(root, "Title", fallback_name)) or "Импорт XML", tasks, calendar=project_calendar)
+    project = Project(value(root, "Name", value(root, "Title", fallback_name), strip=False) or "Импорт XML", tasks,
+                      calendar=project_calendar, custom_fields=custom_fields)
     for key, record in source_records.items():
         for link in elements(record, "PredecessorLink"):
             predecessor = value(link, "PredecessorUID")
@@ -308,7 +449,7 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
             continue
         if value(record, "Type", "1") != "1":
             raise XmlImportError("Материальные/стоимостные ресурсы XML не поддержаны как люди проекта.")
-        name = value(record, "Name", "Ресурс "+uid)
+        name = value(record, "Name", "Ресурс "+uid, strip=False)
         if any(item.name.casefold() == name.casefold() for item in project.resources.values()):
             name += " ("+uid+")"
             warnings.append("Одинаковые имена ресурсов различены по UID.")
@@ -318,20 +459,24 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
         availability = calendar(resource_calendar_id) if resource_calendar_id in calendar_nodes else project_calendar
         capacity = number(value(record, "MaxUnits", "1"))*number(value(root, "MinutesPerDay", "480"))/60
         resource = Resource("xml-resource-"+uid, name, capacity, set(availability.workdays))
-        dated = {}
-        for item in availability.exceptions:
-            if item.id.startswith("xml-"+resource_calendar_id+"-"):
-                dated[(item.start, item.end)] = 0 if not item.periods else capacity
-        for item in elements(record, "AvailabilityPeriods/AvailabilityPeriod"):
+        dated = [ResourceException("xml-availability-"+str(i), item.start, item.end, "Из XML", capacity if item.periods else 0)
+                 for i, item in enumerate(availability.exceptions)
+                 if not any(item.id == base.id or item.id.startswith(base.id+"-") for base in project_calendar.exceptions)]
+        own_availability = []
+        for index, item in enumerate(elements(record, "AvailabilityPeriods/AvailabilityPeriod")):
             start, end = value(item, "AvailableFrom"), value(item, "AvailableTo")
             units = number(value(item, "AvailableUnits", "1"))*number(value(root, "MinutesPerDay", "480"))/60
             if start and end:
                 bounds = (local_datetime(start, minute_precision=False).date(), local_datetime(end, minute_precision=False).date())
-                if units != capacity:
-                    dated[bounds] = units
+                if bounds[1] < bounds[0] or (bounds[1]-bounds[0]).days > 36600:
+                    raise XmlImportError("Диапазон доступности XML некорректен или превышает 100 лет.")
+                if any(a <= bounds[1] and bounds[0] <= b for a, b in own_availability):
+                    raise XmlImportError("Пересекающиеся периоды доступности ресурса XML.")
+                own_availability.append(bounds)
+                dated = _overlay(dated, ResourceException("xml-period-"+str(index), *bounds, "Из XML", units))
             elif units != capacity:
                 warnings.append("Неограниченный период доступности ресурса не переносится: " + name)
-        resource.exceptions = [ResourceException("xml-availability-"+str(i), a, b, "Из XML", hours) for i, ((a, b), hours) in enumerate(dated.items())]
+        resource.exceptions = dated
         if availability.weekly_periods:
             warnings.append("Часы присутствия ресурса по времени суток не переносятся; сохранены дни и дневная ёмкость: " + name)
         resource.validate()
@@ -349,7 +494,10 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
             warnings.append("Назначение на сводную группу пропущено; группы вычисляются по детям.")
             continue
         work = float(duration_minutes(value(record, "Work", "PT0M"))/60)
-        assigned[task_id].append((resource_map[resource_uid], work, number(value(record, "Units", "1"))))
+        units = number(value(record, "Units", "1"))
+        if units < 0:
+            raise XmlImportError("Отрицательная загрузка назначения XML.")
+        assigned[task_id].append((resource_map[resource_uid], work, units))
     for key, values in assigned.items():
         if len({rid for rid, _work, _units in values}) != len(values):
             raise XmlImportError("Дублирующее назначение ресурса на задачу.")
@@ -366,6 +514,7 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
 
     baseline_entries = defaultdict(dict)
     baseline_names = {}
+    baseline_dates = {}
     for key, record in source_records.items():
         for item in elements(record, "Baseline"):
             number_ = value(item, "Number", "0")
@@ -377,16 +526,23 @@ def parse_project_xml(data: bytes, fallback_name: str, imported_on: date) -> Xml
             kind = "task" if tasks[key].kind == "milestone" and a != b else tasks[key].kind
             baseline_entries[number_][key] = BaselineEntry(key, tasks[key].name, kind, a, b)
             name = next((line.removeprefix("Базовый план: ").strip() for line in tasks[key].notes.splitlines() if line.startswith("Базовый план: ")), "Базовый план XML "+number_)
+            native = task_metadata[key] if number_ == "0" else {}
+            name = native.get("baseline", name)
+            created = date.fromisoformat(native["baseline_created"]) if native.get("baseline_created") else imported_on
+            if number_ in baseline_names and (baseline_names[number_] != name or baseline_dates[number_] != created):
+                raise XmlImportError("Противоречащие метаданные базового плана XML.")
             baseline_names[number_] = name
+            baseline_dates[number_] = created
     for number_, entries in baseline_entries.items():
         key = "xml-baseline-"+number_
         name = baseline_names[number_]
         if any(item.name.casefold() == name.casefold() for item in project.baselines.values()):
             name += " ("+number_+")"
-        project.baselines[key] = Baseline(key, name, imported_on, entries)
+        project.baselines[key] = Baseline(key, name, baseline_dates[number_], entries)
     if project.baselines:
         project.active_baseline = "xml-baseline-0" if "xml-baseline-0" in project.baselines else next(iter(project.baselines))
-        warnings.append("Дата создания базовых планов — дата импорта: XML не передаёт исходную дату снимка.")
+        if any(not task_metadata[key].get("baseline_created") for entries in baseline_entries.values() for key in entries):
+            warnings.append("Дата создания базовых планов без метаданных Desktop — дата импорта.")
     project.validate()
     inconsistent = sum(project.calendar.between(project.span(link.source)[link.kind[0] == "F"], project.span(link.target)[link.kind[1] == "F"]) < link.lag for link in project.dependencies)
     if inconsistent:

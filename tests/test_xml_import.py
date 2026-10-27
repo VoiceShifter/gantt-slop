@@ -48,14 +48,16 @@ def test_real_sanitized_ganttpro_xml_preserves_dates_hierarchy_and_fourteen_link
     assert report.profile == "GanttPRO XML" and len(p.tasks) == 20 and len(p.dependencies) == 14
     sensor = next(task for task in p.tasks.values() if task.name == "Выбор сенсора")
     assert p.span(sensor.id) == (dt("2025-12-11T09:00"), dt("2025-12-15T18:00"))
-    assert sensor.duration == 24*60 and sensor.effort == pytest.approx(8/60)
+    assert sensor.duration == 24*60 and sensor.effort == 8
+    assert sum(task.effort for task in p.tasks.values()) == 212
     assert p.tasks[sensor.parent].name == "Планирование"
     group = next(task for task in p.tasks.values() if task.name == "Планирование")
     assert p.span(group.id) == (dt("2025-12-01T09:00"), dt("2025-12-26T18:00"))
     checkpoint = next(task for task in p.tasks.values() if task.name == "Приобретение компонентов")
     assert checkpoint.kind == "milestone" and p.span(checkpoint.id)[0] == p.span(checkpoint.id)[1]
     assert not p.resources and any("не содержит ресурсов" in message for message in report.warnings)
-    assert any("буквально" in message for message in report.warnings)
+    assert any("Work ×60" in message for message in report.warnings)
+    assert any("нет стоимости" in message for message in report.warnings)
     assert not any(task.name == "Total estimate" for task in p.tasks.values())
 
 

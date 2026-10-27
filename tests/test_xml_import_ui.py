@@ -30,7 +30,9 @@ def test_real_file_menu_previews_actual_xml_without_changing_current_project(gui
     assert isinstance(dialog, XmlImportDialog)
     wait_until(dialog.isVisible)
     assert "20 элементов" in dialog.summary.text() and "14 связей" in dialog.summary.text()
-    assert "буквально" in dialog.warnings.toPlainText() and "не содержит ресурсов" in dialog.warnings.toPlainText()
+    assert "Work ×60" in dialog.warnings.toPlainText() and "не содержит ресурсов" in dialog.warnings.toPlainText()
+    assert "212 ч" in dialog.summary.text() and "стоимость 0" in dialog.summary.text()
+    assert dialog.table.columnCount() == 7
     assert dialog.table.topLevelItemCount() > 1
     assert dialog.windowHandle().transientParent() is window
     assert dialog.palette().color(QPalette.ColorRole.Window) == qapp.palette().color(QPalette.ColorRole.Window)

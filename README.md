@@ -4,9 +4,11 @@ An independent **Python + PySide6 / Qt Quick** desktop task and Gantt editor. Th
 
 **Scope: tasks, Gantt and project-local resource workload.** No Board, account system, comments service, portfolios or cross-project workload application.
 
+**0.16 strengthens XML import/export:** correct 212-hour effort for the identified GanttPRO exporter, real typed MSPDI fields instead of appended Notes, retained colors/closed status/fractional progress, selected-baseline metadata, inherited calendar/availability overrides and safe full-tree export. Every reference CSV cell survives CSV → XML → CSV. The supplied XML itself omits resources/costs; they are reported, not invented. [XML workflow, mapping and limits](docs/XML.md). **889 tests pass; native JSON remains the complete backup format.**
+
 **0.15 replaces the CSV shortcut with the supplied GanttPRO table:** exact 23-column headers/order, a native CSV import review, real predecessor links/arrows, hierarchy/type/level, colors, times, effort/cost/status/priority and retained source metadata. Import/re-export reproduces every reference-table cell; all 14 supplied links are checked against XML. [CSV contract, use and limits](docs/CSV.md). This supersedes the eight-column 0.14 preset; it is not a claim that the website accepts every field.
 
-**0.14 adds file transfer:** native GanttPRO/MSPDI XML import with hierarchy/date/link review, explicit fidelity warnings and safe new-project Save; imported weekly working intervals; and a dedicated GanttPRO CSV export preset verified through its public import wizard. **This is not lossless interchange: GanttPRO rejects XML imports and its CSV import does not create dependency arrows.** [Routes, mapping and limits](docs/INTERCHANGE.md).
+**0.14 adds file transfer:** native GanttPRO/MSPDI XML import with hierarchy/date/link review, explicit fidelity warnings and safe new-project Save; imported weekly working intervals; and a dedicated GanttPRO CSV export preset verified through its public import wizard. **This is not lossless interchange: GanttPRO rejects XML imports; the original eight-column CSV browser experiment did not create dependency arrows.** [Routes, mapping and limits](docs/INTERCHANGE.md).
 
 **0.13 adds persistent baseline snapshots:** capture/select/delete named original plans, immutable captured dates by task ID, grey comparison bars, read-only baseline/deviation fields, calendar-hour differences and all-format export. Selecting a baseline never restores task dates. [Baselines](docs/BASELINES.md).
 
@@ -88,7 +90,7 @@ The initial project is a disposable device-planning example. **Use Save / Ctrl+S
 - Native XML import review for GanttPRO/MSPDI task trees, dates, calendars and supported metadata; all four link types and signed working-minute lag; accepted imports are new unsaved projects, never automatic overwrites of the XML source.
 - GanttPRO-shaped 23-column CSV import/export, based on the supplied real spreadsheet table: real predecessor references, colors, hierarchy/type/level, dates with times, resource names, progress/status/priority, effort, cost, deadlines and descriptions. Desktop import creates editable arrows; nondefault link types/lags retain a documented minute syntax. Source spent-time/actual-cost/creation/author values persist as text custom fields. Warnings distinguish unsupported project state from fields present in the table.
 - Versioned JSON save/load and a dirty indicator; independent full-diagram PDF/PNG export with vector preview, paged paper sizes/orientation, label/style/date/range/field controls and optional resource workload.
-- Excel `.xlsx` with real numbers/booleans/dates, hierarchy and optional workload sheet; MS Project XML with calendars/links/assignments and custom metadata in Notes; CSV remains available.
+- Excel `.xlsx` with real numbers/booleans/dates, hierarchy and optional workload sheet; MS Project XML with calendars/links/assignments, typed Text/Number/Date/Flag fields and named color/status/progress/baseline metadata; CSV remains available.
 
 ### Gestures
 

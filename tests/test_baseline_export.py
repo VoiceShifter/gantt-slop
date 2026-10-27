@@ -59,7 +59,11 @@ def test_baseline_exports_use_frozen_selected_snapshot_and_do_not_mutate_project
         task = next(task for task in tasks if task.findtext("m:Name", namespaces=ns) == "A")
         assert task.findtext("m:Baseline/m:Number", namespaces=ns) == "0"
         assert task.findtext("m:Baseline/m:Start", namespaces=ns) == "2026-01-05T09:00:00"
-        assert "Original" in (task.findtext("m:Notes", namespaces=ns) or "")
+        field = next(item for item in root.findall("m:ExtendedAttributes/m:ExtendedAttribute", ns)
+                     if item.findtext("m:Alias", namespaces=ns) == "Gantt Desktop · Базовый план")
+        values = {item.findtext("m:FieldID", namespaces=ns): item.findtext("m:Value", namespaces=ns)
+                  for item in task.findall("m:ExtendedAttribute", ns)}
+        assert values[field.findtext("m:FieldID", namespaces=ns)] == "Original"
     elif format_ == "pdf":
         pdf = pdf_document(path)
         assert "Original" in pdf.getAllText(0).text()

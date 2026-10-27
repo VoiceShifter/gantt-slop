@@ -222,7 +222,12 @@ def test_xml_retains_structure_calendar_dependencies_assignments_and_metadata(qa
     tasks = root.findall("m:Tasks/m:Task", ns)
     assert len(tasks) == len(c.project.tasks)
     sensor = next(t for t in tasks if t.findtext("m:Name", namespaces=ns) == "Выбор сенсора")
-    assert "Risk: Low & <safe>" in (sensor.findtext("m:Notes", namespaces=ns) or "")
+    field = next(item for item in root.findall("m:ExtendedAttributes/m:ExtendedAttribute", ns)
+                 if item.findtext("m:Alias", namespaces=ns) == "Risk")
+    values = {item.findtext("m:FieldID", namespaces=ns): item.findtext("m:Value", namespaces=ns)
+              for item in sensor.findall("m:ExtendedAttribute", ns)}
+    assert values[field.findtext("m:FieldID", namespaces=ns)] == "Low & <safe>"
+    assert sensor.findtext("m:Notes", default="", namespaces=ns) == p.tasks["sensor"].notes
     assert sensor.findtext("m:Duration", namespaces=ns) == "PT24H0M0S"
     assert sensor.findtext("m:Work", namespaces=ns) == "PT8H0M0S"
     assert root.findall(".//m:TimePeriod/m:FromDate", ns)

@@ -4,13 +4,18 @@ from __future__ import annotations
 import csv
 import math
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from .domain import status_for_progress
 from .exporting import ExportError
+from .ganttpro_csv import number as csv_number
+from .ganttpro_csv import timestamp as csv_timestamp
 from .workload import workload_rows
+from .xml_fields import CF_TYPES, FIELD_IDS, METADATA_FIELDS, export_fields
 
 if TYPE_CHECKING:
     from .exporting import ExportDocument, ExportSource
@@ -218,7 +223,7 @@ def duration(minutes: float) -> str:
 
 
 def write_project_xml(path: Path, source: ExportSource) -> None:
-    """MSPDI interchange; custom values are retained as named entries in Notes."""
+    """MSPDI schedule plus ordinary typed/named ExtendedAttribute fields."""
     project = source.project
     root = ET.Element("Project", {"xmlns": MSP})
     for key, value in (("SaveVersion", 14), ("Name", project.name), ("Title", project.name),
@@ -228,6 +233,18 @@ def write_project_xml(path: Path, source: ExportSource) -> None:
     if source.rows:
         element(root, "StartDate", min(r["startValue"] for r in source.rows).isoformat(timespec="seconds"))
         element(root, "FinishDate", max(r["endValue"] for r in source.rows).isoformat(timespec="seconds"))
+    fields = export_fields(project)
+    definitions = element(root, "ExtendedAttributes")
+    for field_, kind, uid, name in fields:
+        definition = element(definitions, "ExtendedAttribute")
+        for key, value in (("FieldID", uid), ("FieldName", name), ("CFType", CF_TYPES[kind]), ("Alias", field_.name)):
+            element(definition, key, value)
+        if kind == "number":
+            element(definition, "RollupType", 4 if field_.aggregate == "average" else 3)
+    for _key, uid, name, alias, cf_type in METADATA_FIELDS:
+        definition = element(definitions, "ExtendedAttribute")
+        for key, value in (("FieldID", uid), ("FieldName", name), ("CFType", cf_type), ("Alias", alias)):
+            element(definition, key, value)
     calendars = element(root, "Calendars")
 
     def working_times(day, periods) -> None:
@@ -298,6 +315,7 @@ def write_project_xml(path: Path, source: ExportSource) -> None:
     for row in source.rows:
         task = project.tasks[row["taskId"]]
         record = element(tasks, "Task")
+        cost = format(Decimal(str(row["costValue"])), "f")
         values = (("UID", task_uids[task.id]), ("ID", task_uids[task.id]), ("Name", task.name), ("Type", 1),
                   ("WBS", row["outline"]), ("OutlineNumber", row["outline"]), ("OutlineLevel", row["level"]+1),
                   ("Priority", {"highest": 1000, "high": 750, "medium": 500, "low": 250, "lowest": 0}[task.priority]),
@@ -305,16 +323,28 @@ def write_project_xml(path: Path, source: ExportSource) -> None:
                   ("Finish", row["endValue"].isoformat(timespec="seconds")), ("Duration", duration(row["duration"]*60)),
                   ("DurationFormat", 7), ("Work", duration(row["effortHours"]*60)),
                   ("EffortDriven", 0), ("Milestone", int(row["milestone"])), ("Summary", int(row["summary"])),
-                  ("FixedCost", f"{row['costValue']:.10f}"), ("PercentComplete", round(row["progress"])),
-                  ("Cost", f"{row['costValue']:.10f}"), ("CalendarUID", 1), ("Manual", 1),
+                  ("FixedCost", cost), ("PercentComplete", round(row["progress"])),
+                  ("Cost", cost), ("CalendarUID", 1), ("Manual", 1),
                   ("ManualStart", row["startValue"].isoformat(timespec="seconds")),
                   ("ManualFinish", row["endValue"].isoformat(timespec="seconds")),
                   ("ManualDuration", duration(row["duration"]*60)))
         for name, value in values:
             element(record, name, value)
+        for field_id, tag in (("ganttpro_spent_minutes", "ActualWork"), ("ganttpro_actual_cost", "ActualCost"),
+                              ("ganttpro_created", "CreateDate")):
+            raw = task.custom_values.get(field_id)
+            if not isinstance(raw, str) or not raw:
+                continue
+            if tag == "ActualWork":
+                value = duration(csv_number(raw))
+            elif tag == "ActualCost":
+                value = format(Decimal(str(csv_number(raw))), "f")
+            else:
+                value = csv_timestamp(raw, minute_precision=False).isoformat()
+            element(record, tag, value)
         if task.deadline is not None:
             element(record, "Deadline", task.deadline.isoformat() + "T23:59:59")
-        notes = [task.notes, "Статус: " + row["statusText"]]
+        element(record, "Notes", task.notes)
         baseline = project.baselines.get(project.active_baseline)
         saved = baseline.tasks.get(task.id) if baseline is not None else None
         if baseline is not None and saved is not None:
@@ -322,10 +352,26 @@ def write_project_xml(path: Path, source: ExportSource) -> None:
             element(baseline_node, "Number", 0)
             element(baseline_node, "Start", saved.start.isoformat())
             element(baseline_node, "Finish", saved.end.isoformat())
-            notes.append("Базовый план: " + baseline.name)
-        notes.extend(f.name + ": " + source.text(row, "custom:" + f.id) for f in project.custom_fields.values()
-                     if source.value(row, "custom:" + f.id) is not None)
-        element(record, "Notes", "\n".join(part for part in notes if part))
+        def attribute(uid, value, parent=record):
+            item = element(parent, "ExtendedAttribute")
+            element(item, "FieldID", uid)
+            element(item, "Value", value)
+        for field_, kind, uid, _name in fields:
+            value = source.value(row, "custom:"+field_.id)
+            if value is not None:
+                if kind == "date":
+                    value = str(value)+"T00:00:00"
+                elif kind == "checkbox":
+                    value = int(bool(value))
+                elif field_.kind not in FIELD_IDS:
+                    value = source.text(row, "custom:"+field_.id)
+                attribute(uid, value)
+        metadata = {"color": task.color, "status": status_for_progress(row["progress"]) if task.kind == "group" else task.status,
+                    "progress": row["progress"], "baseline": baseline.name if baseline is not None and saved is not None else None,
+                    "baseline_created": baseline.created.isoformat() if baseline is not None and saved is not None else None}
+        for key, uid, _name, _alias, _type in METADATA_FIELDS:
+            if metadata[key] is not None:
+                attribute(uid, metadata[key])
         for link in project.dependencies:
             if link.target == task.id:
                 predecessor = element(record, "PredecessorLink")
@@ -349,4 +395,19 @@ def write_project_xml(path: Path, source: ExportSource) -> None:
                                 ("Work", duration(hours*60)), ("Start", start.isoformat(timespec="seconds")),
                                 ("Finish", end.isoformat(timespec="seconds"))):
                 element(record, name, value)
-    path.write_bytes(xml_bytes(root))
+    # MSPDI uses ordered sequences. Keep the published standard-field order;
+    # the Project 2010 manual-scheduling fields follow the older Task sequence.
+    sequences = {
+        "Project": ("SaveVersion", "Name", "Title", "ScheduleFromStart", "StartDate", "FinishDate", "CalendarUID",
+                    "MinutesPerDay", "MinutesPerWeek", "DaysPerMonth", "ExtendedAttributes", "Calendars", "Tasks", "Resources", "Assignments"),
+        "Task": ("UID", "ID", "Name", "Type", "CreateDate", "WBS", "OutlineNumber", "OutlineLevel", "Priority", "Start", "Finish",
+                 "Duration", "DurationFormat", "Work", "EffortDriven", "Milestone", "Summary", "FixedCost", "PercentComplete", "Cost",
+                 "ActualCost", "ActualWork", "CalendarUID", "Deadline", "Notes", "PredecessorLink", "ExtendedAttribute", "Baseline",
+                 "Manual", "ManualStart", "ManualFinish", "ManualDuration"),
+        "Assignment": ("UID", "TaskUID", "ResourceUID", "Finish", "Start", "Units", "Work"),
+    }
+    for node in root.iter():
+        if node.tag in sequences:
+            order = sequences[node.tag]
+            node[:] = sorted(node, key=lambda item, order=order: order.index(item.tag))
+    path.write_bytes(xml_bytes(root).replace(b"\r", b"&#13;"))

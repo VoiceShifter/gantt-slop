@@ -191,7 +191,7 @@ class ExportDialog(EditorDialog):
                               ("Поля", self.fields)):
             form.addRow(label, widget)
         self.note = QLabel("Экспорт не меняет проект. PDF с размером бумаги вписывается по ширине и разбивается по строкам; "
-                           "предпросмотр — весь документ. XML — весь проект, метаданные полей сохраняются в Notes.")
+                           "предпросмотр — весь документ. XML — весь проект, поля переносятся через ExtendedAttribute.")
         self.note.setWordWrap(True)
         form.addRow(self.note)
         for combo in (self.format, self.scope, self.content, self.scale, self.paper, self.orientation, self.labels):
@@ -317,12 +317,18 @@ class ExportDialog(EditorDialog):
                               "Простые номера — FS/0; остальные связи записаны с типом и лагом в рабочих минутах. "
                               "Имена исполнителей и общий объём переносятся, но календарь, ёмкость/цвет/доли ресурсов, базовые планы и прочие пользовательские поля "
                               "не входят в схему. Для полного проекта сохраните .gantt.json. Полный перенос через импорт самого сайта не подтверждён.")
+        elif format_ == "xml":
+            self.note.setText("MSPDI XML: весь проект, дерево, даты, связи, календари, ресурсы и назначения. "
+                              "Text/Number/Date/Flag — типизированные поля; сложные типы становятся текстом. "
+                              "Цвет, статус, дробный прогресс и имя/дата выбранного базового плана — именованные XML-поля. "
+                              "Не переносятся цвет ресурса, остальные базовые планы и архив удалённых элементов. "
+                              "Для полного проекта сохраните .gantt.json. GanttPRO не принимает XML; приём MS Project отдельно не подтверждён.")
         else:
-            self.note.setText("Экспорт не меняет проект. PDF вписывается по ширине и разбивается по строкам. "
-                              "XML не принимается сайтом GanttPRO для обратного импорта.")
-        self.transfer_warning.setText(self.note.text() if format_ == "ganttpro_csv" else "")
-        self.transfer_warning.setVisible(format_ == "ganttpro_csv")
-        self.note.setVisible(format_ != "ganttpro_csv")
+            self.note.setText("Экспорт не меняет проект. PDF вписывается по ширине и разбивается по строкам.")
+        transfer = format_ in {"xml", "ganttpro_csv"}
+        self.transfer_warning.setText(self.note.text() if transfer else "")
+        self.transfer_warning.setVisible(transfer)
+        self.note.setVisible(not transfer)
         self.workload.setEnabled(format_ == "xlsx" or (visual and self.content.currentData() != "table"))
         self.critical.setEnabled(visual and self.content.currentData() != "table")
         self.baseline.setEnabled(visual and self.content.currentData() != "table" and bool(self.source.project.active_baseline))

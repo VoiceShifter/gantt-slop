@@ -40,7 +40,8 @@ class XmlImportDialog(EditorDialog):
         self.layout_root.addWidget(self.name)
         self.table = QTreeWidget()
         self.table.setObjectName(prefix+"Tasks")
-        self.table.setHeaderLabels(["Элемент", "Тип", "Начало", "Завершение", "Длительность, ч"])
+        self.table.setHeaderLabels(["Элемент", "Тип", "Начало", "Завершение", "Длительность, ч"]+
+                                   (["Трудозатраты, ч", "Стоимость"] if format_name == "XML" else []))
         self.table.setColumnWidth(0, 340)
         self.table.setColumnWidth(2, 170)
         self.table.setColumnWidth(3, 170)
@@ -65,14 +66,22 @@ class XmlImportDialog(EditorDialog):
         self.name.setText(report.project.name)
         self.summary.setText(f"{source.name} · {report.profile} · {len(report.project.tasks)} элементов · "
                              f"{len(report.project.dependencies)} связей · {len(report.project.resources)} ресурсов")
+        if self.format_name == "XML":
+            leaves = [task for task in report.project.tasks.values() if task.kind != "group"]
+            self.summary.setText(self.summary.text()+f" · {sum(task.effort for task in leaves):g} ч · стоимость {sum(task.cost for task in leaves):g}")
         self.warnings.setPlainText("\n".join("• "+text for text in report.warnings))
         self.table.clear()
         def visit(parent: str, owner: QTreeWidgetItem | None) -> None:
             for task in report.project.children(parent):
                 start, end = report.project.span(task.id)
-                item = QTreeWidgetItem([task.name, {"task": "Задача", "group": "Группа", "milestone": "Веха"}[task.kind],
-                                        start.strftime("%d.%m.%Y %H:%M"), end.strftime("%d.%m.%Y %H:%M"),
-                                        f"{report.project.calendar.between(start, end)/60:g}"])
+                values = [task.name, {"task": "Задача", "group": "Группа", "milestone": "Веха"}[task.kind],
+                          start.strftime("%d.%m.%Y %H:%M"), end.strftime("%d.%m.%Y %H:%M"),
+                          f"{report.project.calendar.between(start, end)/60:g}"]
+                if self.format_name == "XML":
+                    members = list(report.project.descendants(task.id)) if task.kind == "group" else [task]
+                    leaves = [member for member in members if member.kind != "group"]
+                    values += [f"{sum(member.effort for member in leaves):g}", f"{sum(member.cost for member in leaves):g}"]
+                item = QTreeWidgetItem(values)
                 if owner is None:
                     self.table.addTopLevelItem(item)
                 else:

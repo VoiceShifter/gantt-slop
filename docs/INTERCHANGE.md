@@ -1,5 +1,7 @@
 # GanttPRO / MS Project file transfer
 
+**Current 0.16 XML workflow:** [XML.md](XML.md) supersedes the historical XML mapping below: identified exporter-unit correction (212 effort hours), typed custom fields, named color/status/exact-progress/baseline metadata and inherited calendar/availability overrides. Every reference CSV table cell survives local CSV → XML → CSV transfer. The original XML itself lacks people/cost/color data; missing data are not invented. **GanttPRO still rejects XML; Microsoft Project runtime acceptance is unverified.**
+
 **Current 0.15 CSV workflow:** [CSV.md](CSV.md) documents the actual supplied 23-column table, the new native Desktop CSV importer and matching exporter. The supplied 20-element/14-link diagram now imports from CSV with real arrows, resource names, correct 212-hour effort/38,000 cost, colors and retained source metadata. Re-export matches every reference-table cell. **The eight-column CSV procedure below is historical 0.14 behavior and has been replaced.** Website import behavior remains separately unverified for the new table; full native project state remains JSON.
 
 ## Historical 0.14 investigation

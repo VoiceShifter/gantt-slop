@@ -27,8 +27,11 @@ def test_calendar_exception_exports_use_frozen_schedules_and_availability(qapp, 
     path = tmp_path / ("calendar." + format_)
     export_file(path, doc)
     assert path.stat().st_size > 100
-    monday = next(day for day in doc.resources[0]["days"] if day["date"] == "2026-01-05")
-    assert monday["capacity"] == 2.5 and monday["overloaded"]
+    if format_ == "xml":
+        assert not doc.resources and not doc.options.workload
+    else:
+        monday = next(day for day in doc.resources[0]["days"] if day["date"] == "2026-01-05")
+        assert monday["capacity"] == 2.5 and monday["overloaded"]
     assert source.project.span("a")[1].date() == date(2026, 1, 7)
     assert c.project.to_dict() == before
     assert c.removeCalendarException("", c.project.calendar.exceptions[0].id)
