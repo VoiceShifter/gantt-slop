@@ -1,6 +1,6 @@
 # Local MCP access · 0.19
 
-An LLM **client/host** can now access the project open in Gantt Desktop. The application serves the official MCP protocol over **Streamable HTTP**, using the official Python SDK (`mcp>=2.3,<3`). It does not run a model itself.
+An LLM **client/host** can now access the project open in Gantt Desktop. The application serves the official MCP protocol over **Streamable HTTP**, using the official Python SDK (`mcp>=2.3,<3`). It does not run a model itself. **The server is client-agnostic: there is no pi dependency or pi-specific protocol, and no restriction to one model provider.**
 
 ## Enable and connect
 
@@ -29,6 +29,29 @@ Use the **copied values**, not the placeholder above. Do not commit or publish t
 The bottom-bar **MCP · чтение / MCP · изменения** indicator reopens the controls. **Выключить** revokes access. Opening/importing another project or exiting also stops the server. Closing the MCP dialog alone does **not** stop it. Every enable generates a new token: reconnect with newly copied configuration, including a possibly different port.
 
 Access settings and credentials are not saved in `.gantt.json` or preferences; there is no automatic startup. If SDK imports are unavailable, the dialog reports the failure without enabling access; reinstall dependencies in the interpreter used to launch the app.
+
+## Gemini CLI and other clients
+
+For **Gemini CLI**, merge the following entry into your user `~/.gemini/settings.json`, substituting the URL and token copied from the desktop. Preserve any existing settings and servers:
+
+```json
+{
+  "mcpServers": {
+    "gantt-desktop": {
+      "httpUrl": "http://127.0.0.1:8765/mcp",
+      "headers": {
+        "Authorization": "Bearer REPLACE_WITH_THE_TOKEN_FROM_THE_DESKTOP"
+      }
+    }
+  }
+}
+```
+
+**Use `httpUrl`, not `url`, in Gemini CLI:** its `httpUrl` selects Streamable HTTP, whereas `url` selects the older SSE transport. This is a client configuration difference, not a different server API. Check the connection with `gemini mcp list`, then inspect the discovered tools with `/mcp`. Keep the client's normal tool-confirmation controls enabled.
+
+This configuration follows the [official Gemini CLI MCP documentation](https://geminicli.com/docs/tools/mcp-server/); a Gemini CLI/model session has not been tested end-to-end here. The existing protocol tests use the independent official MCP SDK client, not pi.
+
+Other MCP hosts can use the same endpoint and bearer header if they support **Streamable HTTP plus custom headers**; adapt their configuration keys rather than changing the server. A local MCP host can use Gemini or another model provider. A cloud-only chat/service cannot directly reach `127.0.0.1` on your computer: it needs a local MCP-capable host/bridge. Stdio-only hosts also need a compatible bridge; a native stdio transport is not currently provided.
 
 ## Tools
 
