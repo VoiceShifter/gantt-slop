@@ -2,6 +2,8 @@
 
 An LLM **client/host** can now access the project open in Gantt Desktop. The application serves the official MCP protocol over **Streamable HTTP**, using the official Python SDK (`mcp>=2.3,<3`). It does not run a model itself. **The server is client-agnostic: there is no pi dependency or pi-specific protocol, and no restriction to one model provider.**
 
+**Open audit findings:** date-overflow and sub-minute editing cases can violate the intended rollback/revision rules below. A tool error does not always mean the document was unchanged. Keep MCP read-only for important documents until these are fixed; see the [reproductions and priorities](AUDIT.md). The audit did not change application code.
+
 ## Enable and connect
 
 1. Install/update the application in its launch environment: `python -m pip install -e ".[test]"` from `gantt-desktop/`, then `python -m gantt_desktop`.
@@ -75,7 +77,7 @@ Tool discovery supplies argument schemas and descriptions. Use stable IDs from `
 ## Transactions and concurrent use
 
 - Read `get_project` and pass its integer `revision` as `expected_revision` on **every mutation**. Human edits, successful MCP changes and Undo/Redo advance the revision. A stale revision returns an actionable tool error without changing the project. Two clients cannot both change the same revision.
-- A successful ordinary mutation is one existing document-history transaction, including any propagated dates. Invalid changes roll back; no-ops do not dirty the document or add history. Editing several fields means several separate tool calls/Undo steps, not a hidden batch.
+- A successful ordinary mutation is one existing document-history transaction, including any propagated dates. Validation failures caught inside the transaction roll back; no-ops normally do not dirty the document or add history. The open audit findings above document exceptions. Editing several fields means several separate tool calls/Undo steps, not a hidden batch.
 - Edits are visible in the desktop and remain **unsaved** until the user saves normally. There is no MCP Save/Open/Import/Export or arbitrary file access.
 - Reads and writes execute on the Qt thread. The HTTP worker never directly accesses the live document. Writes are refused while a modal editor, bulk draft, text edit or mouse gesture is active; finish the interaction first. Reads remain available.
 - Bridge requests cancelled before Qt delivery cannot apply later. Stop/project changes revoke queued requests, including requests from an earlier server generation. A client timeout or network disconnect alone does not guarantee server-side cancellation or rollback: **re-read before retrying**. There is no cross-process exactly-once promise.
