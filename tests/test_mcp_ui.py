@@ -9,6 +9,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLineEdit
+from test_audit_fixes import project
 from test_mcp import connect, run_async
 from test_ui import item, point, undo
 
@@ -145,3 +146,36 @@ def test_bulk_and_text_drafts_block_mcp_changes(gui):
     assert window.property("editingText")
     run_async(lambda: connect(server, edit))
     assert c.project.to_dict() == before and not c.dirty
+
+
+def test_rejected_mcp_dates_leave_visible_chart_and_file_unchanged(gui, tmp_path):
+    c, window = gui
+    c.load_project(project())
+    path = tmp_path / "audit.gantt.json"
+    assert c.save_path(path)
+    before = c.project.to_dict()
+    source_bytes = path.read_bytes()
+    dialog = open_mcp(window)
+    assert click_native("mcpAllowWrites") and replace_native("mcpPort", "0") and click_native("mcpStart")
+    wait_until(lambda: dialog.server.running)
+    server = dialog.server
+    QTest.keyClick(dialog, Qt.Key.Key_Escape)
+    window.contentItem().forceActiveFocus()
+    bar = item(window, "taskbar-a")
+    geometry = (bar.x(), bar.width())
+    rows = c._rows.records.copy()
+
+    async def journey(client):
+        snapshot = (await client.call_tool("get_project")).structured_content
+        assert snapshot is not None
+        for field, value in [("start", "9999-12-31"), ("startTime", "09:00:30")]:
+            rejected = await client.call_tool("edit_task", {"expected_revision": snapshot["revision"],
+                                                            "task_id": "a", "field": field, "value": value})
+            assert rejected.is_error
+            assert (await client.call_tool("get_project")).structured_content == snapshot
+
+    run_async(lambda: connect(server, journey))
+    assert c.project.to_dict() == before and c._rows.records == rows
+    assert (bar.x(), bar.width()) == geometry and not c.dirty and not c.canUndo
+    assert path.read_bytes() == source_bytes
+    server.stop()

@@ -1,8 +1,8 @@
-# Local MCP access · 0.19
+# Local MCP access · 0.19.1
 
 An LLM **client/host** can now access the project open in Gantt Desktop. The application serves the official MCP protocol over **Streamable HTTP**, using the official Python SDK (`mcp>=2.3,<3`). It does not run a model itself. **The server is client-agnostic: there is no pi dependency or pi-specific protocol, and no restriction to one model provider.**
 
-**Open audit findings:** date-overflow and sub-minute editing cases can violate the intended rollback/revision rules below. A tool error does not always mean the document was unchanged. Keep MCP read-only for important documents until these are fixed; see the [reproductions and priorities](AUDIT.md). The audit did not change application code.
+**0.19.1 fixes all five audited save/load and editing defects**, including date-overflow rollback and sub-minute revision tracking. See the [original reproductions and regression evidence](AUDIT.md). MCP remains read-only by default; timeouts/disconnects still require a fresh read before retrying a write.
 
 ## Enable and connect
 
@@ -28,7 +28,7 @@ An LLM **client/host** can now access the project open in Gantt Desktop. The app
 
 Use the **copied values**, not the placeholder above. Do not commit or publish this configuration. The token grants access to the whole open project, including hidden tasks, notes, resource data and baselines. A connected LLM host may send that data to its model provider; choose a trusted host/provider.
 
-The bottom-bar **MCP · чтение / MCP · изменения** indicator reopens the controls. **Выключить** revokes access. Opening/importing another project or exiting also stops the server. Closing the MCP dialog alone does **not** stop it. Every enable generates a new token: reconnect with newly copied configuration, including a possibly different port.
+The bottom-bar **MCP · чтение / MCP · изменения** indicator reopens the controls. **Выключить** revokes access. Successfully opening/importing another project or exiting also stops the server. A failed load leaves the current project and its access unchanged. Closing the MCP dialog alone does **not** stop it. Every enable generates a new token: reconnect with newly copied configuration, including a possibly different port.
 
 Access settings and credentials are not saved in `.gantt.json` or preferences; there is no automatic startup. If SDK imports are unavailable, the dialog reports the failure without enabling access; reinstall dependencies in the interpreter used to launch the app.
 
@@ -72,12 +72,12 @@ In read-only mode, only `get_project` is advertised. To expose the other tools, 
 
 Tool discovery supplies argument schemas and descriptions. Use stable IDs from `get_project`, not row numbers. Use `spans` for computed summary dates/finishes rather than inferring them from stored task duration.
 
-**Units:** native snapshot task durations and dependency lags are working **minutes**. `create_task.duration_minutes` and `save_dependency.lag_minutes` also use minutes. In contrast, `edit_task`'s numeric string values use working **hours** for `duration` and `effort`, 0–100 for progress, and a nonnegative amount for cost. All dates/times are local civil values, not UTC. Creation accepts a local ISO date/time with minute precision; groups/milestones require duration 0. Date edits use `YYYY-MM-DD`, time edits `HH:MM`; an empty deadline clears it.
+**Units:** native snapshot task durations and dependency lags are working **minutes**. `create_task.duration_minutes` and `save_dependency.lag_minutes` also use minutes. In contrast, `edit_task`'s numeric string values use working **hours** for `duration` and `effort`, 0–100 for progress, and a nonnegative amount for cost. All dates/times are local civil values, not UTC. Creation accepts a local ISO date/time with minute precision; groups/milestones require duration 0. Date edits use `YYYY-MM-DD`, time edits `HH:MM`; an empty deadline clears it. Nonzero seconds/microseconds and timezone-aware task times are rejected, including during native loading, not silently rounded.
 
 ## Transactions and concurrent use
 
 - Read `get_project` and pass its integer `revision` as `expected_revision` on **every mutation**. Human edits, successful MCP changes and Undo/Redo advance the revision. A stale revision returns an actionable tool error without changing the project. Two clients cannot both change the same revision.
-- A successful ordinary mutation is one existing document-history transaction, including any propagated dates. Validation failures caught inside the transaction roll back; no-ops normally do not dirty the document or add history. The open audit findings above document exceptions. Editing several fields means several separate tool calls/Undo steps, not a hidden batch.
+- A successful ordinary mutation is one existing document-history transaction, including any propagated dates. Edits are validated on detached drafts; document/view preparation succeeds before history and revision changes are published. Rejected validation preserves the document, history and revision; no-ops do not dirty the document or add history. Editing several fields means several separate tool calls/Undo steps, not a hidden batch.
 - Edits are visible in the desktop and remain **unsaved** until the user saves normally. There is no MCP Save/Open/Import/Export or arbitrary file access.
 - Reads and writes execute on the Qt thread. The HTTP worker never directly accesses the live document. Writes are refused while a modal editor, bulk draft, text edit or mouse gesture is active; finish the interaction first. Reads remain available.
 - Bridge requests cancelled before Qt delivery cannot apply later. Stop/project changes revoke queued requests, including requests from an earlier server generation. A client timeout or network disconnect alone does not guarantee server-side cancellation or rollback: **re-read before retrying**. There is no cross-process exactly-once promise.
@@ -93,15 +93,17 @@ Tool discovery supplies argument schemas and descriptions. Use stable IDs from `
 
 ## Verification
 
-The complete isolated Linux suite passes: **1,088 tests in 288.32 s**, including **64 new MCP checks**. Environment: Python 3.11.15, PySide6/Qt 6.11.1, MCP SDK 2.3.0.
+The complete isolated Linux **0.19.1** suite passes: **1,151 tests in 302.48 s**, including **63 additional audit-fix regression cases** beyond 0.19.0. Environment: Python 3.11.15, PySide6/Qt 6.11.1, MCP SDK 2.3.0.
 
 Checks include real SDK initialization/tool discovery and structured results over HTTP; read-only versus write schemas; task/assignment/dependency editing and shared Undo/Redo; rollback/no-op/conflict behavior; two simultaneous clients; cancelled/queued/in-flight requests; authentication, invalid Host/Origin, duplicate authorization, body limits including chunked bodies; token rotation, occupied ports, immediate same-port restart after live keep-alive traffic, project switching and listener shutdown. Native input checks cover both themes at 1000/1366/1920 widths, copying configuration, busy editors, visible edits and unchanged source files until explicit Save.
 
-Fresh project-configured Pyright checks all six changed Python files without diagnostics; Ruff passes. The final active Python LSP probe also reports zero errors, with one false-positive warning suppressed for the empty, revoked token initializer. Earlier stale dependency-resolution findings were independently checked against the actual installed environment, not accepted as evidence of broken code or silently called clean.
+New regressions exercise the exact overflow/sub-minute failures through authenticated HTTP: rejected edits preserve snapshots/revisions, subsequent reads and valid edits/Undo succeed, and native-window rows/chart geometry/saved bytes remain unchanged. Failed native loads retain the current document and its access; successful replacement revokes access. See [AUDIT.md](AUDIT.md) for save-error and Unicode coverage.
 
-The independently installed **0.19.0 wheel** was also exercised, not imported from the source checkout: native menu/consent/configuration copy, authenticated read/edit, visible diagram change, toolbar Undo/Redo, manual Save/reopen, revocation on project load and real application-exit shutdown all passed, with zero QML runtime errors. Its 40 packaged Python/QML files byte-match the source. Wheel: `dist/gantt_desktop-0.19.0-py3-none-any.whl`, 156,581 bytes; SHA-256 `a862f25f2b2d8f8ef44bca5c9186900a90cc65493d33eb93c22b289af1351b82`.
+Ruff and project-configured Pyright pass with zero errors/warnings across the application and the four changed test modules. Active LSP probes of all six changed Python files also report zero errors.
 
-Proof frames (tokens are masked by the native control; all test servers were stopped):
+The independently installed **0.19.1 wheel** passed **149 focused audit/MCP/native-UI/calendar tests in 50.41 s**. All 16 imported application modules came from the installation, not the checkout; all 40 packaged Python/QML files byte-match the source and installation. Wheel: `dist/gantt_desktop-0.19.1-py3-none-any.whl`, 157,215 bytes; SHA-256 `57bb132efa3091597ace87b39bd2e3207668c58f8b7341839b9f7c61a98c5415`.
+
+Retained 0.19 UI proof frames (the controls are unchanged; tokens are masked by the native control; all test servers were stopped):
 
 - [Read-only access, light theme](screenshots/mcp-readonly-light.png)
 - [Explicit write permission, dark theme](screenshots/mcp-write-dark.png)

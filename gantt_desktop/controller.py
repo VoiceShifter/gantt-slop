@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import tempfile
 from collections.abc import Callable
 from copy import deepcopy
 from datetime import date, datetime, time, timedelta
@@ -578,27 +579,51 @@ class Controller(QObject):
                            "label": f"{self.project.tasks[link.source].name} → {self.project.tasks[link.target].name} ({link.kind}, {link.lag / 60:g}ч)"})
         return result
 
-    def restore(self, value: dict) -> None:
-        self.project = Project.from_dict(value)
-        self.refresh()
+    def restore(self, value: dict, *, reset_view: bool = False) -> None:
+        project = Project.from_dict(value)
+        previous = {name: getattr(self, name) for name in (
+            "project", "_origin", "_day_count", "_critical", "_critical_error", "_baseline_range_warning",
+            "_baseline_range_id", "_selected", "_bulk_mode", "_checked", "_collapsed", "_query", "_filter", "_advanced",
+        )}
+        previous["_checked"] = self._checked.copy()
+        records = self._rows.records
+        try:
+            self.project = project
+            if reset_view:
+                self._selected = ""
+                self._bulk_mode = False
+                self._checked = set()
+                self._collapsed = set()
+                self._query, self._filter = "", "all"
+                self._advanced = TaskFilter()
+                self.reset_range()
+            self.refresh()
+        except (ValueError, KeyError, TypeError, AttributeError, OverflowError, RecursionError):
+            for name, old_value in previous.items():
+                setattr(self, name, old_value)
+            if self._rows.records is not records:
+                self._rows.replace(records)
+            raise
 
     def edit(self, label: str, action: Callable[[Project], None]) -> bool:
         before = self.project.to_dict()
         try:
-            action(self.project)
-            self.project.validate()
-        except (ValueError, KeyError, TypeError, AttributeError, OverflowError) as error:
-            self.project = Project.from_dict(before)
+            draft = deepcopy(self.project)
+            action(draft)
+            draft.validate()
+            after = draft.to_dict()
+            if before != after:
+                # Prepare the restored document/view before publishing history or a revision.
+                self.restore(after)
+        except (ValueError, KeyError, TypeError, AttributeError, OverflowError, RecursionError) as error:
             self.toast.emit(str(error))
             self.selectionChanged.emit()
             return False
-        after = self.project.to_dict()
         if before != after:
             if self._clean_index > self._history_index:
                 self._clean_index = -1
             self._history = self._history[:self._history_index + 1] + [(label, after)]
             self._history_index += 1
-            self.restore(after)
             self.historyChanged.emit()
         return True
 
@@ -858,6 +883,8 @@ class Controller(QObject):
                 current = start if beginning else end
                 if field_name.endswith("Time"):
                     parsed = time.fromisoformat(value)
+                    if parsed.tzinfo is not None or parsed.second or parsed.microsecond:
+                        raise ScheduleError("Время должно быть локальным, с минутной точностью.")
                     changed = datetime.combine(current.date(), parsed)
                 else:
                     parsed_date = date.fromisoformat(value if "-" in value else "-".join(reversed(value.split("."))))
@@ -988,15 +1015,15 @@ class Controller(QObject):
     @Slot()
     def undo(self):
         if self._history_index > 0:
+            self.restore(self._history[self._history_index - 1][1])
             self._history_index -= 1
-            self.restore(self._history[self._history_index][1])
             self.historyChanged.emit()
 
     @Slot()
     def redo(self):
         if self._history_index + 1 < len(self._history):
+            self.restore(self._history[self._history_index + 1][1])
             self._history_index += 1
-            self.restore(self._history[self._history_index][1])
             self.historyChanged.emit()
 
     @Slot(str)
@@ -1032,19 +1059,12 @@ class Controller(QObject):
             self.load_project(sample_project())
 
     def load_project(self, project: Project, path: Path | None = None) -> None:
-        self.project = project
+        project.validate()
+        self.restore(project.to_dict(), reset_view=True)
         self._path = path
-        self._selected = ""
-        self._bulk_mode = False
-        self._checked.clear()
-        self._collapsed.clear()
-        self._query, self._filter = "", "all"
-        self._advanced = TaskFilter()
-        self._history = [("", project.to_dict())]
+        self._history = [("", self.project.to_dict())]
         self._history_index = self._clean_index = 0
         self.historyChanged.emit()
-        self.reset_range()
-        self.refresh()
         self.fileChanged.emit()
         self.projectLoaded.emit()
 
@@ -1108,10 +1128,10 @@ class Controller(QObject):
     def load_path(self, path: Path) -> bool:
         try:
             project = Project.from_dict(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError) as error:
+            self.load_project(project, path)
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError) as error:
             self.toast.emit(f"Не удалось открыть проект: {error}")
             return False
-        self.load_project(project, path)
         return True
 
     @Slot()
@@ -1122,11 +1142,18 @@ class Controller(QObject):
                 self.load_path(Path(path))
 
     def save_path(self, path: Path) -> bool:
-        temporary = path.with_name(path.name + ".tmp")
+        temporary = None
         try:
-            temporary.write_text(json.dumps(self.project.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-            temporary.replace(path)
-        except OSError as error:
+            try:
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix=".gantt-save-", suffix=".tmp",
+                                                 dir=path.parent, delete=False) as stream:
+                    temporary = Path(stream.name)
+                    stream.write(json.dumps(self.project.to_dict(), ensure_ascii=False, indent=2))
+                temporary.replace(path)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+        except (OSError, UnicodeError) as error:
             self.toast.emit(f"Не удалось сохранить проект: {error}")
             return False
         self._path = path

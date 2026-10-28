@@ -105,9 +105,12 @@ def test_calendar_does_not_open_for_locked_or_invalid_dates(gui, task_id, field)
     assert not c.dialogs.modalOpen and not c.canUndo
 
 
-def test_calendar_preserves_time_precision_and_updates_successors(gui):
+def test_calendar_preserves_minute_precision_and_updates_successors(gui):
     c, _window = gui
-    assert c.editField("sensor", "startTime", "10:17:23")
+    original = c.project.to_dict()
+    assert not c.editField("sensor", "startTime", "10:17:23")
+    assert c.project.to_dict() == original
+    assert c.editField("sensor", "startTime", "10:17")
     before = c.project.to_dict()
     start = c.project.tasks["sensor"].start
     successor_start = c.project.tasks["controller"].start

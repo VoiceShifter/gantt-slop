@@ -396,3 +396,83 @@ def test_stop_cancels_inflight_http_write_without_late_mutation(online, qapp):
             result = None  # A closing HTTP transport may end without an MCP response.
         assert result is None or result.is_error
     assert not server.active and server._thread is None and c.project.to_dict() == before
+
+
+@pytest.mark.parametrize("field,value", [("start", "9999-12-31"), ("startTime", "09:00:30"),
+                                        ("startTime", "08:00:30"), ("endTime", "17:00:30"),
+                                        ("endTime", "18:00:00.5")])
+def test_rejected_schedule_edit_keeps_http_snapshot_and_allows_next_edit(online, field, value):
+    c, server = online
+    assert c.editField("c", "duration", "16")
+
+    async def journey(client):
+        before = (await client.call_tool("get_project")).structured_content
+        assert before is not None
+        revision = before["revision"]
+        rejected = await client.call_tool("edit_task", {"expected_revision": revision, "task_id": "c",
+                                                        "field": field, "value": value})
+        assert rejected.is_error
+        after = await client.call_tool("get_project")
+        assert not after.is_error and after.structured_content == before
+        edited = await client.call_tool("edit_task", {"expected_revision": revision, "task_id": "c",
+                                                      "field": "name", "value": "After rejection"})
+        assert not edited.is_error
+        assert edited.structured_content == {"revision": revision + 1, "changed": True, "task_id": "c"}
+        undone = await client.call_tool("undo", {"expected_revision": revision + 1})
+        assert not undone.is_error and undone.structured_content == {"revision": revision + 2, "changed": True}
+        restored = (await client.call_tool("get_project")).structured_content
+        assert restored is not None and restored["project"] == before["project"] and restored["spans"] == before["spans"]
+
+    run_async(lambda: connect(server, journey))
+    assert c._history_index == 1 and c.canRedo
+
+
+@pytest.mark.parametrize("invalid", ["overflow", "precision", "unicode", "view"])
+def test_failed_native_load_keeps_current_http_access_and_success_revokes_it(online, tmp_path, monkeypatch, invalid):
+    c, server = online
+    assert c.editField("c", "duration", "16")
+    original = tmp_path / "original.gantt.json"
+    assert c.save_path(original)
+    original_bytes = original.read_bytes()
+    assert c.editField("c", "name", "Human edit")
+    c.search("Альфа")
+    old_rows = c._rows.records.copy()
+    old_path = c._path
+    generation = server._generation
+
+    async def snapshot(client):
+        result = await client.call_tool("get_project")
+        assert not result.is_error
+        return result.structured_content
+
+    before = run_async(lambda: connect(server, snapshot))
+    payload = c.project.to_dict()
+    task = next(item for item in payload["tasks"] if item["id"] == "c")
+    if invalid == "overflow":
+        task["start"] = "9999-12-31T09:00"
+    elif invalid == "precision":
+        task["start"] = "2025-12-01T09:00:00.5"
+    elif invalid == "unicode":
+        task["notes"] = "\ud800"
+    else:
+        payload["name"] = "Rejected"
+        record = c.record
+
+        def fail_candidate(task_id):
+            if c.project.name == "Rejected":
+                raise OverflowError("simulated view failure")
+            return record(task_id)
+
+        monkeypatch.setattr(c, "record", fail_candidate)
+    rejected = tmp_path / "rejected.gantt.json"
+    rejected.write_text(json.dumps(payload), encoding="utf-8")
+    assert not c.load_path(rejected)
+    assert server.running and server._generation == generation
+    assert run_async(lambda: connect(server, snapshot)) == before
+    assert c._path == old_path and c._rows.records == old_rows and c.filterQuery == "альфа"
+    assert original.read_bytes() == original_bytes
+
+    accepted = tmp_path / "accepted.gantt.json"
+    accepted.write_text(json.dumps(Project("Accepted").to_dict()), encoding="utf-8")
+    assert c.load_path(accepted)
+    assert not server.active and server._thread is None and not server.token

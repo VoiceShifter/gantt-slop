@@ -1,6 +1,7 @@
 """Task/calendar/dependency rules, independent of Qt and the presentation layer."""
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections import deque
@@ -152,6 +153,8 @@ class WorkCalendar:
         while day <= end.date():
             for a, b in self.segments(day):
                 minutes += max(0, int((min(end, b) - max(start, a)).total_seconds() / 60))
+            if day == end.date():
+                break
             day += timedelta(days=1)
         return minutes
 
@@ -760,6 +763,8 @@ class Project:
                 raise ScheduleError("Неизвестный тип задачи.")
             if task.start.tzinfo is not None:
                 raise ScheduleError("Даты проекта должны быть в локальном времени, без часового пояса.")
+            if task.start.second or task.start.microsecond:
+                raise ScheduleError("Даты задач должны быть с минутной точностью.")
             if task.deadline is not None and type(task.deadline) is not date:
                 raise ScheduleError("Крайний срок должен быть календарной датой.")
             if not isinstance(task.duration, int) or task.duration < 0:
@@ -809,6 +814,13 @@ class Project:
                 for task in self.tasks.values():
                     if task.kind == "group":
                         self.custom_value(task.id, definition.id)
+        for task_id in self.tasks:
+            self.span(task_id)
+        # Check every persisted string, including nested metadata, before a UTF-8 save can fail.
+        try:
+            json.dumps(self.to_dict(), ensure_ascii=False).encode("utf-8")
+        except UnicodeError as error:
+            raise ScheduleError("Текст проекта содержит некорректные Unicode-символы.") from error
 
     def required_start(self, task_id: str) -> datetime | None:
         target = self.tasks[task_id]

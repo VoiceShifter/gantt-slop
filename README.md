@@ -4,12 +4,12 @@ A local desktop task planner and Gantt editor built with **Python, PySide6 and Q
 
 This is an independent application, not a wrapper around the legacy GanttProject engine. Its visual reference is a synthetic GanttPRO project; no GanttPRO source code, branding or downloaded assets are included.
 
-**Version:** 0.19.0 · **Python:** 3.11+ · **Verified platform:** Linux
+**Version:** 0.19.1 · **Python:** 3.11+ · **Verified platform:** Linux
 
 ![Gantt Desktop: task hierarchy, dependency arrows and milestones in the dark theme](docs/screenshots/mcp-diagram.png)
 
 > [!WARNING]
-> This is an experimental application. The [0.19 audit](docs/AUDIT.md) found **five unresolved save/load and editing defects**, including failed date edits that can escape rollback/revision tracking. Keep independent backups and use **read-only MCP for important projects** until these issues are fixed. The existing 1,088 passing tests do not cover every failure path.
+> This is an experimental application; keep independent backups. **0.19.1 fixes all five defects found by the [save/load and editing audit](docs/AUDIT.md)**, with new failure-path regressions. MCP remains opt-in and read-only by default. Passing tests are not exhaustive security or cross-platform certification.
 
 ## Features
 
@@ -111,7 +111,7 @@ The server uses **standard MCP over Streamable HTTP**. It has no pi dependency a
 
 The listener binds only to `127.0.0.1` and requires a fresh bearer token on every enable. Closing the MCP dialog leaves it running; **Выключить**, a successful project switch or application exit stops it. Tokens/access settings are not saved in project files.
 
-Read-only mode exposes `get_project`. Optional write mode adds task, assignment, dependency and shared Undo/Redo tools; it never automatically saves a file. Because of the [open audit findings](docs/AUDIT.md), a write error does not always imply rollback.
+Read-only mode exposes `get_project`. Optional write mode adds task, assignment, dependency and shared Undo/Redo tools; it never automatically saves a file. Writes use validated document transactions. After a timeout or disconnect, **re-read before retrying**: a failed response does not guarantee cancellation.
 
 **Privacy:** a trusted host can read the whole open project, including hidden tasks and notes, and may send it to its model provider. Do not publish copied configurations or tokens. A cloud-only chat cannot directly reach your computer's localhost. This server is not an Internet/OAuth service; direct browser-origin and stdio-only clients are unsupported without an appropriate local integration.
 
@@ -119,7 +119,7 @@ Read-only mode exposes `get_project`. Optional write mode adds task, assignment,
 
 ## Project files and interchange
 
-- **`.gantt.json` is the authoritative native project/backup format.** Current saves use schema 9; schemas 1–9 are readable. Versions through 0.17 cannot read schema 9. Keep separate backups when upgrading.
+- **`.gantt.json` is the authoritative native project/backup format.** Current saves use schema 9; schemas 1–9 are readable. Versions through 0.17 cannot read schema 9. Keep separate backups when upgrading. Invalid sub-minute timestamps, unrepresentable schedules and malformed Unicode are rejected without replacing the open project; they are not silently repaired.
 - **PDF/PNG** export the rendered document, not just the application window.
 - **CSV/XLSX** support selected-field reports and the documented GanttPRO-shaped 23-column task table. A separate 25-column adaptation targets the website import wizard.
 - **XML** supports a bounded, reviewed subset of MS Project XML/MSPDI, including the documented GanttPRO exporter profile.
@@ -145,7 +145,7 @@ For isolated Linux GUI testing, install **Xvfb and xauth**, then use:
 
 The wrapper uses a private Xvfb display, Qt's offscreen platform and software rendering, without interacting with the physical desktop. The test fixtures also enforce offscreen Qt. The wrapper is for automation, not normal application use.
 
-The latest [Linux audit](docs/AUDIT.md) ran **1,088 existing tests**, Ruff, full-source Pyright and dependency-consistency checks successfully. Additional targeted probes nevertheless reproduced the five open defects. Do not interpret the test count as a claim that those defects are fixed or that Windows/macOS are verified.
+The [0.19.1 Linux verification](docs/AUDIT.md) passed **1,151 tests**, including **63 additional audit-fix cases**, plus Ruff and full-source Pyright. An independent wheel installation also passed **149 focused audit/MCP/native-UI/calendar tests**. Windows/macOS and live Gemini sessions remain unverified.
 
 ### Project structure
 
@@ -166,7 +166,7 @@ requirements.txt        Direct runtime dependency constraints
 
 ## Documentation and roadmap
 
-- [Audit findings and fix priorities](docs/AUDIT.md)
+- [Audit findings and verified fixes](docs/AUDIT.md)
 - [Parity plan and remaining work](docs/PARITY_PLAN.md)
 - [Task selection, bulk editing and row movement](docs/SELECTION_AND_ROWS.md)
 - [Dependency arrows and editing](docs/DEPENDENCY_ARROWS.md)
@@ -178,7 +178,7 @@ requirements.txt        Direct runtime dependency constraints
 - [Controlled cascade-sort research](docs/CASCADE_SORTING.md) — Desktop sorting is not implemented yet
 - [Reference observations](docs/REFERENCE.md) and [historical verification](docs/VERIFICATION.md)
 
-This is not complete GanttPRO parity. Remaining work includes the audit fixes, cascade sorting, branch copying/conversion, an actual-time journal, hourly timeline, large-project virtualization and broader platform/accessibility QA. Installers, signing and Windows/macOS runtime verification are not provided.
+This is not complete GanttPRO parity. Remaining work includes cascade sorting, branch copying/conversion, an actual-time journal, hourly timeline, large-project virtualization and broader platform/accessibility QA. Installers, signing and Windows/macOS runtime verification are not provided.
 
 ## Publishing and licensing
 
