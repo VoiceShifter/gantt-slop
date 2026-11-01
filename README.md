@@ -2,7 +2,9 @@
 
 A local desktop task planner and Gantt editor built with **Python, PySide6 and Qt Quick**. Plan tasks, connect dependencies, manage project resources and inspect workload without an account.
 
-This is an independent application, not a wrapper around the legacy GanttProject engine. Its visual reference is a synthetic GanttPRO project; no GanttPRO source code, branding or downloaded assets are included.
+This is an independent application. Its visual reference is a synthetic GanttPRO project; no GanttPRO source code, branding, or downloaded assets are included. GanttPRO is a trademark of its respective owner, and this project is not affiliated with, sponsored by, or endorsed by GanttPRO.
+
+The software is provided "as is", without warranty or liability of any kind.
 
 **Version:** 0.19.1 · **Python:** 3.11+ · **Verified platform:** Linux
 
@@ -183,3 +185,8 @@ This is not complete GanttPRO parity. Remaining work includes cascade sorting, b
 ## Publishing and licensing
 
 Before publishing this standalone directory as its own GitHub repository, confirm and include the intended project `LICENSE`; this README does not assign or change a license. Observe dependency licensing requirements, including PySide6/Qt. Do not publish local MCP tokens, credentials, virtual environments or private project documents.
+
+## Contributing
+
+Don't bother making merge requests; if you want something, just fork it.
+
