@@ -1,4 +1,5 @@
 """Regression coverage for the five 0.19 audit findings."""
+
 import json
 import tempfile
 from copy import deepcopy
@@ -33,14 +34,26 @@ def editor(qapp):
 
 
 def state(c):
-    return deepcopy({
-        "project": c.project.to_dict(), "history": c._history,
-        "history_index": c._history_index, "clean_index": c._clean_index, "path": c._path,
-        "rows": c._rows.records, "origin": c._origin, "day_count": c._day_count,
-        "selected": c.selectedId, "bulk": c.bulkMode, "checked": c._checked, "collapsed": c._collapsed,
-        "filter": c.filter_state(), "critical": c._critical, "critical_error": c._critical_error,
-        "baseline_range": (c._baseline_range_id, c._baseline_range_warning),
-    })
+    return deepcopy(
+        {
+            "project": c.project.to_dict(),
+            "history": c._history,
+            "history_index": c._history_index,
+            "clean_index": c._clean_index,
+            "path": c._path,
+            "rows": c._rows.records,
+            "origin": c._origin,
+            "day_count": c._day_count,
+            "selected": c.selectedId,
+            "bulk": c.bulkMode,
+            "checked": c._checked,
+            "collapsed": c._collapsed,
+            "filter": c.filter_state(),
+            "critical": c._critical,
+            "critical_error": c._critical_error,
+            "baseline_range": (c._baseline_range_id, c._baseline_range_warning),
+        }
+    )
 
 
 def prepare_history_and_view(c, tmp_path):
@@ -70,17 +83,24 @@ def test_overflow_edit_preserves_history_view_and_revision_signals(editor, tmp_p
 
 
 @pytest.mark.parametrize("field", ["startTime", "endTime"])
-@pytest.mark.parametrize("value", ["09:00:30", "09:00:00.5", "08:00:30", "18:00:30", "09:00+03:00"])
+@pytest.mark.parametrize(
+    "value", ["09:00:30", "09:00:00.5", "08:00:30", "18:00:30", "09:00+03:00"]
+)
 def test_subminute_edits_are_rejected_before_normalization(editor, field, value):
     before = state(editor)
     assert not editor.editField("a", field, value)
     assert state(editor) == before
 
 
-@pytest.mark.parametrize("kind,minutes", [("task", 480), ("group", 0), ("milestone", 0)])
+@pytest.mark.parametrize(
+    "kind,minutes", [("task", 480), ("group", 0), ("milestone", 0)]
+)
 @pytest.mark.parametrize("start", ["2025-12-01T09:00:30", "2025-12-01T09:00:00.5"])
 def test_domain_and_native_load_reject_subminute_starts(kind, minutes, start):
-    p = Project("Audit", {"a": Task("a", "Original", datetime.fromisoformat(start), minutes, kind=kind)})
+    p = Project(
+        "Audit",
+        {"a": Task("a", "Original", datetime.fromisoformat(start), minutes, kind=kind)},
+    )
     with pytest.raises(ScheduleError, match="минут"):
         p.validate()
     payload = p.to_dict()
@@ -93,8 +113,13 @@ def test_domain_and_native_load_reject_subminute_starts(kind, minutes, start):
 def test_valid_calendar_boundaries_remain_renderable(qapp, day):
     start = datetime.fromisoformat(day + "T09:00")
     end = datetime.fromisoformat(day + "T18:00")
-    p = Project("Boundary", {"g": Task("g", "Group", start, 0, kind="group"),
-                             "a": Task("a", "Task", start, 480, parent="g")})
+    p = Project(
+        "Boundary",
+        {
+            "g": Task("g", "Group", start, 0, kind="group"),
+            "a": Task("a", "Task", start, 480, parent="g"),
+        },
+    )
     p.validate()
     assert WorkCalendar().between(start, end) == 480
     c = Controller(p)
@@ -104,7 +129,9 @@ def test_valid_calendar_boundaries_remain_renderable(qapp, day):
 
 @pytest.mark.parametrize("operation", ["edit", "load"])
 @pytest.mark.parametrize("stage", ["record", "_selection_scope"])
-def test_view_preparation_failure_restores_document_and_view(editor, tmp_path, monkeypatch, operation, stage):
+def test_view_preparation_failure_restores_document_and_view(
+    editor, tmp_path, monkeypatch, operation, stage
+):
     c = editor
     prepare_history_and_view(c, tmp_path)
     before = state(c)
@@ -121,9 +148,11 @@ def test_view_preparation_failure_restores_document_and_view(editor, tmp_path, m
 
     monkeypatch.setattr(c, stage, fail_candidate)
     if operation == "edit":
+
         def update(draft):
             draft.name = "Rejected"
             draft.tasks["a"].start = datetime.fromisoformat("2024-01-01T09:00")
+
         assert not c.edit("Rejected edit", update)
     else:
         payload = project().to_dict()
@@ -134,7 +163,9 @@ def test_view_preparation_failure_restores_document_and_view(editor, tmp_path, m
     assert state(c) == before and not events
 
 
-@pytest.mark.parametrize("start", ["9999-12-31T09:00", "2025-12-01T09:00:30", "2025-12-01T09:00:00.5"])
+@pytest.mark.parametrize(
+    "start", ["9999-12-31T09:00", "2025-12-01T09:00:30", "2025-12-01T09:00:00.5"]
+)
 def test_invalid_native_schedule_preserves_open_document(editor, tmp_path, start):
     c = editor
     prepare_history_and_view(c, tmp_path)
@@ -148,11 +179,21 @@ def test_invalid_native_schedule_preserves_open_document(editor, tmp_path, start
     assert state(c) == before
 
 
-@pytest.mark.parametrize("location", [("name",), ("tasks", 0, "name"), ("tasks", 0, "notes"),
-                                      ("resources", 0, "name"), ("saved_filters", "Keep", "query"),
-                                      ("baselines", 0, "tasks", 0, "name")])
+@pytest.mark.parametrize(
+    "location",
+    [
+        ("name",),
+        ("tasks", 0, "name"),
+        ("tasks", 0, "notes"),
+        ("resources", 0, "name"),
+        ("saved_filters", "Keep", "query"),
+        ("baselines", 0, "tasks", 0, "name"),
+    ],
+)
 @pytest.mark.parametrize("codepoint", [0xD800, 0xDFFF])
-def test_native_validation_rejects_unpaired_surrogates(editor, tmp_path, location, codepoint):
+def test_native_validation_rejects_unpaired_surrogates(
+    editor, tmp_path, location, codepoint
+):
     text = chr(codepoint)
     p = project()
     p.resources["r"] = Resource("r", "Person")
@@ -203,7 +244,9 @@ def test_save_does_not_overwrite_a_temporary_sibling(editor, tmp_path):
 
 @pytest.mark.parametrize("failure", ["create", "write", "replace", "encode"])
 @pytest.mark.parametrize("existing", [False, True])
-def test_failed_save_preserves_files_dirty_state_and_cleans_temporary(editor, tmp_path, monkeypatch, failure, existing):
+def test_failed_save_preserves_files_dirty_state_and_cleans_temporary(
+    editor, tmp_path, monkeypatch, failure, existing
+):
     c = editor
     original = tmp_path / "original.gantt.json"
     assert c.save_path(original)
@@ -253,7 +296,9 @@ def test_save_failure_does_not_allow_discard_or_close(editor, tmp_path, monkeypa
     c = editor
     assert c.save_path(tmp_path / "project.gantt.json")
     assert c.editField("a", "name", "Unsaved")
-    monkeypatch.setattr(QMessageBox, "question", lambda *_a, **_kw: QMessageBox.StandardButton.Save)
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *_a, **_kw: QMessageBox.StandardButton.Save
+    )
 
     def denied(*_args, **_kwargs):
         raise PermissionError("Cannot replace")
@@ -272,7 +317,9 @@ def test_direct_load_does_not_truncate_invalid_time(editor):
 
 
 @pytest.mark.parametrize("operation,target", [("undo", "Original"), ("redo", "Second")])
-def test_failed_history_view_does_not_move_history_index(editor, tmp_path, monkeypatch, operation, target):
+def test_failed_history_view_does_not_move_history_index(
+    editor, tmp_path, monkeypatch, operation, target
+):
     c = editor
     prepare_history_and_view(c, tmp_path)
     before = state(c)

@@ -1,4 +1,5 @@
 """Task/calendar/dependency rules, independent of Qt and the presentation layer."""
+
 from __future__ import annotations
 
 import json
@@ -16,9 +17,19 @@ class ScheduleError(ValueError):
     """An edit would violate a task, hierarchy, or dependency constraint."""
 
 
-STATUS_LABELS = {"open": "Открыт", "in_progress": "В работе", "completed": "Выполнено", "closed": "Закрыт"}
-PRIORITY_LABELS = {"highest": "Самый высокий", "high": "Высокий", "medium": "Средний",
-                   "low": "Низкий", "lowest": "Самый низкий"}
+STATUS_LABELS = {
+    "open": "Открыт",
+    "in_progress": "В работе",
+    "completed": "Выполнено",
+    "closed": "Закрыт",
+}
+PRIORITY_LABELS = {
+    "highest": "Самый высокий",
+    "high": "Высокий",
+    "medium": "Средний",
+    "low": "Низкий",
+    "lowest": "Самый низкий",
+}
 
 
 def status_for_progress(progress: float) -> str:
@@ -44,32 +55,62 @@ class ResourceException:
 
 
 def validate_exceptions(items, expected_type) -> None:
-    if not isinstance(items, list) or any(type(item) is not expected_type for item in items):
+    if not isinstance(items, list) or any(
+        type(item) is not expected_type for item in items
+    ):
         raise ScheduleError("Некорректный список исключений календаря.")
     ids = set()
     for item in items:
-        if not isinstance(item.id, str) or not item.id or item.id in ids or not isinstance(item.name, str):
-            raise ScheduleError("Некорректный или повторяющийся идентификатор исключения.")
+        if (
+            not isinstance(item.id, str)
+            or not item.id
+            or item.id in ids
+            or not isinstance(item.name, str)
+        ):
+            raise ScheduleError(
+                "Некорректный или повторяющийся идентификатор исключения."
+            )
         ids.add(item.id)
-        if type(item.start) is not date or type(item.end) is not date or item.end < item.start:
+        if (
+            type(item.start) is not date
+            or type(item.end) is not date
+            or item.end < item.start
+        ):
             raise ScheduleError("Начало исключения должно быть не позже завершения.")
         if isinstance(item, ResourceException):
-            if isinstance(item.capacity, bool) or not isinstance(item.capacity, (int, float)) or not 0 <= item.capacity <= 24 or not math.isfinite(item.capacity):
-                raise ScheduleError("Доступность исключения должна быть от 0 до 24 часов в день.")
+            if (
+                isinstance(item.capacity, bool)
+                or not isinstance(item.capacity, (int, float))
+                or not 0 <= item.capacity <= 24
+                or not math.isfinite(item.capacity)
+            ):
+                raise ScheduleError(
+                    "Доступность исключения должна быть от 0 до 24 часов в день."
+                )
         else:
             if not isinstance(item.periods, list) or len(item.periods) > 2:
-                raise ScheduleError("Задайте не более двух рабочих интервалов в пределах дня.")
+                raise ScheduleError(
+                    "Задайте не более двух рабочих интервалов в пределах дня."
+                )
             previous = -1
             for period in item.periods:
-                if not isinstance(period, list) or len(period) != 2 or any(type(m) is not int for m in period):
+                if (
+                    not isinstance(period, list)
+                    or len(period) != 2
+                    or any(type(m) is not int for m in period)
+                ):
                     raise ScheduleError("Рабочие интервалы задаются целыми минутами.")
                 start, end = period
                 if not 0 <= start < end < 1440 or start < previous:
-                    raise ScheduleError("Рабочие интервалы должны идти по порядку, не пересекаться и не переходить через полночь.")
+                    raise ScheduleError(
+                        "Рабочие интервалы должны идти по порядку, не пересекаться и не переходить через полночь."
+                    )
                 previous = end
     ordered = sorted(items, key=lambda item: item.start)
     if any(a.end >= b.start for a, b in pairwise(ordered)):
-        raise ScheduleError("Диапазоны исключений пересекаются. Измените существующее исключение.")
+        raise ScheduleError(
+            "Диапазоны исключений пересекаются. Измените существующее исключение."
+        )
 
 
 @dataclass
@@ -82,23 +123,35 @@ class WorkCalendar:
     weekly_periods: dict[int, list[list[int]]] = field(default_factory=dict)
 
     def validate(self) -> None:
-        if not self.workdays or any(type(day) is not int or not 0 <= day <= 6 for day in self.workdays):
+        if not self.workdays or any(
+            type(day) is not int or not 0 <= day <= 6 for day in self.workdays
+        ):
             raise ScheduleError("Некорректные рабочие дни проекта.")
         if any(type(day) is not date for day in self.holidays):
             raise ScheduleError("Некорректная дата праздника.")
         validate_exceptions(self.exceptions, CalendarException)
-        if not isinstance(self.weekly_periods, dict) or any(type(day) is not int or not 0 <= day <= 6 for day in self.weekly_periods):
+        if not isinstance(self.weekly_periods, dict) or any(
+            type(day) is not int or not 0 <= day <= 6 for day in self.weekly_periods
+        ):
             raise ScheduleError("Некорректные недельные интервалы проекта.")
         for day, periods in self.weekly_periods.items():
-            validate_exceptions([CalendarException(str(day), date.min, date.min, periods=periods)], CalendarException)
-        if not any(self.weekly_periods.get(day, [[540, 780], [840, 1080]]) for day in self.workdays):
+            validate_exceptions(
+                [CalendarException(str(day), date.min, date.min, periods=periods)],
+                CalendarException,
+            )
+        if not any(
+            self.weekly_periods.get(day, [[540, 780], [840, 1080]])
+            for day in self.workdays
+        ):
             raise ScheduleError("У проекта должен быть регулярный рабочий интервал.")
 
     def working_day(self, day: date) -> bool:
         return bool(self.segments(day))
 
     def segments(self, day: date) -> list[tuple[datetime, datetime]]:
-        override = next((item for item in self.exceptions if item.start <= day <= item.end), None)
+        override = next(
+            (item for item in self.exceptions if item.start <= day <= item.end), None
+        )
         if override is not None:
             periods = override.periods
         elif day.weekday() in self.workdays and day not in self.holidays:
@@ -106,7 +159,10 @@ class WorkCalendar:
         else:
             periods = []
         midnight = datetime.combine(day, time())
-        return [(midnight + timedelta(minutes=a), midnight + timedelta(minutes=b)) for a, b in periods]
+        return [
+            (midnight + timedelta(minutes=a), midnight + timedelta(minutes=b))
+            for a, b in periods
+        ]
 
     def normalize(self, value: datetime, forward: bool = True) -> datetime:
         day = value.date()
@@ -137,9 +193,16 @@ class WorkCalendar:
             spans = self.segments(current.date())
             for start, end in spans if forward else reversed(spans):
                 if (start <= current < end) if forward else (start < current <= end):
-                    available = int(((end - current) if forward else (current - start)).total_seconds() / 60)
+                    available = int(
+                        (
+                            (end - current) if forward else (current - start)
+                        ).total_seconds()
+                        / 60
+                    )
                     if remaining <= available:
-                        return current + timedelta(minutes=remaining if forward else -remaining)
+                        return current + timedelta(
+                            minutes=remaining if forward else -remaining
+                        )
                     remaining -= available
                     current = self.normalize(end if forward else start, forward)
                     break
@@ -152,7 +215,9 @@ class WorkCalendar:
         day = start.date()
         while day <= end.date():
             for a, b in self.segments(day):
-                minutes += max(0, int((min(end, b) - max(start, a)).total_seconds() / 60))
+                minutes += max(
+                    0, int((min(end, b) - max(start, a)).total_seconds() / 60)
+                )
             if day == end.date():
                 break
             day += timedelta(days=1)
@@ -195,14 +260,24 @@ class Resource:
     exceptions: list[ResourceException] = field(default_factory=list)
 
     def available(self, day: date) -> float:
-        override = next((item for item in self.exceptions if item.start <= day <= item.end), None)
-        return override.capacity if override is not None else self.capacity if day.weekday() in self.workdays else 0
+        override = next(
+            (item for item in self.exceptions if item.start <= day <= item.end), None
+        )
+        return (
+            override.capacity
+            if override is not None
+            else self.capacity
+            if day.weekday() in self.workdays
+            else 0
+        )
 
     def validate(self) -> None:
         if not self.id or not isinstance(self.name, str) or not self.name.strip():
             raise ScheduleError("Укажите имя ресурса.")
         if not math.isfinite(self.capacity) or not 0 <= self.capacity <= 24:
-            raise ScheduleError("Доступность ресурса должна быть от 0 до 24 часов в день.")
+            raise ScheduleError(
+                "Доступность ресурса должна быть от 0 до 24 часов в день."
+            )
         if any(type(day) is not int or not 0 <= day <= 6 for day in self.workdays):
             raise ScheduleError("Некорректные рабочие дни ресурса.")
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", self.color):
@@ -210,9 +285,17 @@ class Resource:
         validate_exceptions(self.exceptions, ResourceException)
 
 
-FIELD_TYPES = {"text": "Текст", "number": "Число", "date": "Дата", "select": "Список",
-               "checkbox": "Флажок", "color": "Цвет", "multi": "Мультиселект",
-               "people": "Люди", "labels": "Лейблы"}
+FIELD_TYPES = {
+    "text": "Текст",
+    "number": "Число",
+    "date": "Дата",
+    "select": "Список",
+    "checkbox": "Флажок",
+    "color": "Цвет",
+    "multi": "Мультиселект",
+    "people": "Люди",
+    "labels": "Лейблы",
+}
 
 
 @dataclass
@@ -224,11 +307,18 @@ class CustomField:
     aggregate: str = ""
 
     def validate(self) -> None:
-        if not isinstance(self.id, str) or not self.id or not isinstance(self.name, str) or not self.name.strip():
+        if (
+            not isinstance(self.id, str)
+            or not self.id
+            or not isinstance(self.name, str)
+            or not self.name.strip()
+        ):
             raise ScheduleError("Укажите название поля.")
         if self.kind not in FIELD_TYPES:
             raise ScheduleError("Неизвестный тип поля.")
-        if not isinstance(self.options, list) or any(not isinstance(s, str) or not s.strip() for s in self.options):
+        if not isinstance(self.options, list) or any(
+            not isinstance(s, str) or not s.strip() for s in self.options
+        ):
             raise ScheduleError("Опции должны иметь непустые названия.")
         if len({s.casefold() for s in self.options}) != len(self.options):
             raise ScheduleError("Названия опций не должны повторяться.")
@@ -237,7 +327,9 @@ class CustomField:
                 raise ScheduleError("Добавьте хотя бы одну опцию.")
         elif self.options:
             raise ScheduleError("Опции поддерживаются только списком и мультиселектом.")
-        if (self.kind == "number" and self.aggregate not in {"sum", "average"}) or (self.kind != "number" and self.aggregate):
+        if (self.kind == "number" and self.aggregate not in {"sum", "average"}) or (
+            self.kind != "number" and self.aggregate
+        ):
             raise ScheduleError("Выберите сумму или среднее для числового поля.")
 
     def normalize(self, value: object, resources: dict[str, Resource]) -> object:
@@ -249,7 +341,9 @@ class CustomField:
             try:
                 number = float(value)
             except OverflowError as error:
-                raise ScheduleError("Значение поля выходит за допустимый диапазон.") from error
+                raise ScheduleError(
+                    "Значение поля выходит за допустимый диапазон."
+                ) from error
             if not math.isfinite(number):
                 raise ScheduleError("Значение поля должно быть конечным числом.")
             return number
@@ -258,7 +352,9 @@ class CustomField:
                 raise ScheduleError("Значение флажка должно быть Да или Нет.")
             return value
         if self.kind in {"multi", "people", "labels"}:
-            if not isinstance(value, list) or any(not isinstance(s, str) or not s.strip() for s in value):
+            if not isinstance(value, list) or any(
+                not isinstance(s, str) or not s.strip() for s in value
+            ):
                 raise ScheduleError("Ожидается список непустых значений.")
             result = list(dict.fromkeys(value))
             if self.kind == "multi":
@@ -294,7 +390,9 @@ class CustomField:
         if self.kind == "date":
             return date.fromisoformat(str(value)).strftime("%d.%m.%Y")
         if isinstance(value, list):
-            return ", ".join(resources[s].name if self.kind == "people" else s for s in value)
+            return ", ".join(
+                resources[s].name if self.kind == "people" else s for s in value
+            )
         return str(value)
 
 
@@ -338,7 +436,9 @@ class Task:
         if value == self.status:
             return
         self.status = value
-        self.progress = {"open": 0, "in_progress": 50, "completed": 100, "closed": 100}[value]
+        self.progress = {"open": 0, "in_progress": 50, "completed": 100, "closed": 100}[
+            value
+        ]
 
 
 @dataclass
@@ -355,52 +455,98 @@ class TaskFilter:
 
     @property
     def extra_active(self) -> bool:
-        return bool(self.kinds or self.resources or self.unassigned or self.statuses or
-                    self.priorities or self.colors or self.ranges)
+        return bool(
+            self.kinds
+            or self.resources
+            or self.unassigned
+            or self.statuses
+            or self.priorities
+            or self.colors
+            or self.ranges
+        )
 
     def validate(self) -> None:
-        if not isinstance(self.query, str) or self.quick not in ("all", "incomplete", "complete", "overdue"):
+        if not isinstance(self.query, str) or self.quick not in (
+            "all",
+            "incomplete",
+            "complete",
+            "overdue",
+        ):
             raise ScheduleError("Некорректный поиск или быстрый фильтр.")
         if type(self.unassigned) is not bool:
             raise ScheduleError("Некорректный фильтр неназначенных задач.")
-        for values, allowed in ((self.kinds, {"task", "milestone"}), (self.resources, None),
-                                (self.statuses, STATUS_LABELS), (self.priorities, PRIORITY_LABELS),
-                                (self.colors, None)):
-            if (not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values)
-                    or len(set(values)) != len(values) or allowed is not None and any(v not in allowed for v in values)):
+        for values, allowed in (
+            (self.kinds, {"task", "milestone"}),
+            (self.resources, None),
+            (self.statuses, STATUS_LABELS),
+            (self.priorities, PRIORITY_LABELS),
+            (self.colors, None),
+        ):
+            if (
+                not isinstance(values, list)
+                or any(not isinstance(v, str) or not v for v in values)
+                or len(set(values)) != len(values)
+                or allowed is not None
+                and any(v not in allowed for v in values)
+            ):
                 raise ScheduleError("Некорректные значения фильтра.")
         if any(not re.fullmatch(r"#[0-9a-fA-F]{6}", value) for value in self.colors):
             raise ScheduleError("Цвет фильтра должен иметь формат #RRGGBB.")
         if not isinstance(self.ranges, dict):
             raise ScheduleError("Некорректные диапазоны фильтра.")
         for key, bounds in self.ranges.items():
-            if (key not in {"span", "start", "end"} or not isinstance(bounds, list) or len(bounds) != 2
-                    or any(not isinstance(v, str) for v in bounds) or not any(bounds)):
+            if (
+                key not in {"span", "start", "end"}
+                or not isinstance(bounds, list)
+                or len(bounds) != 2
+                or any(not isinstance(v, str) for v in bounds)
+                or not any(bounds)
+            ):
                 raise ScheduleError("Некорректный диапазон фильтра.")
             for value in bounds:
                 if value and date.fromisoformat(value).isoformat() != value:
                     raise ScheduleError("Дата фильтра должна иметь формат ГГГГ-ММ-ДД.")
             if all(bounds) and bounds[0] > bounds[1]:
-                raise ScheduleError("Начало диапазона фильтра должно быть не позже завершения.")
+                raise ScheduleError(
+                    "Начало диапазона фильтра должно быть не позже завершения."
+                )
 
     def matches(self, project: Project, task: Task) -> bool:
         if not self.extra_active:
             return True
         if task.kind == "group":
-            return False  # Summary rows are included as context for matching descendants.
+            return (
+                False  # Summary rows are included as context for matching descendants.
+            )
         if self.kinds and task.kind not in self.kinds:
             return False
         if (self.resources or self.unassigned) and not (
-                set(self.resources).intersection(task.resource_ids) or self.unassigned and not task.resource_ids):
+            set(self.resources).intersection(task.resource_ids)
+            or self.unassigned
+            and not task.resource_ids
+        ):
             return False
-        if self.statuses and task.status not in self.statuses or self.priorities and task.priority not in self.priorities:
+        if (
+            self.statuses
+            and task.status not in self.statuses
+            or self.priorities
+            and task.priority not in self.priorities
+        ):
             return False
-        if self.colors and task.color.casefold() not in {v.casefold() for v in self.colors}:
+        if self.colors and task.color.casefold() not in {
+            v.casefold() for v in self.colors
+        }:
             return False
         if self.ranges:
             start, end = (value.date().isoformat() for value in project.span(task.id))
             for key, (lower, upper) in self.ranges.items():
-                first, last = (start, end) if key == "span" else (start, start) if key == "start" else (end, end)
+                first, last = (
+                    (start, end)
+                    if key == "span"
+                    else (start, start)
+                    if key == "start"
+                    else (end, end)
+                )
                 if lower and last < lower or upper and first > upper:
                     return False
         return True
@@ -423,18 +569,45 @@ class Baseline:
     tasks: dict[str, BaselineEntry] = field(default_factory=dict)
 
     def validate(self) -> None:
-        if not isinstance(self.id, str) or not self.id or not isinstance(self.name, str) or not self.name.strip():
+        if (
+            not isinstance(self.id, str)
+            or not self.id
+            or not isinstance(self.name, str)
+            or not self.name.strip()
+        ):
             raise ScheduleError("Укажите название базового плана.")
         if type(self.created) is not date or not isinstance(self.tasks, dict):
             raise ScheduleError("Некорректный базовый план.")
         for key, entry in self.tasks.items():
-            if not isinstance(entry, BaselineEntry) or not isinstance(key, str) or not key or key != entry.task_id:
-                raise ScheduleError("Некорректный идентификатор элемента базового плана.")
-            if not isinstance(entry.name, str) or not entry.name.strip() or entry.kind not in {"task", "group", "milestone"}:
+            if (
+                not isinstance(entry, BaselineEntry)
+                or not isinstance(key, str)
+                or not key
+                or key != entry.task_id
+            ):
+                raise ScheduleError(
+                    "Некорректный идентификатор элемента базового плана."
+                )
+            if (
+                not isinstance(entry.name, str)
+                or not entry.name.strip()
+                or entry.kind not in {"task", "group", "milestone"}
+            ):
                 raise ScheduleError("Некорректный элемент базового плана.")
-            if not isinstance(entry.start, datetime) or not isinstance(entry.end, datetime) or entry.start.tzinfo is not None or entry.end.tzinfo is not None:
-                raise ScheduleError("Даты базового плана должны быть в локальном времени.")
-            if entry.end < entry.start or entry.kind == "milestone" and entry.start != entry.end:
+            if (
+                not isinstance(entry.start, datetime)
+                or not isinstance(entry.end, datetime)
+                or entry.start.tzinfo is not None
+                or entry.end.tzinfo is not None
+            ):
+                raise ScheduleError(
+                    "Даты базового плана должны быть в локальном времени."
+                )
+            if (
+                entry.end < entry.start
+                or entry.kind == "milestone"
+                and entry.start != entry.end
+            ):
                 raise ScheduleError("Некорректный диапазон дат базового плана.")
 
 
@@ -470,17 +643,28 @@ class Project:
         for task in self.tasks.values():
             if not task.resource_ids and task.assignee.strip():
                 task.resource_ids = [self.ensure_resource(task.assignee).id]
-            if task.resource_ids and len(task.resource_shares) == len(task.resource_ids) and all(
-                    math.isclose(s, 1 / len(task.resource_ids)) for s in task.resource_shares):
+            if (
+                task.resource_ids
+                and len(task.resource_shares) == len(task.resource_ids)
+                and all(
+                    math.isclose(s, 1 / len(task.resource_ids))
+                    for s in task.resource_shares
+                )
+            ):
                 task.resource_shares = []
         self.sync_resource_names()
 
     def capture_baseline(self, name: str, created: date) -> str:
         name = name.strip()
-        if not name or any(item.name.casefold() == name.casefold() for item in self.baselines.values()):
+        if not name or any(
+            item.name.casefold() == name.casefold() for item in self.baselines.values()
+        ):
             raise ScheduleError("Укажите уникальное название базового плана.")
         key = new_id()
-        entries = {task.id: BaselineEntry(task.id, task.name, task.kind, *self.span(task.id)) for task in self.tasks.values()}
+        entries = {
+            task.id: BaselineEntry(task.id, task.name, task.kind, *self.span(task.id))
+            for task in self.tasks.values()
+        }
         snapshot = Baseline(key, name, created, entries)
         snapshot.validate()
         self.baselines[key] = snapshot
@@ -501,46 +685,76 @@ class Project:
 
     def sync_resource_names(self) -> None:
         for task in self.tasks.values():
-            task.assignee = ", ".join(self.resources[key].name for key in task.resource_ids if key in self.resources)
+            task.assignee = ", ".join(
+                self.resources[key].name
+                for key in task.resource_ids
+                if key in self.resources
+            )
 
     def ensure_resource(self, name: str) -> Resource:
         name = name.strip()
-        existing = next((r for r in self.resources.values() if r.name.casefold() == name.casefold()), None)
+        existing = next(
+            (
+                r
+                for r in self.resources.values()
+                if r.name.casefold() == name.casefold()
+            ),
+            None,
+        )
         if existing is not None:
             return existing
-        resource = Resource(new_id(), name, color="#2683ed" if not self.resources else "#829da7")
+        resource = Resource(
+            new_id(), name, color="#2683ed" if not self.resources else "#829da7"
+        )
         resource.validate()
         self.resources[resource.id] = resource
         return resource
 
-    def assign_resources(self, task_id: str, ids: list[str], hours: list[float] | None = None) -> None:
+    def assign_resources(
+        self, task_id: str, ids: list[str], hours: list[float] | None = None
+    ) -> None:
         task = self.tasks[task_id]
         if task.kind == "group":
             raise ScheduleError("Назначайте ресурсы задачам, а не сводной группе.")
         if len(set(ids)) != len(ids) or any(key not in self.resources for key in ids):
             raise ScheduleError("Некорректное назначение ресурсов.")
-        if hours is not None and (len(hours) != len(ids) or any(not math.isfinite(h) or h < 0 for h in hours)):
-            raise ScheduleError("Трудозатраты назначений должны быть неотрицательными числами.")
+        if hours is not None and (
+            len(hours) != len(ids) or any(not math.isfinite(h) or h < 0 for h in hours)
+        ):
+            raise ScheduleError(
+                "Трудозатраты назначений должны быть неотрицательными числами."
+            )
         task.resource_ids = list(ids)
         task.resource_shares = []
         if hours is not None and ids:
             task.effort = sum(hours)
             if task.effort:
                 shares = [h / task.effort for h in hours]
-                task.resource_shares = [] if all(math.isclose(s, 1 / len(ids)) for s in shares) else shares
+                task.resource_shares = (
+                    [] if all(math.isclose(s, 1 / len(ids)) for s in shares) else shares
+                )
         self.sync_resource_names()
 
     def assign_name(self, task_id: str, name: str) -> None:
         task = self.tasks[task_id]
         if name == task.assignee:
             return
-        self.assign_resources(task_id, [self.ensure_resource(name).id] if name.strip() else [])
+        self.assign_resources(
+            task_id, [self.ensure_resource(name).id] if name.strip() else []
+        )
 
-    def update_resource(self, resource_id: str, name: str, capacity: float, workdays: set[int]) -> None:
+    def update_resource(
+        self, resource_id: str, name: str, capacity: float, workdays: set[int]
+    ) -> None:
         resource = self.resources[resource_id]
-        candidate = Resource(resource_id, name.strip(), capacity, workdays, resource.color)
+        candidate = Resource(
+            resource_id, name.strip(), capacity, workdays, resource.color
+        )
         candidate.validate()
-        if any(r.id != resource_id and r.name.casefold() == candidate.name.casefold() for r in self.resources.values()):
+        if any(
+            r.id != resource_id and r.name.casefold() == candidate.name.casefold()
+            for r in self.resources.values()
+        ):
             raise ScheduleError("Ресурс с таким именем уже существует.")
         self.resources[resource_id] = candidate
         self.sync_resource_names()
@@ -555,10 +769,19 @@ class Project:
                     task.resource_shares.pop(index)
                     total = sum(task.resource_shares)
                     shares = [s / total for s in task.resource_shares] if total else []
-                    task.resource_shares = [] if shares and all(math.isclose(s, 1 / len(shares)) for s in shares) else shares
+                    task.resource_shares = (
+                        []
+                        if shares
+                        and all(math.isclose(s, 1 / len(shares)) for s in shares)
+                        else shares
+                    )
             for definition in self.custom_fields.values():
                 selected = task.custom_values.get(definition.id)
-                if definition.kind == "people" and isinstance(selected, list) and resource_id in selected:
+                if (
+                    definition.kind == "people"
+                    and isinstance(selected, list)
+                    and resource_id in selected
+                ):
                     remaining = [key for key in selected if key != resource_id]
                     if remaining:
                         task.custom_values[definition.id] = remaining
@@ -571,10 +794,18 @@ class Project:
         previous = self.custom_fields.get(definition.id)
         if previous is not None and previous.kind != definition.kind:
             raise ScheduleError("Тип существующего поля нельзя изменить.")
-        if any(f.id != definition.id and f.name.casefold() == definition.name.casefold() for f in self.custom_fields.values()):
+        if any(
+            f.id != definition.id and f.name.casefold() == definition.name.casefold()
+            for f in self.custom_fields.values()
+        ):
             raise ScheduleError("Поле с таким названием уже существует.")
-        updates = {task.id: definition.normalize(task.custom_values[definition.id], self.resources)
-                   for task in self.tasks.values() if definition.id in task.custom_values}
+        updates = {
+            task.id: definition.normalize(
+                task.custom_values[definition.id], self.resources
+            )
+            for task in self.tasks.values()
+            if definition.id in task.custom_values
+        }
         self.custom_fields[definition.id] = definition
         for task_id, value in updates.items():
             if value is None:
@@ -603,15 +834,21 @@ class Project:
         if definition.kind != "number" or (task is not None and task.kind != "group"):
             return task.custom_values.get(field_id) if task is not None else None
         members = self.descendants(task_id) if task is not None else self.tasks.values()
-        numbers = [value for t in members if t.kind != "group"
-                   and isinstance(value := t.custom_values.get(field_id), (int, float))]
+        numbers = [
+            value
+            for t in members
+            if t.kind != "group"
+            and isinstance(value := t.custom_values.get(field_id), (int, float))
+        ]
         if not numbers:
             return None
         divisor = len(numbers) if definition.aggregate == "average" else 1
         try:
             return math.fsum(number / divisor for number in numbers)
         except OverflowError as error:
-            raise ScheduleError("Числовой итог выходит за допустимый диапазон.") from error
+            raise ScheduleError(
+                "Числовой итог выходит за допустимый диапазон."
+            ) from error
 
     def set_workdays(self, days: set[int]) -> None:
         if not days or any(type(day) is not int or not 0 <= day <= 6 for day in days):
@@ -626,9 +863,13 @@ class Project:
             return
         previous = self.calendar
         self.calendar = deepcopy(calendar)
-        if (calendar.workdays == previous.workdays and calendar.holidays == previous.holidays and calendar.weekly_periods == previous.weekly_periods and
-                [(item.start, item.end, item.periods) for item in calendar.exceptions] ==
-                [(item.start, item.end, item.periods) for item in previous.exceptions]):
+        if (
+            calendar.workdays == previous.workdays
+            and calendar.holidays == previous.holidays
+            and calendar.weekly_periods == previous.weekly_periods
+            and [(item.start, item.end, item.periods) for item in calendar.exceptions]
+            == [(item.start, item.end, item.periods) for item in previous.exceptions]
+        ):
             return
         for task in self.tasks.values():
             if task.kind != "group" or not self.children(task.id):
@@ -668,9 +909,11 @@ class Project:
 
     def can_move(self, task_id: str) -> bool:
         moving = self.dependency_members(task_id)
-        return not any(self.dependency_members(d.target) & moving
-                       and not self.dependency_members(d.source) <= moving
-                       for d in self.dependencies)
+        return not any(
+            self.dependency_members(d.target) & moving
+            and not self.dependency_members(d.source) <= moving
+            for d in self.dependencies
+        )
 
     def span(self, task_id: str) -> tuple[datetime, datetime]:
         task = self.tasks[task_id]
@@ -718,8 +961,13 @@ class Project:
         if not isinstance(self.saved_filters, dict):
             raise ScheduleError("Некорректные сохранённые фильтры.")
         for name, criteria in self.saved_filters.items():
-            if (not isinstance(name, str) or not name.strip() or name != name.strip()
-                    or name.casefold() in filter_names or not isinstance(criteria, TaskFilter)):
+            if (
+                not isinstance(name, str)
+                or not name.strip()
+                or name != name.strip()
+                or name.casefold() in filter_names
+                or not isinstance(criteria, TaskFilter)
+            ):
                 raise ScheduleError("Укажите уникальное название фильтра.")
             criteria.validate()
             filter_names.add(name.casefold())
@@ -727,9 +975,15 @@ class Project:
         for key, baseline in self.baselines.items():
             baseline.validate()
             if key != baseline.id or baseline.name.casefold() in baseline_names:
-                raise ScheduleError("Повторяющийся идентификатор или название базового плана.")
+                raise ScheduleError(
+                    "Повторяющийся идентификатор или название базового плана."
+                )
             baseline_names.add(baseline.name.casefold())
-        if not isinstance(self.active_baseline, str) or self.active_baseline and self.active_baseline not in self.baselines:
+        if (
+            not isinstance(self.active_baseline, str)
+            or self.active_baseline
+            and self.active_baseline not in self.baselines
+        ):
             raise ScheduleError("Неизвестный выбранный базовый план.")
         names = set()
         for resource in self.resources.values():
@@ -744,41 +998,63 @@ class Project:
                 raise ScheduleError("Повторяющийся идентификатор или название поля.")
             field_names.add(definition.name.casefold())
         for task in self.tasks.values():
-            if not isinstance(task.custom_values, dict) or any(key not in self.custom_fields for key in task.custom_values):
+            if not isinstance(task.custom_values, dict) or any(
+                key not in self.custom_fields for key in task.custom_values
+            ):
                 raise ScheduleError("Значение ссылается на неизвестное поле.")
             for key, value in task.custom_values.items():
                 definition = self.custom_fields[key]
                 definition.normalize(value, self.resources)
-                if task.kind == "group" and definition.kind == "number" and value is not None:
-                    raise ScheduleError("Числовое значение группы вычисляется из её задач.")
-            if len(set(task.resource_ids)) != len(task.resource_ids) or any(key not in self.resources for key in task.resource_ids):
+                if (
+                    task.kind == "group"
+                    and definition.kind == "number"
+                    and value is not None
+                ):
+                    raise ScheduleError(
+                        "Числовое значение группы вычисляется из её задач."
+                    )
+            if len(set(task.resource_ids)) != len(task.resource_ids) or any(
+                key not in self.resources for key in task.resource_ids
+            ):
                 raise ScheduleError("Назначение ссылается на неизвестный ресурс.")
-            if task.resource_shares and (len(task.resource_shares) != len(task.resource_ids)
-                                        or any(not math.isfinite(s) or s < 0 for s in task.resource_shares)
-                                        or not math.isclose(sum(task.resource_shares), 1, abs_tol=1e-9)):
+            if task.resource_shares and (
+                len(task.resource_shares) != len(task.resource_ids)
+                or any(not math.isfinite(s) or s < 0 for s in task.resource_shares)
+                or not math.isclose(sum(task.resource_shares), 1, abs_tol=1e-9)
+            ):
                 raise ScheduleError("Некорректное распределение трудозатрат.")
             if not task.id or not task.name.strip():
                 raise ScheduleError("Укажите название задачи.")
             if task.kind not in {"task", "group", "milestone"}:
                 raise ScheduleError("Неизвестный тип задачи.")
             if task.start.tzinfo is not None:
-                raise ScheduleError("Даты проекта должны быть в локальном времени, без часового пояса.")
+                raise ScheduleError(
+                    "Даты проекта должны быть в локальном времени, без часового пояса."
+                )
             if task.start.second or task.start.microsecond:
                 raise ScheduleError("Даты задач должны быть с минутной точностью.")
             if task.deadline is not None and type(task.deadline) is not date:
                 raise ScheduleError("Крайний срок должен быть календарной датой.")
             if not isinstance(task.duration, int) or task.duration < 0:
-                raise ScheduleError("Длительность должна быть неотрицательным числом минут.")
+                raise ScheduleError(
+                    "Длительность должна быть неотрицательным числом минут."
+                )
             if task.kind == "task" and task.duration == 0:
-                raise ScheduleError("У задачи должна быть длительность; для нулевой используйте веху.")
+                raise ScheduleError(
+                    "У задачи должна быть длительность; для нулевой используйте веху."
+                )
             if task.kind in {"group", "milestone"} and task.duration:
-                raise ScheduleError("Длительность группы вычисляется, а длительность вехи равна нулю.")
+                raise ScheduleError(
+                    "Длительность группы вычисляется, а длительность вехи равна нулю."
+                )
             if not math.isfinite(task.progress) or not 0 <= task.progress <= 100:
                 raise ScheduleError("Прогресс должен быть от 0 до 100%.")
             if task.status not in STATUS_LABELS or task.priority not in PRIORITY_LABELS:
                 raise ScheduleError("Неизвестный статус или приоритет задачи.")
             if not all(math.isfinite(x) and x >= 0 for x in (task.effort, task.cost)):
-                raise ScheduleError("Трудозатраты и стоимость должны быть неотрицательными числами.")
+                raise ScheduleError(
+                    "Трудозатраты и стоимость должны быть неотрицательными числами."
+                )
             if not re.fullmatch(r"#[0-9a-fA-F]{6}", task.color):
                 raise ScheduleError("Цвет должен иметь формат #RRGGBB.")
             seen = {task.id}
@@ -800,7 +1076,9 @@ class Project:
                 raise ScheduleError("Зависимость ссылается на неизвестную задачу.")
             if link.source == link.target or link.kind not in {"FS", "SS", "FF", "SF"}:
                 raise ScheduleError("Некорректный тип или конец зависимости.")
-            if self.dependency_members(link.source) & self.dependency_members(link.target):
+            if self.dependency_members(link.source) & self.dependency_members(
+                link.target
+            ):
                 raise ScheduleError("Нельзя связать группу с её подзадачей.")
             if (link.source, link.target) in pairs:
                 raise ScheduleError("Эти задачи уже связаны.")
@@ -820,11 +1098,17 @@ class Project:
         try:
             json.dumps(self.to_dict(), ensure_ascii=False).encode("utf-8")
         except UnicodeError as error:
-            raise ScheduleError("Текст проекта содержит некорректные Unicode-символы.") from error
+            raise ScheduleError(
+                "Текст проекта содержит некорректные Unicode-символы."
+            ) from error
 
     def required_start(self, task_id: str) -> datetime | None:
         target = self.tasks[task_id]
-        duration = self.calendar.between(*self.span(task_id)) if target.kind == "group" else target.duration
+        duration = (
+            self.calendar.between(*self.span(task_id))
+            if target.kind == "group"
+            else target.duration
+        )
         starts = []
         for link in self.incoming(task_id):
             source_span = self.span(link.source)
@@ -845,28 +1129,38 @@ class Project:
                 result[task.id] = self.span(task.id)[0], required
         return result
 
-    def align(self, task_id: str, floors: dict[str, datetime] | None = None,
-              previous: GroupAnchors | None = None) -> None:
+    def align(
+        self,
+        task_id: str,
+        floors: dict[str, datetime] | None = None,
+        previous: GroupAnchors | None = None,
+    ) -> None:
         required = self.required_start(task_id)
         if required is None:
             return
         target = self.tasks[task_id]
         floors = floors if floors is not None else {}
         if target.kind != "group" or not self.children(task_id):
-            target.start = max(required, floors[task_id]) if task_id in floors else required
+            target.start = (
+                max(required, floors[task_id]) if task_id in floors else required
+            )
             return
         members = self.dependency_members(task_id)
         start = self.span(task_id)[0]
         shift = self.calendar.between(start, required)
         if previous is not None and task_id in previous:
             old_start, old_required = previous[task_id]
-            desired = self.calendar.add(old_start, self.calendar.between(old_required, required))
+            desired = self.calendar.add(
+                old_start, self.calendar.between(old_required, required)
+            )
             # Preserve slack caused by other child constraints, without applying
             # a containing group's manual/automatic translation a second time.
             shift = max(shift, self.calendar.between(start, desired))
         # A nested group must not undo the containing group's translation.
         for key in members & floors.keys():
-            shift = max(shift, self.calendar.between(self.tasks[key].start, floors[key]))
+            shift = max(
+                shift, self.calendar.between(self.tasks[key].start, floors[key])
+            )
         for key in members:
             task = self.tasks[key]
             if shift:
@@ -875,16 +1169,27 @@ class Project:
                     task.start = self.calendar.normalize(task.start)
         last = max(sorted(members), key=lambda key: self.span(key)[1])
         for link in self.incoming(task_id):
-            anchor = self.calendar.add(self.span(link.source)[link.kind[0] == "F"], link.lag)
-            bound = self.calendar.add(anchor, -self.tasks[last].duration) if link.kind[1] == "F" else self.calendar.normalize(anchor)
+            anchor = self.calendar.add(
+                self.span(link.source)[link.kind[0] == "F"], link.lag
+            )
+            bound = (
+                self.calendar.add(anchor, -self.tasks[last].duration)
+                if link.kind[1] == "F"
+                else self.calendar.normalize(anchor)
+            )
             # Start constraints apply to every child; a finish constraint needs
             # one terminal child to reach that finish. Other children may follow
             # their own predecessors in either direction on later edits.
-            for key in ({last} if link.kind[1] == "F" else members):
+            for key in {last} if link.kind[1] == "F" else members:
                 floors[key] = max(floors[key], bound) if key in floors else bound
 
-    def propagate(self, changed: set[str], previous: GroupAnchors | None = None,
-                  *, align_changed: bool = False) -> None:
+    def propagate(
+        self,
+        changed: set[str],
+        previous: GroupAnchors | None = None,
+        *,
+        align_changed: bool = False,
+    ) -> None:
         previous = self.group_anchors() if previous is None else previous
         members = {key: self.dependency_members(key) for key in self.tasks}
         affected = set().union(*(members[key] for key in changed))
@@ -893,8 +1198,10 @@ class Project:
             for link in self.dependencies:
                 # A constrained summary moves as a block, so include siblings
                 # when one member changes, as well as ordinary successors.
-                if members[link.source] & affected or (self.tasks[link.target].kind == "group"
-                                                       and members[link.target] & affected):
+                if members[link.source] & affected or (
+                    self.tasks[link.target].kind == "group"
+                    and members[link.target] & affected
+                ):
                     affected.update(members[link.target])
             if len(affected) == before:
                 break
@@ -910,7 +1217,11 @@ class Project:
         targets = {d.target for d in self.dependencies if members[d.target] & affected}
         floors: dict[str, datetime] = {}
         for task_id in sorted(targets, key=rank):
-            if align_changed or task_id not in changed or self.tasks[task_id].kind == "group":
+            if (
+                align_changed
+                or task_id not in changed
+                or self.tasks[task_id].kind == "group"
+            ):
                 self.align(task_id, floors, previous)
 
     def move(self, task_id: str, days: int) -> None:
@@ -918,7 +1229,9 @@ class Project:
             return
         moving = self.dependency_members(task_id)
         if not self.can_move(task_id):
-            raise ScheduleError("Нельзя переместить: даты закреплены предшественником. Измените связь или лаг.")
+            raise ScheduleError(
+                "Нельзя переместить: даты закреплены предшественником. Измените связь или лаг."
+            )
         previous = self.group_anchors()
         start, _ = self.span(task_id)
         new_start = self.calendar.shift_date(start, days)
@@ -965,8 +1278,12 @@ class Project:
         return link.id
 
     def hierarchy_changed(self, groups: set[str], previous: GroupAnchors) -> None:
-        linked_groups = {key for d in self.dependencies for key in (d.source, d.target)
-                         if self.tasks[key].kind == "group"}
+        linked_groups = {
+            key
+            for d in self.dependencies
+            for key in (d.source, d.target)
+            if self.tasks[key].kind == "group"
+        }
         changed = groups & linked_groups
         if changed:
             self.validate()
@@ -975,9 +1292,14 @@ class Project:
     def remove(self, task_id: str) -> None:
         previous, groups = self.group_anchors(), self.ancestors(task_id)
         deleting = {task_id, *(task.id for task in self.descendants(task_id))}
-        self.tasks = {key: task for key, task in self.tasks.items() if key not in deleting}
-        self.dependencies = [link for link in self.dependencies
-                             if link.source not in deleting and link.target not in deleting]
+        self.tasks = {
+            key: task for key, task in self.tasks.items() if key not in deleting
+        }
+        self.dependencies = [
+            link
+            for link in self.dependencies
+            if link.source not in deleting and link.target not in deleting
+        ]
         self.hierarchy_changed(groups, previous)
 
     def reorder(self, task_id: str, direction: int) -> None:
@@ -1012,12 +1334,25 @@ class Project:
             parent = target.parent
         subtree = {task_id, *(t.id for t in self.descendants(task_id))}
         if parent in subtree or target_id in subtree:
-            raise ScheduleError("Нельзя переместить группу в неё саму или в её подзадачу.")
+            raise ScheduleError(
+                "Нельзя переместить группу в неё саму или в её подзадачу."
+            )
         current_siblings = [t.id for t in self.children(parent)]
         siblings = [key for key in current_siblings if key != task_id]
-        sibling_index = siblings.index(target_id) + (placement == "after") if placement in {"before", "after"} else 0 if placement == "inside" else len(siblings)
-        desired_siblings = siblings[:sibling_index] + [task_id] + siblings[sibling_index:]
-        if self.tasks[task_id].parent == parent and desired_siblings == current_siblings:
+        sibling_index = (
+            siblings.index(target_id) + (placement == "after")
+            if placement in {"before", "after"}
+            else 0
+            if placement == "inside"
+            else len(siblings)
+        )
+        desired_siblings = (
+            siblings[:sibling_index] + [task_id] + siblings[sibling_index:]
+        )
+        if (
+            self.tasks[task_id].parent == parent
+            and desired_siblings == current_siblings
+        ):
             return
         order = [key for key in self.tasks if key != task_id]
         if placement in {"before", "after"}:
@@ -1043,50 +1378,115 @@ class Project:
 
     def to_dict(self) -> dict:
         def exceptions(items):
-            return [{**asdict(item), "start": item.start.isoformat(), "end": item.end.isoformat()} for item in items]
+            return [
+                {
+                    **asdict(item),
+                    "start": item.start.isoformat(),
+                    "end": item.end.isoformat(),
+                }
+                for item in items
+            ]
+
         tasks = []
         for task in self.tasks.values():
             item = asdict(task)
             item["start"] = task.start.isoformat(timespec="minutes")
-            item["deadline"] = task.deadline.isoformat() if task.deadline is not None else None
+            item["deadline"] = (
+                task.deadline.isoformat() if task.deadline is not None else None
+            )
             item.pop("assignee")
             tasks.append(item)
-        resources = [{**asdict(r), "workdays": sorted(r.workdays), "exceptions": exceptions(r.exceptions)} for r in self.resources.values()]
-        baselines = [{"id": item.id, "name": item.name, "created": item.created.isoformat(),
-                      "tasks": [{**asdict(entry), "start": entry.start.isoformat(), "end": entry.end.isoformat()}
-                                for entry in item.tasks.values()]} for item in self.baselines.values()]
-        return {"version": 9, "name": self.name, "tasks": tasks, "resources": resources,
-                "saved_filters": {name: asdict(criteria) for name, criteria in self.saved_filters.items()},
-                "weekly_periods": deepcopy(self.calendar.weekly_periods),
-                "baselines": baselines, "active_baseline": self.active_baseline,
-                "calendar_exceptions": exceptions(self.calendar.exceptions),
-                "custom_fields": [asdict(f) for f in self.custom_fields.values()],
-                "dependencies": [asdict(link) for link in self.dependencies],
-                "workdays": sorted(self.calendar.workdays),
-                "holidays": sorted(day.isoformat() for day in self.calendar.holidays)}
+        resources = [
+            {
+                **asdict(r),
+                "workdays": sorted(r.workdays),
+                "exceptions": exceptions(r.exceptions),
+            }
+            for r in self.resources.values()
+        ]
+        baselines = [
+            {
+                "id": item.id,
+                "name": item.name,
+                "created": item.created.isoformat(),
+                "tasks": [
+                    {
+                        **asdict(entry),
+                        "start": entry.start.isoformat(),
+                        "end": entry.end.isoformat(),
+                    }
+                    for entry in item.tasks.values()
+                ],
+            }
+            for item in self.baselines.values()
+        ]
+        return {
+            "version": 9,
+            "name": self.name,
+            "tasks": tasks,
+            "resources": resources,
+            "saved_filters": {
+                name: asdict(criteria) for name, criteria in self.saved_filters.items()
+            },
+            "weekly_periods": deepcopy(self.calendar.weekly_periods),
+            "baselines": baselines,
+            "active_baseline": self.active_baseline,
+            "calendar_exceptions": exceptions(self.calendar.exceptions),
+            "custom_fields": [asdict(f) for f in self.custom_fields.values()],
+            "dependencies": [asdict(link) for link in self.dependencies],
+            "workdays": sorted(self.calendar.workdays),
+            "holidays": sorted(day.isoformat() for day in self.calendar.holidays),
+        }
 
     @classmethod
     def from_dict(cls, value: dict) -> Project:
         if value.get("version") not in (1, 2, 3, 4, 5, 6, 7, 8, 9):
             raise ScheduleError("Неподдерживаемая версия файла проекта.")
+
         def exceptions(items, kind):
-            return [kind(**{**deepcopy(item), "start": date.fromisoformat(item["start"]), "end": date.fromisoformat(item["end"])})
-                    for item in items]
+            return [
+                kind(
+                    **{
+                        **deepcopy(item),
+                        "start": date.fromisoformat(item["start"]),
+                        "end": date.fromisoformat(item["end"]),
+                    }
+                )
+                for item in items
+            ]
+
         tasks = {}
         for item in value["tasks"]:
-            record = {**item, "resource_ids": list(item.get("resource_ids", [])),
-                      "resource_shares": list(item.get("resource_shares", [])),
-                      "custom_values": deepcopy(item.get("custom_values", {}))}
+            record = {
+                **item,
+                "resource_ids": list(item.get("resource_ids", [])),
+                "resource_shares": list(item.get("resource_shares", [])),
+                "custom_values": deepcopy(item.get("custom_values", {})),
+            }
             record.setdefault("status", status_for_progress(record.get("progress", 0)))
-            task = Task(**{**record, "start": datetime.fromisoformat(item["start"]),
-                           "deadline": date.fromisoformat(item["deadline"]) if item.get("deadline") is not None else None})
+            task = Task(
+                **{
+                    **record,
+                    "start": datetime.fromisoformat(item["start"]),
+                    "deadline": date.fromisoformat(item["deadline"])
+                    if item.get("deadline") is not None
+                    else None,
+                }
+            )
             if task.id in tasks:
                 raise ScheduleError("Повторяющийся идентификатор задачи.")
             tasks[task.id] = task
         resources = {}
         for item in value.get("resources", []):
-            resource = Resource(**{**item, "workdays": set(item.get("workdays", range(5))),
-                                   "exceptions": exceptions(item.get("exceptions", []), ResourceException)})
+            resource = Resource(
+                **{
+                    **item,
+                    "workdays": set(item.get("workdays", range(5))),
+                    "exceptions": exceptions(
+                        item.get("exceptions", []), ResourceException
+                    ),
+                }
+            )
             if resource.id in resources:
                 raise ScheduleError("Повторяющийся идентификатор ресурса.")
             resources[resource.id] = resource
@@ -1100,22 +1500,43 @@ class Project:
         for item in value.get("baselines", []):
             entries = {}
             for entry in item["tasks"]:
-                record = BaselineEntry(**{**entry, "start": datetime.fromisoformat(entry["start"]),
-                                          "end": datetime.fromisoformat(entry["end"])})
+                record = BaselineEntry(
+                    **{
+                        **entry,
+                        "start": datetime.fromisoformat(entry["start"]),
+                        "end": datetime.fromisoformat(entry["end"]),
+                    }
+                )
                 if record.task_id in entries:
                     raise ScheduleError("Повторяющийся элемент базового плана.")
                 entries[record.task_id] = record
-            snapshot = Baseline(item["id"], item["name"], date.fromisoformat(item["created"]), entries)
+            snapshot = Baseline(
+                item["id"], item["name"], date.fromisoformat(item["created"]), entries
+            )
             if snapshot.id in baselines:
                 raise ScheduleError("Повторяющийся идентификатор базового плана.")
             baselines[snapshot.id] = snapshot
-        project = cls(value["name"], tasks,
-                      [Dependency(**item) for item in value["dependencies"]],
-                      WorkCalendar({date.fromisoformat(day) for day in value.get("holidays", [])},
-                                   set(value.get("workdays", range(5))),
-                                   exceptions(value.get("calendar_exceptions", []), CalendarException),
-                                   {int(day): deepcopy(periods) for day, periods in value.get("weekly_periods", {}).items()}), resources, custom_fields,
-                      baselines, value.get("active_baseline", ""),
-                      {name: TaskFilter(**deepcopy(criteria)) for name, criteria in value.get("saved_filters", {}).items()})
+        project = cls(
+            value["name"],
+            tasks,
+            [Dependency(**item) for item in value["dependencies"]],
+            WorkCalendar(
+                {date.fromisoformat(day) for day in value.get("holidays", [])},
+                set(value.get("workdays", range(5))),
+                exceptions(value.get("calendar_exceptions", []), CalendarException),
+                {
+                    int(day): deepcopy(periods)
+                    for day, periods in value.get("weekly_periods", {}).items()
+                },
+            ),
+            resources,
+            custom_fields,
+            baselines,
+            value.get("active_baseline", ""),
+            {
+                name: TaskFilter(**deepcopy(criteria))
+                for name, criteria in value.get("saved_filters", {}).items()
+            },
+        )
         project.validate()
         return project

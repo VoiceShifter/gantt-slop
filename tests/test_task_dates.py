@@ -41,7 +41,9 @@ def test_calendar_initial_date_cancel_and_unchanged_apply_are_noops(gui, field):
 
 @pytest.mark.parametrize("field", ["start", "end"])
 @pytest.mark.parametrize("width", [1000, 1920])
-def test_inspector_calendar_button_real_key_selection_and_single_undo(gui, field, width):
+def test_inspector_calendar_button_real_key_selection_and_single_undo(
+    gui, field, width
+):
     c, window = gui
     window.resize(width, 960)
     c.select("sensor")
@@ -53,7 +55,9 @@ def test_inspector_calendar_button_real_key_selection_and_single_undo(gui, field
     assert button.isEnabled() and button.isVisible()
     before = c.project.to_dict()
     start, end = c.project.span("sensor")
-    QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point(button))
+    QTest.mouseClick(
+        window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point(button)
+    )
     wait_until(lambda: bool(c.dialogs.modalOpen))
     widget = calendar()
     original = widget.selectedDate()
@@ -90,15 +94,29 @@ def test_table_calendar_button_opens_the_correct_field(gui, field):
     button = item(window, "calendar-task-" + field + "-sensor")
     wait_until(button.isVisible)
     before = c.project.to_dict()
-    QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point(button))
+    QTest.mouseClick(
+        window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point(button)
+    )
     wait_until(lambda: bool(c.dialogs.modalOpen))
     assert c.selectedId == "sensor"
-    assert calendar().selectedDate().toPython() == c.project.span("sensor")[field == "end"].date()
+    assert (
+        calendar().selectedDate().toPython()
+        == c.project.span("sensor")[field == "end"].date()
+    )
     QTest.keyClick(native_dialog("taskDateDialog"), Qt.Key.Key_Escape)
     assert c.project.to_dict() == before and not c.canUndo
 
 
-@pytest.mark.parametrize(("task_id", "field"), [("controller", "start"), ("planning", "end"), ("components", "end"), ("missing", "start"), ("sensor", "notes")])
+@pytest.mark.parametrize(
+    ("task_id", "field"),
+    [
+        ("controller", "start"),
+        ("planning", "end"),
+        ("components", "end"),
+        ("missing", "start"),
+        ("sensor", "notes"),
+    ],
+)
 def test_calendar_does_not_open_for_locked_or_invalid_dates(gui, task_id, field):
     c, _window = gui
     c.dialogs.showTaskDate(task_id, field)
@@ -132,7 +150,9 @@ def test_calendar_invalid_finish_keeps_draft_and_reports_error(gui):
     assert click_native("taskDateSave")
     dialog = native_dialog("taskDateDialog")
     error = dialog.findChild(QLabel, "dialogError")
-    assert dialog.isVisible() and error is not None and error.isVisible() and error.text()
+    assert (
+        dialog.isVisible() and error is not None and error.isVisible() and error.text()
+    )
     assert calendar().selectedDate() == selected
     assert c.project.to_dict() == before and not c.canUndo
 
@@ -148,12 +168,17 @@ def test_calendar_rechecks_dependencies_when_applying_a_stale_draft(gui):
     assert c.project.to_dict() == before
 
 
-@pytest.mark.parametrize(("field", "day", "expected"), [
-    ("start", QDate(2025, 12, 6), "2025-12-08T09:00"),
-    ("end", QDate(2025, 12, 14), "2025-12-12T18:00"),
-])
+@pytest.mark.parametrize(
+    ("field", "day", "expected"),
+    [
+        ("start", QDate(2025, 12, 6), "2025-12-08T09:00"),
+        ("end", QDate(2025, 12, 14), "2025-12-12T18:00"),
+    ],
+)
 def test_calendar_uses_existing_working_day_normalization(qapp, field, day, expected):
-    project = Project(tasks={"a": Task("a", "A", datetime.fromisoformat("2025-12-01T09:00"), 40 * 60)})
+    project = Project(
+        tasks={"a": Task("a", "A", datetime.fromisoformat("2025-12-01T09:00"), 40 * 60)}
+    )
     c = Controller(project)
     try:
         c.dialogs.showTaskDate("a", field)
@@ -172,7 +197,9 @@ def test_calendar_uses_the_shared_theme_and_system_style(gui, qapp, dark):
     c.dialogs.showTaskDate("sensor", "start")
     widget = calendar()
     assert widget.style() is qapp.style() and not widget.styleSheet()
-    assert widget.palette().color(QPalette.ColorRole.Window) == qapp.palette().color(QPalette.ColorRole.Window)
+    assert widget.palette().color(QPalette.ColorRole.Window) == qapp.palette().color(
+        QPalette.ColorRole.Window
+    )
     assert widget.font().family() == qapp.font().family()
 
 

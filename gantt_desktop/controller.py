@@ -1,4 +1,5 @@
 """Qt-facing commands, visible rows, and file operations; scheduling stays in domain.py."""
+
 from __future__ import annotations
 
 import csv
@@ -47,8 +48,20 @@ from .workload import workload_rows
 if TYPE_CHECKING:
     from .theme import AppTheme
 
-MONTHS = ("Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-          "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь")
+MONTHS = (
+    "Январь",
+    "Февраль",
+    "Март",
+    "Апрель",
+    "Май",
+    "Июнь",
+    "Июль",
+    "Август",
+    "Сентябрь",
+    "Октябрь",
+    "Ноябрь",
+    "Декабрь",
+)
 
 
 def local_today() -> date:
@@ -76,11 +89,21 @@ class TaskRows(QAbstractListModel):
     def roleNames(self) -> dict[int, QByteArray]:
         return {self.ROLE: QByteArray(b"rowData")}
 
-    def rowCount(self, parent: QModelIndex | QPersistentModelIndex | None = None) -> int:
+    def rowCount(
+        self, parent: QModelIndex | QPersistentModelIndex | None = None
+    ) -> int:
         return 0 if parent is not None and parent.isValid() else len(self.records)
 
-    def data(self, index: QModelIndex | QPersistentModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
-        if index.isValid() and 0 <= index.row() < len(self.records) and role == self.ROLE:
+    def data(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ):
+        if (
+            index.isValid()
+            and 0 <= index.row() < len(self.records)
+            and role == self.ROLE
+        ):
             return self.records[index.row()]
         return None
 
@@ -133,25 +156,63 @@ class Controller(QObject):
     model = Property(QObject, lambda self: self._rows, constant=True)
     selectedId = Property(str, lambda self: self._selected, notify=selectionChanged)
     bulkMode = Property(bool, lambda self: self._bulk_mode, notify=bulkChanged)
-    checkedIds = Property(list, lambda self: [key for key in self.project.tasks if key in self._checked], notify=bulkChanged)
+    checkedIds = Property(
+        list,
+        lambda self: [key for key in self.project.tasks if key in self._checked],
+        notify=bulkChanged,
+    )
     checkedCount = Property(int, lambda self: len(self._checked), notify=bulkChanged)
-    checkedLeafCount = Property(int, lambda self: sum(self.project.tasks[key].kind != "group" for key in self._checked), notify=bulkChanged)
-    bulkDeleteCount = Property(int, lambda self: len(self._bulk_delete_ids()), notify=bulkChanged)
+    checkedLeafCount = Property(
+        int,
+        lambda self: sum(
+            self.project.tasks[key].kind != "group" for key in self._checked
+        ),
+        notify=bulkChanged,
+    )
+    bulkDeleteCount = Property(
+        int, lambda self: len(self._bulk_delete_ids()), notify=bulkChanged
+    )
     projectName = Property(str, lambda self: self.project.name, notify=viewChanged)
     rowCount = Property(int, lambda self: len(self._rows.records), notify=viewChanged)
     dayCount = Property(int, lambda self: self._day_count, notify=viewChanged)
-    canUndo = Property(bool, lambda self: self._history_index > 0, notify=historyChanged)
-    canRedo = Property(bool, lambda self: self._history_index + 1 < len(self._history), notify=historyChanged)
-    dirty = Property(bool, lambda self: self._history_index != self._clean_index, notify=historyChanged)
-    fileName = Property(str, lambda self: self._path.name if self._path else "Без файла", notify=fileChanged)
-    taskCount = Property(int, lambda self: sum(t.kind != "group" for t in self.project.tasks.values()), notify=viewChanged)
+    canUndo = Property(
+        bool, lambda self: self._history_index > 0, notify=historyChanged
+    )
+    canRedo = Property(
+        bool,
+        lambda self: self._history_index + 1 < len(self._history),
+        notify=historyChanged,
+    )
+    dirty = Property(
+        bool,
+        lambda self: self._history_index != self._clean_index,
+        notify=historyChanged,
+    )
+    fileName = Property(
+        str,
+        lambda self: self._path.name if self._path else "Без файла",
+        notify=fileChanged,
+    )
+    taskCount = Property(
+        int,
+        lambda self: sum(t.kind != "group" for t in self.project.tasks.values()),
+        notify=viewChanged,
+    )
 
-    filterActive = Property(bool, lambda self: bool(self._query or self._filter != "all" or self._advanced.extra_active), notify=viewChanged)
+    filterActive = Property(
+        bool,
+        lambda self: bool(
+            self._query or self._filter != "all" or self._advanced.extra_active
+        ),
+        notify=viewChanged,
+    )
     filterQuery = Property(str, lambda self: self._query, notify=filterChanged)
     quickFilter = Property(str, lambda self: self._filter, notify=viewChanged)
 
     criticalPath = Property(bool, lambda self: self._critical_path, notify=viewChanged)
-    criticalPathError = Property(str, lambda self: self._critical_error, notify=viewChanged)
+    criticalPathError = Property(
+        str, lambda self: self._critical_error, notify=viewChanged
+    )
 
     @Property(str, notify=viewChanged)
     def criticalPathInfo(self):
@@ -159,8 +220,10 @@ class Controller(QObject):
             return "Критический путь не рассчитан: " + self._critical_error
         if self._critical is None or self._critical.finish is None:
             return "Нет элементов для расчёта критического пути."
-        return (f"По всему текущему плану · нулевой резерв: {len(self._critical.critical_tasks)} элементов · "
-                f"завершение: {self._critical.finish:%d.%m.%Y %H:%M}. Резерв — в рабочем времени.")
+        return (
+            f"По всему текущему плану · нулевой резерв: {len(self._critical.critical_tasks)} элементов · "
+            f"завершение: {self._critical.finish:%d.%m.%Y %H:%M}. Резерв — в рабочем времени."
+        )
 
     @Slot(bool)
     def setCriticalPath(self, enabled):
@@ -179,8 +242,10 @@ class Controller(QObject):
         if baseline is None:
             return ""
         saved, current = set(baseline.tasks), set(self.project.tasks)
-        text = (f"Базовый план: {baseline.name} · совпадает: {len(saved & current)} · "
-                f"новых: {len(current-saved)} · удалённых: {len(saved-current)}. Δ — календарные часы.")
+        text = (
+            f"Базовый план: {baseline.name} · совпадает: {len(saved & current)} · "
+            f"новых: {len(current - saved)} · удалённых: {len(saved - current)}. Δ — календарные часы."
+        )
         if self._baseline_range_warning:
             text += " Диапазон больше 100 лет не расширяет диаграмму; даты доступны в полях."
         return text
@@ -188,17 +253,23 @@ class Controller(QObject):
     @Slot(str, result=str)
     def createBaseline(self, name):
         result = []
+
         def capture(project):
             result.append(project.capture_baseline(name, local_today()))
+
         return result[0] if self.edit("Создание базового плана", capture) else ""
 
     @Slot(str, result=bool)
     def selectBaseline(self, baseline_id):
-        return self.edit("Выбор базового плана", lambda p: p.select_baseline(baseline_id))
+        return self.edit(
+            "Выбор базового плана", lambda p: p.select_baseline(baseline_id)
+        )
 
     @Slot(str, result=bool)
     def removeBaseline(self, baseline_id):
-        return self.edit("Удаление базового плана", lambda p: p.remove_baseline(baseline_id))
+        return self.edit(
+            "Удаление базового плана", lambda p: p.remove_baseline(baseline_id)
+        )
 
     def timeline_limits(self) -> tuple[date, date]:
         spans = [self.project.span(key) for key in self.project.tasks]
@@ -207,10 +278,14 @@ class Controller(QObject):
         self._baseline_range_warning = False
         baseline = self.project.baselines.get(self.project.active_baseline)
         if baseline is not None:
-            entries = [entry for key, entry in baseline.tasks.items() if key in self.project.tasks]
+            entries = [
+                entry
+                for key, entry in baseline.tasks.items()
+                if key in self.project.tasks
+            ]
             start = min([first] + [entry.start.date() for entry in entries])
             end = max([last] + [entry.end.date() for entry in entries])
-            if (end-start).days <= 36600:
+            if (end - start).days <= 36600:
                 first, last = start, end
             else:
                 self._baseline_range_warning = True
@@ -218,7 +293,9 @@ class Controller(QObject):
 
     def reset_range(self) -> None:
         start, _end = self.timeline_limits()
-        self._origin = start - timedelta(days=min(start.toordinal()-1, start.weekday()+7))
+        self._origin = start - timedelta(
+            days=min(start.toordinal() - 1, start.weekday() + 7)
+        )
 
     def refresh(self) -> None:
         project = self.project
@@ -230,22 +307,46 @@ class Controller(QObject):
             except AnalysisError as error:
                 self._critical_error = str(error)
         first, last = self.timeline_limits()
-        if first < self._origin or self._baseline_range_id != project.active_baseline or self._baseline_range_warning:
-            self._origin = first - timedelta(days=min(first.toordinal()-1, first.weekday()+7))
+        if (
+            first < self._origin
+            or self._baseline_range_id != project.active_baseline
+            or self._baseline_range_warning
+        ):
+            self._origin = first - timedelta(
+                days=min(first.toordinal() - 1, first.weekday() + 7)
+            )
         self._baseline_range_id = project.active_baseline
-        self._day_count = min(max(180, (last - self._origin).days + 60), (date.max-self._origin).days+1)
+        self._day_count = min(
+            max(180, (last - self._origin).days + 60),
+            (date.max - self._origin).days + 1,
+        )
         matching = set()
-        query_groups = {task.id for task in project.tasks.values() if self._query and task.kind == "group"
-                        and self._query in f"{task.name} {task.assignee} {task.notes}".casefold()}
+        query_groups = {
+            task.id
+            for task in project.tasks.values()
+            if self._query
+            and task.kind == "group"
+            and self._query in f"{task.name} {task.assignee} {task.notes}".casefold()
+        }
         for task in project.tasks.values():
-            text_match = (self._query in f"{task.name} {task.assignee} {task.notes}".casefold()
-                          or bool(query_groups & project.ancestors(task.id)))
-            status_match = (self._filter == "all" or
-                            (self._filter == "incomplete" and task.progress < 100) or
-                            (self._filter == "complete" and task.progress >= 100) or
-                            (self._filter == "overdue" and task.progress < 100 and
-                             (project.span(task.id)[1].date() < local_today() or
-                              task.deadline is not None and task.deadline < local_today())))
+            text_match = (
+                self._query in f"{task.name} {task.assignee} {task.notes}".casefold()
+                or bool(query_groups & project.ancestors(task.id))
+            )
+            status_match = (
+                self._filter == "all"
+                or (self._filter == "incomplete" and task.progress < 100)
+                or (self._filter == "complete" and task.progress >= 100)
+                or (
+                    self._filter == "overdue"
+                    and task.progress < 100
+                    and (
+                        project.span(task.id)[1].date() < local_today()
+                        or task.deadline is not None
+                        and task.deadline < local_today()
+                    )
+                )
+            )
             if text_match and status_match and self._advanced.matches(project, task):
                 matching.add(task.id)
         included = set(matching)
@@ -260,11 +361,18 @@ class Controller(QObject):
         if leaves:
             start = min(project.span(t.id)[0] for t in leaves)
             end = max(project.span(t.id)[1] for t in leaves)
-            records.append({"taskId": "__total__", "rowKind": "total", "name": "",
-                            "startDay": (start.date() - self._origin).days,
-                            "endDay": (end.date() - self._origin).days + 1,
-                            "effort": f"{sum(t.effort for t in leaves):g}ч",
-                            "cost": f"{sum(t.cost for t in leaves):,.2f}", **self.custom_record("")})
+            records.append(
+                {
+                    "taskId": "__total__",
+                    "rowKind": "total",
+                    "name": "",
+                    "startDay": (start.date() - self._origin).days,
+                    "endDay": (end.date() - self._origin).days + 1,
+                    "effort": f"{sum(t.effort for t in leaves):g}ч",
+                    "cost": f"{sum(t.cost for t in leaves):,.2f}",
+                    **self.custom_record(""),
+                }
+            )
 
         def visit(parent: str, level: int, prefix: str) -> None:
             for number, task in enumerate(project.children(parent), 1):
@@ -272,13 +380,24 @@ class Controller(QObject):
                 if task.id not in included:
                     continue
                 record = self.record(task.id)
-                record.update(level=level, outline=outline,
-                              expanded=task.id not in self._collapsed or active_filter)
+                record.update(
+                    level=level,
+                    outline=outline,
+                    expanded=task.id not in self._collapsed or active_filter,
+                )
                 records.append(record)
                 if task.kind == "group" and record["expanded"]:
                     visit(task.id, level + 1, outline)
                     if not active_filter:
-                        records.append({"taskId": "", "parentId": task.id, "rowKind": "add", "level": level + 1})
+                        records.append(
+                            {
+                                "taskId": "",
+                                "parentId": task.id,
+                                "rowKind": "add",
+                                "level": level + 1,
+                            }
+                        )
+
         visit("", 0, "")
         if not active_filter:
             records.append({"taskId": "", "parentId": "", "rowKind": "add", "level": 0})
@@ -296,71 +415,163 @@ class Controller(QObject):
         start, end = self.project.span(task_id)
         leaves = self.project.leaves(task_id)
         summary = task.kind == "group"
-        duration = self.project.calendar.between(start, end) if summary else task.duration
+        duration = (
+            self.project.calendar.between(start, end) if summary else task.duration
+        )
         effort = sum(t.effort for t in leaves) if summary else task.effort
         cost = sum(t.cost for t in leaves) if summary else task.cost
         weight = sum(t.duration for t in leaves)
-        progress = (sum(t.progress * t.duration for t in leaves) / weight if weight else 0) if summary else task.progress
-        status = ("closed" if leaves and all(t.status == "closed" for t in leaves) else status_for_progress(progress)) if summary else task.status
+        progress = (
+            (sum(t.progress * t.duration for t in leaves) / weight if weight else 0)
+            if summary
+            else task.progress
+        )
+        status = (
+            (
+                "closed"
+                if leaves and all(t.status == "closed" for t in leaves)
+                else status_for_progress(progress)
+            )
+            if summary
+            else task.status
+        )
         locked = not self.project.can_move(task_id)
         baseline = self.project.baselines.get(self.project.active_baseline)
         saved = baseline.tasks.get(task_id) if baseline is not None else None
-        start_delta = (start-saved.start).total_seconds()/3600 if saved is not None else None
-        end_delta = (end-saved.end).total_seconds()/3600 if saved is not None else None
-        return {"taskId": task.id, "rowKind": "task", "parentId": task.parent, "name": task.name,
-                "summary": summary, "milestone": task.kind == "milestone", "color": task.color,
-                "critical": self._critical is not None and self._critical.total_float.get(task_id) == 0,
-                "totalFloat": self._critical.total_float.get(task_id) if self._critical is not None else None,
-                "hasBaseline": saved is not None, "baselineKind": saved.kind if saved is not None else "",
-                "baselineStart": saved.start.strftime("%d.%m.%Y %H:%M") if saved is not None else "",
-                "baselineEnd": saved.end.strftime("%d.%m.%Y %H:%M") if saved is not None else "",
-                "baselineStartDay": (saved.start.date()-self._origin).days if saved is not None else None,
-                "baselineEndDay": (saved.end.date()-self._origin).days+1 if saved is not None else None,
-                "startVariance": f"{start_delta:+g}" if start_delta else "0" if start_delta == 0 else "",
-                "endVariance": f"{end_delta:+g}" if end_delta else "0" if end_delta == 0 else "",
-                "startVarianceHours": start_delta, "endVarianceHours": end_delta,
-                "startDay": (start.date() - self._origin).days,
-                "endDay": (end.date() - self._origin).days + 1,
-                "start": start.strftime("%d.%m.%Y"), "end": end.strftime("%d.%m.%Y"),
-                "startTime": start.strftime("%H:%M"), "endTime": end.strftime("%H:%M"),
-                "duration": duration / 60, "effortHours": effort, "costValue": cost,
-                "effort": f"{effort:g}ч", "cost": f"{cost:,.2f}", "progress": progress,
-                "assignee": task.assignee, "resourceIds": task.resource_ids,
-                "resourceShares": task.resource_shares,
-                "assigneeColor": self.project.resources[task.resource_ids[0]].color if task.resource_ids else "#829da7",
-                "notes": task.notes, "canMove": not locked,
-                "deadline": f"{task.deadline.day:02}.{task.deadline.month:02}.{task.deadline.year:04}" if task.deadline else "",
-                "deadlineDay": (task.deadline - self._origin).days if task.deadline else None,
-                "deadlineMissed": task.deadline is not None and end.date() > task.deadline,
-                "deadlineOverdue": task.deadline is not None and progress < 100 and task.deadline < local_today(),
-                "canResizeStart": task.kind == "task" and not self.project.endpoint_locked(task_id, "S"),
-                "canResizeEnd": task.kind == "task" and not self.project.endpoint_locked(task_id, "F"),
-                "status": status, "statusText": STATUS_LABELS[status], "priority": task.priority,
-                "priorityText": "" if summary else PRIORITY_LABELS[task.priority],
-                "hasChildren": bool(self.project.children(task.id)), "kind": task.kind,
-                **self.custom_record(task_id)}
+        start_delta = (
+            (start - saved.start).total_seconds() / 3600 if saved is not None else None
+        )
+        end_delta = (
+            (end - saved.end).total_seconds() / 3600 if saved is not None else None
+        )
+        return {
+            "taskId": task.id,
+            "rowKind": "task",
+            "parentId": task.parent,
+            "name": task.name,
+            "summary": summary,
+            "milestone": task.kind == "milestone",
+            "color": task.color,
+            "critical": self._critical is not None
+            and self._critical.total_float.get(task_id) == 0,
+            "totalFloat": self._critical.total_float.get(task_id)
+            if self._critical is not None
+            else None,
+            "hasBaseline": saved is not None,
+            "baselineKind": saved.kind if saved is not None else "",
+            "baselineStart": saved.start.strftime("%d.%m.%Y %H:%M")
+            if saved is not None
+            else "",
+            "baselineEnd": saved.end.strftime("%d.%m.%Y %H:%M")
+            if saved is not None
+            else "",
+            "baselineStartDay": (saved.start.date() - self._origin).days
+            if saved is not None
+            else None,
+            "baselineEndDay": (saved.end.date() - self._origin).days + 1
+            if saved is not None
+            else None,
+            "startVariance": f"{start_delta:+g}"
+            if start_delta
+            else "0"
+            if start_delta == 0
+            else "",
+            "endVariance": f"{end_delta:+g}"
+            if end_delta
+            else "0"
+            if end_delta == 0
+            else "",
+            "startVarianceHours": start_delta,
+            "endVarianceHours": end_delta,
+            "startDay": (start.date() - self._origin).days,
+            "endDay": (end.date() - self._origin).days + 1,
+            "start": start.strftime("%d.%m.%Y"),
+            "end": end.strftime("%d.%m.%Y"),
+            "startTime": start.strftime("%H:%M"),
+            "endTime": end.strftime("%H:%M"),
+            "duration": duration / 60,
+            "effortHours": effort,
+            "costValue": cost,
+            "effort": f"{effort:g}ч",
+            "cost": f"{cost:,.2f}",
+            "progress": progress,
+            "assignee": task.assignee,
+            "resourceIds": task.resource_ids,
+            "resourceShares": task.resource_shares,
+            "assigneeColor": self.project.resources[task.resource_ids[0]].color
+            if task.resource_ids
+            else "#829da7",
+            "notes": task.notes,
+            "canMove": not locked,
+            "deadline": f"{task.deadline.day:02}.{task.deadline.month:02}.{task.deadline.year:04}"
+            if task.deadline
+            else "",
+            "deadlineDay": (task.deadline - self._origin).days
+            if task.deadline
+            else None,
+            "deadlineMissed": task.deadline is not None and end.date() > task.deadline,
+            "deadlineOverdue": task.deadline is not None
+            and progress < 100
+            and task.deadline < local_today(),
+            "canResizeStart": task.kind == "task"
+            and not self.project.endpoint_locked(task_id, "S"),
+            "canResizeEnd": task.kind == "task"
+            and not self.project.endpoint_locked(task_id, "F"),
+            "status": status,
+            "statusText": STATUS_LABELS[status],
+            "priority": task.priority,
+            "priorityText": "" if summary else PRIORITY_LABELS[task.priority],
+            "hasChildren": bool(self.project.children(task.id)),
+            "kind": task.kind,
+            **self.custom_record(task_id),
+        }
 
     def custom_record(self, task_id: str) -> dict:
-        values = {key: self.project.custom_value(task_id, key) for key in self.project.custom_fields}
-        return {"customValues": values, "customTexts": {
-            key: definition.display(values[key], self.project.resources)
-            for key, definition in self.project.custom_fields.items()}}
+        values = {
+            key: self.project.custom_value(task_id, key)
+            for key in self.project.custom_fields
+        }
+        return {
+            "customValues": values,
+            "customTexts": {
+                key: definition.display(values[key], self.project.resources)
+                for key, definition in self.project.custom_fields.items()
+            },
+        }
 
     @Property(list, notify=viewChanged)
     def customFields(self):
-        return [{"id": f.id, "key": "custom:" + f.id, "name": f.name, "kind": f.kind,
-                 "typeLabel": FIELD_TYPES[f.kind], "options": list(f.options), "aggregate": f.aggregate}
-                for f in self.project.custom_fields.values()]
+        return [
+            {
+                "id": f.id,
+                "key": "custom:" + f.id,
+                "name": f.name,
+                "kind": f.kind,
+                "typeLabel": FIELD_TYPES[f.kind],
+                "options": list(f.options),
+                "aggregate": f.aggregate,
+            }
+            for f in self.project.custom_fields.values()
+        ]
 
-    def saveCustomField(self, field_id: str, name: str, kind: str, options: list[str], aggregate: str) -> str:
+    def saveCustomField(
+        self, field_id: str, name: str, kind: str, options: list[str], aggregate: str
+    ) -> str:
         key = field_id or new_id()
 
         def apply(project: Project) -> None:
             if field_id and field_id not in project.custom_fields:
                 raise ScheduleError("Поле уже удалено.")
-            project.save_custom_field(CustomField(key, name.strip(), kind,
-                                                 [s.strip() for s in options if s.strip()],
-                                                 aggregate if kind == "number" else ""))
+            project.save_custom_field(
+                CustomField(
+                    key,
+                    name.strip(),
+                    kind,
+                    [s.strip() for s in options if s.strip()],
+                    aggregate if kind == "number" else "",
+                )
+            )
+
         if not self.edit("Изменить поле" if field_id else "Создать поле", apply):
             return ""
         if not field_id:
@@ -371,52 +582,96 @@ class Controller(QObject):
         return self.edit("Удалить поле", lambda p: p.remove_custom_field(field_id))
 
     def setCustomValue(self, task_id: str, field_id: str, value: object) -> bool:
-        return self.edit("Изменить значение поля", lambda p: p.set_custom_value(task_id, field_id, value))
+        return self.edit(
+            "Изменить значение поля",
+            lambda p: p.set_custom_value(task_id, field_id, value),
+        )
 
     @Slot(str, str, result=bool)
     def toggleCustomValue(self, task_id: str, field_id: str) -> bool:
-        return self.edit("Изменить флажок", lambda p: p.set_custom_value(
-            task_id, field_id, p.tasks[task_id].custom_values.get(field_id) is not True))
+        return self.edit(
+            "Изменить флажок",
+            lambda p: p.set_custom_value(
+                task_id,
+                field_id,
+                p.tasks[task_id].custom_values.get(field_id) is not True,
+            ),
+        )
 
     @Property(dict, notify=selectionChanged)
     def selected(self):
         if self._selected not in self.project.tasks:
             return {}
         result = self.record(self._selected)
-        result["dependencies"] = [{"id": d.id, "source": d.source, "target": d.target,
-                                    "sourceName": self.project.tasks[d.source].name,
-                                    "targetName": self.project.tasks[d.target].name,
-                                    "kind": d.kind, "lag": d.lag / 60,
-                                    "incoming": d.target == self._selected}
-                                   for d in self.project.dependencies
-                                   if self._selected in (d.source, d.target)]
+        result["dependencies"] = [
+            {
+                "id": d.id,
+                "source": d.source,
+                "target": d.target,
+                "sourceName": self.project.tasks[d.source].name,
+                "targetName": self.project.tasks[d.target].name,
+                "kind": d.kind,
+                "lag": d.lag / 60,
+                "incoming": d.target == self._selected,
+            }
+            for d in self.project.dependencies
+            if self._selected in (d.source, d.target)
+        ]
         return result
 
     @Property(list, constant=True)
     def statusChoices(self):
-        colors = {"open": "#999999", "in_progress": "#ff9800", "completed": "#50c7d6", "closed": "#13b64b"}
-        return [{"value": key, "label": label, "color": colors[key], "symbol": ""} for key, label in STATUS_LABELS.items()]
+        colors = {
+            "open": "#999999",
+            "in_progress": "#ff9800",
+            "completed": "#50c7d6",
+            "closed": "#13b64b",
+        }
+        return [
+            {"value": key, "label": label, "color": colors[key], "symbol": ""}
+            for key, label in STATUS_LABELS.items()
+        ]
 
     @Property(list, constant=True)
     def priorityChoices(self):
         colors = ("#e84a4a", "#ffa726", "#4f9347", "#777777", "#aaaaaa")
         symbols = ("↑", "↑", "↑", "↓", "↓")
-        return [{"value": key, "label": label, "color": color, "symbol": symbol}
-                for (key, label), color, symbol in zip(PRIORITY_LABELS.items(), colors, symbols, strict=True)]
+        return [
+            {"value": key, "label": label, "color": color, "symbol": symbol}
+            for (key, label), color, symbol in zip(
+                PRIORITY_LABELS.items(), colors, symbols, strict=True
+            )
+        ]
 
     @Property(dict, notify=bulkChanged)
     def checkStates(self):
         states = {}
         for task_id in [*self.project.tasks, "__total__"]:
             members = self._check_members(task_id)
-            states[task_id] = 2 if members and members <= self._checked else 1 if members & self._checked else 0
+            states[task_id] = (
+                2
+                if members and members <= self._checked
+                else 1
+                if members & self._checked
+                else 0
+            )
         return states
 
     @Property(list, notify=viewChanged)
     def resourceCatalog(self):
-        return [{"id": r.id, "name": r.name, "capacity": r.capacity, "workdays": sorted(r.workdays),
-                 "color": r.color, "taskCount": sum(r.id in t.resource_ids for t in self.project.tasks.values())}
-                for r in self.project.resources.values()]
+        return [
+            {
+                "id": r.id,
+                "name": r.name,
+                "capacity": r.capacity,
+                "workdays": sorted(r.workdays),
+                "color": r.color,
+                "taskCount": sum(
+                    r.id in t.resource_ids for t in self.project.tasks.values()
+                ),
+            }
+            for r in self.project.resources.values()
+        ]
 
     @Property(list, notify=viewChanged)
     def workloadRows(self):
@@ -428,10 +683,16 @@ class Controller(QObject):
 
     @Property(str, notify=viewChanged)
     def calendarLabel(self):
-        base = "Пн–Пт · 8ч/день" if self.project.calendar.workdays == set(range(5)) else f"{len(self.project.calendar.workdays)} дн/нед · 8ч/день"
+        base = (
+            "Пн–Пт · 8ч/день"
+            if self.project.calendar.workdays == set(range(5))
+            else f"{len(self.project.calendar.workdays)} дн/нед · 8ч/день"
+        )
         if self.project.calendar.weekly_periods:
             base = f"{len(self.project.calendar.workdays)} дн/нед · интервалы из XML"
-        count = len(self.project.calendar.holidays) + len(self.project.calendar.exceptions)
+        count = len(self.project.calendar.holidays) + len(
+            self.project.calendar.exceptions
+        )
         return base + (f" · исключений: {count}" if count else "")
 
     @Slot(str, result=str)
@@ -441,19 +702,29 @@ class Controller(QObject):
     @Slot(str, str, str, "QVariantList", result=str)
     def saveResource(self, resource_id, name, capacity, workdays):
         result = []
+
         def save(project):
             key = resource_id
             if not key:
-                if any(r.name.casefold() == name.strip().casefold() for r in project.resources.values()):
+                if any(
+                    r.name.casefold() == name.strip().casefold()
+                    for r in project.resources.values()
+                ):
                     raise ScheduleError("Ресурс с таким именем уже существует.")
                 key = project.ensure_resource(name).id
             project.update_resource(key, name, parse_number(capacity), set(workdays))
             result.append(key)
+
         return result[0] if self.edit("Сохранение ресурса", save) else ""
 
     @Slot(str, str, str, "QVariantList", result=bool)
     def updateResource(self, resource_id, name, capacity, workdays):
-        return self.edit("Изменение ресурса", lambda p: p.update_resource(resource_id, name, parse_number(capacity), set(workdays)))
+        return self.edit(
+            "Изменение ресурса",
+            lambda p: p.update_resource(
+                resource_id, name, parse_number(capacity), set(workdays)
+            ),
+        )
 
     @Slot(str, result=bool)
     def removeResource(self, resource_id):
@@ -461,7 +732,12 @@ class Controller(QObject):
 
     @Slot(str, "QVariantList", "QVariantList", result=bool)
     def assignResources(self, task_id, ids, hours):
-        return self.edit("Назначение ресурсов", lambda p: p.assign_resources(task_id, list(ids), [parse_number(str(h)) for h in hours]))
+        return self.edit(
+            "Назначение ресурсов",
+            lambda p: p.assign_resources(
+                task_id, list(ids), [parse_number(str(h)) for h in hours]
+            ),
+        )
 
     @Slot(str, list, result=bool)
     def chooseTaskResources(self, task_id, ids):
@@ -471,28 +747,59 @@ class Controller(QObject):
                 raise ScheduleError("Назначайте ресурсы задачам, а не сводной группе.")
             if len(ids) != len(task.resource_ids) or set(ids) != set(task.resource_ids):
                 project.assign_resources(task_id, list(ids))
+
         return self.edit("Назначение ресурсов", apply)
 
     @Slot("QVariantList", result=bool)
     def setProjectWorkdays(self, days):
         return self.edit("Рабочие дни проекта", lambda p: p.set_workdays(set(days)))
 
-    def saveCalendarException(self, resource_id: str, exception_id: str, name: str, start: str, end: str,
-                              periods: list, capacity: str, holiday: str = "") -> bool:
+    def saveCalendarException(
+        self,
+        resource_id: str,
+        exception_id: str,
+        name: str,
+        start: str,
+        end: str,
+        periods: list,
+        capacity: str,
+        holiday: str = "",
+    ) -> bool:
         def apply(project):
             calendar = deepcopy(project.calendar)
-            items = project.resources[resource_id].exceptions if resource_id else calendar.exceptions
+            items = (
+                project.resources[resource_id].exceptions
+                if resource_id
+                else calendar.exceptions
+            )
             if exception_id and not any(item.id == exception_id for item in items):
                 raise ScheduleError("Исключение уже удалено. Откройте список заново.")
             if holiday:
-                if resource_id or exception_id or date.fromisoformat(holiday) not in calendar.holidays:
+                if (
+                    resource_id
+                    or exception_id
+                    or date.fromisoformat(holiday) not in calendar.holidays
+                ):
                     raise ScheduleError("Праздник уже удалён. Откройте список заново.")
-                if start == end == holiday and name.strip() == "Праздник" and periods == []:
+                if (
+                    start == end == holiday
+                    and name.strip() == "Праздник"
+                    and periods == []
+                ):
                     return
                 calendar.holidays.remove(date.fromisoformat(holiday))
             key = exception_id or new_id()
-            common = (key, date.fromisoformat(start), date.fromisoformat(end), name.strip())
-            item = ResourceException(*common, parse_number(capacity)) if resource_id else CalendarException(*common, deepcopy(periods))
+            common = (
+                key,
+                date.fromisoformat(start),
+                date.fromisoformat(end),
+                name.strip(),
+            )
+            item = (
+                ResourceException(*common, parse_number(capacity))
+                if resource_id
+                else CalendarException(*common, deepcopy(periods))
+            )
             updated = [item if current.id == key else current for current in items]
             if not exception_id:
                 updated.append(item)
@@ -501,24 +808,32 @@ class Controller(QObject):
             else:
                 calendar.exceptions = updated
                 project.set_calendar(calendar)
+
         return self.edit("Исключение календаря", apply)
 
-    def removeCalendarException(self, resource_id: str, exception_id: str, holiday: str = "") -> bool:
+    def removeCalendarException(
+        self, resource_id: str, exception_id: str, holiday: str = ""
+    ) -> bool:
         def remove(project):
             if resource_id:
                 resource = project.resources[resource_id]
                 if not any(item.id == exception_id for item in resource.exceptions):
                     raise ScheduleError("Исключение уже удалено.")
-                resource.exceptions = [item for item in resource.exceptions if item.id != exception_id]
+                resource.exceptions = [
+                    item for item in resource.exceptions if item.id != exception_id
+                ]
             else:
                 calendar = deepcopy(project.calendar)
                 if holiday:
                     calendar.holidays.remove(date.fromisoformat(holiday))
                 elif any(item.id == exception_id for item in calendar.exceptions):
-                    calendar.exceptions = [item for item in calendar.exceptions if item.id != exception_id]
+                    calendar.exceptions = [
+                        item for item in calendar.exceptions if item.id != exception_id
+                    ]
                 else:
                     raise ScheduleError("Исключение уже удалено.")
                 project.set_calendar(calendar)
+
         return self.edit("Удаление исключения календаря", remove)
 
     @Property(list, notify=viewChanged)
@@ -528,14 +843,27 @@ class Controller(QObject):
     @Property(list, notify=viewChanged)
     def groupChoices(self):
         return [{"id": "", "name": "Без группы"}] + [
-            {"id": t.id, "name": t.name} for t in self.project.tasks.values() if t.kind == "group"]
+            {"id": t.id, "name": t.name}
+            for t in self.project.tasks.values()
+            if t.kind == "group"
+        ]
 
     @Property(list, notify=viewChanged)
     def days(self):
-        return [{"offset": n, "number": day.day, "weekday": ("П", "В", "С", "Ч", "П", "С", "В")[day.weekday()],
-                 "weekend": not self.project.calendar.working_day(day), "monday": day.weekday() == 0,
-                 "week": day.isocalendar().week, "today": day == local_today(), "label": day.strftime("%d.%m.%Y")}
-                for n in range(self._day_count) for day in [self._origin + timedelta(days=n)]]
+        return [
+            {
+                "offset": n,
+                "number": day.day,
+                "weekday": ("П", "В", "С", "Ч", "П", "С", "В")[day.weekday()],
+                "weekend": not self.project.calendar.working_day(day),
+                "monday": day.weekday() == 0,
+                "week": day.isocalendar().week,
+                "today": day == local_today(),
+                "label": day.strftime("%d.%m.%Y"),
+            }
+            for n in range(self._day_count)
+            for day in [self._origin + timedelta(days=n)]
+        ]
 
     @Property(list, notify=viewChanged)
     def months(self):
@@ -544,14 +872,23 @@ class Controller(QObject):
         while day < self._origin + timedelta(days=self._day_count):
             next_month = date(day.year + (day.month == 12), day.month % 12 + 1, 1)
             end = min(next_month, self._origin + timedelta(days=self._day_count))
-            result.append({"offset": (day - self._origin).days, "length": (end - day).days,
-                           "label": f"{MONTHS[day.month - 1]} {day.year}"})
+            result.append(
+                {
+                    "offset": (day - self._origin).days,
+                    "length": (end - day).days,
+                    "label": f"{MONTHS[day.month - 1]} {day.year}",
+                }
+            )
             day = end
         return result
 
     @Property(list, notify=viewChanged)
     def links(self):
-        rows = {r["taskId"]: (i, r) for i, r in enumerate(self._rows.records) if r["rowKind"] == "task"}
+        rows = {
+            r["taskId"]: (i, r)
+            for i, r in enumerate(self._rows.records)
+            if r["rowKind"] == "task"
+        }
 
         def visible(task_id):
             while task_id not in rows and task_id in self.project.tasks:
@@ -568,23 +905,63 @@ class Controller(QObject):
             si, sr = rows[source]
             ti, tr = rows[target]
             source_finish, target_finish = link.kind[0] == "F", link.kind[1] == "F"
-            sx = sr["startDay"] + 0.5 if sr["milestone"] else sr["endDay"] if source_finish else sr["startDay"]
-            tx = tr["startDay"] + 0.5 if tr["milestone"] else tr["endDay"] if target_finish else tr["startDay"]
-            result.append({"id": link.id, "sx": sx, "tx": tx, "sourceRow": si, "targetRow": ti,
-                           "critical": self._critical is not None and self._critical.link_float.get(link.id) == 0,
-                           "sourceFinish": source_finish, "targetFinish": target_finish,
-                           "sourceSummary": sr["summary"], "targetSummary": tr["summary"],
-                           "sourceMilestone": sr["milestone"], "targetMilestone": tr["milestone"],
-                           "sourceSpan": sr["endDay"] - sr["startDay"], "targetSpan": tr["endDay"] - tr["startDay"],
-                           "label": f"{self.project.tasks[link.source].name} → {self.project.tasks[link.target].name} ({link.kind}, {link.lag / 60:g}ч)"})
+            sx = (
+                sr["startDay"] + 0.5
+                if sr["milestone"]
+                else sr["endDay"]
+                if source_finish
+                else sr["startDay"]
+            )
+            tx = (
+                tr["startDay"] + 0.5
+                if tr["milestone"]
+                else tr["endDay"]
+                if target_finish
+                else tr["startDay"]
+            )
+            result.append(
+                {
+                    "id": link.id,
+                    "sx": sx,
+                    "tx": tx,
+                    "sourceRow": si,
+                    "targetRow": ti,
+                    "critical": self._critical is not None
+                    and self._critical.link_float.get(link.id) == 0,
+                    "sourceFinish": source_finish,
+                    "targetFinish": target_finish,
+                    "sourceSummary": sr["summary"],
+                    "targetSummary": tr["summary"],
+                    "sourceMilestone": sr["milestone"],
+                    "targetMilestone": tr["milestone"],
+                    "sourceSpan": sr["endDay"] - sr["startDay"],
+                    "targetSpan": tr["endDay"] - tr["startDay"],
+                    "label": f"{self.project.tasks[link.source].name} → {self.project.tasks[link.target].name} ({link.kind}, {link.lag / 60:g}ч)",
+                }
+            )
         return result
 
     def restore(self, value: dict, *, reset_view: bool = False) -> None:
         project = Project.from_dict(value)
-        previous = {name: getattr(self, name) for name in (
-            "project", "_origin", "_day_count", "_critical", "_critical_error", "_baseline_range_warning",
-            "_baseline_range_id", "_selected", "_bulk_mode", "_checked", "_collapsed", "_query", "_filter", "_advanced",
-        )}
+        previous = {
+            name: getattr(self, name)
+            for name in (
+                "project",
+                "_origin",
+                "_day_count",
+                "_critical",
+                "_critical_error",
+                "_baseline_range_warning",
+                "_baseline_range_id",
+                "_selected",
+                "_bulk_mode",
+                "_checked",
+                "_collapsed",
+                "_query",
+                "_filter",
+                "_advanced",
+            )
+        }
         previous["_checked"] = self._checked.copy()
         records = self._rows.records
         try:
@@ -598,7 +975,14 @@ class Controller(QObject):
                 self._advanced = TaskFilter()
                 self.reset_range()
             self.refresh()
-        except (ValueError, KeyError, TypeError, AttributeError, OverflowError, RecursionError):
+        except (
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            OverflowError,
+            RecursionError,
+        ):
             for name, old_value in previous.items():
                 setattr(self, name, old_value)
             if self._rows.records is not records:
@@ -615,14 +999,21 @@ class Controller(QObject):
             if before != after:
                 # Prepare the restored document/view before publishing history or a revision.
                 self.restore(after)
-        except (ValueError, KeyError, TypeError, AttributeError, OverflowError, RecursionError) as error:
+        except (
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            OverflowError,
+            RecursionError,
+        ) as error:
             self.toast.emit(str(error))
             self.selectionChanged.emit()
             return False
         if before != after:
             if self._clean_index > self._history_index:
                 self._clean_index = -1
-            self._history = self._history[:self._history_index + 1] + [(label, after)]
+            self._history = self._history[: self._history_index + 1] + [(label, after)]
             self._history_index += 1
             self.historyChanged.emit()
         return True
@@ -689,9 +1080,21 @@ class Controller(QObject):
             return False
         allowed = {"assignee", "resourceIds", "status", "priority", "color"}
         ids = changes.get("resourceIds", [])
-        if (set(changes) - allowed or any(not isinstance(value, str) for key, value in changes.items() if key != "resourceIds")
-                or not isinstance(ids, list) or any(not isinstance(key, str) or key not in self.project.resources for key in ids)
-                or len(set(ids)) != len(ids) or ("assignee" in changes and "resourceIds" in changes)):
+        if (
+            set(changes) - allowed
+            or any(
+                not isinstance(value, str)
+                for key, value in changes.items()
+                if key != "resourceIds"
+            )
+            or not isinstance(ids, list)
+            or any(
+                not isinstance(key, str) or key not in self.project.resources
+                for key in ids
+            )
+            or len(set(ids)) != len(ids)
+            or ("assignee" in changes and "resourceIds" in changes)
+        ):
             self.toast.emit("Некорректные поля массового изменения.")
             return False
         targets = set(self._checked)
@@ -707,10 +1110,13 @@ class Controller(QObject):
                     elif field_name == "assignee":
                         project.assign_name(task_id, value)
                     elif field_name == "resourceIds":
-                        if len(value) != len(task.resource_ids) or set(value) != set(task.resource_ids):
+                        if len(value) != len(task.resource_ids) or set(value) != set(
+                            task.resource_ids
+                        ):
                             project.assign_resources(task_id, list(value))
                     else:
                         setattr(task, field_name, value)
+
         return self.edit("Массовое изменение задач", apply)
 
     def _bulk_delete_ids(self) -> set[str]:
@@ -729,11 +1135,14 @@ class Controller(QObject):
         deleting = self._bulk_delete_ids()
         if not self._bulk_mode or not deleting:
             return False
-        roots = [key for key in deleting if self.project.tasks[key].parent not in deleting]
+        roots = [
+            key for key in deleting if self.project.tasks[key].parent not in deleting
+        ]
 
         def remove(project):
             for task_id in roots:
                 project.remove(task_id)
+
         return self.edit("Удаление выбранных задач", remove)
 
     @Slot(str)
@@ -746,7 +1155,11 @@ class Controller(QObject):
 
     @Slot(bool)
     def expandAll(self, expanded):
-        self._collapsed = set() if expanded else {t.id for t in self.project.tasks.values() if t.kind == "group"}
+        self._collapsed = (
+            set()
+            if expanded
+            else {t.id for t in self.project.tasks.values() if t.kind == "group"}
+        )
         self.refresh()
 
     def filter_state(self) -> TaskFilter:
@@ -754,19 +1167,28 @@ class Controller(QObject):
         criteria.query, criteria.quick = self._query, self._filter
         return criteria
 
-    def apply_filter(self, criteria: TaskFilter, saved: dict[str, TaskFilter] | None = None) -> bool:
+    def apply_filter(
+        self, criteria: TaskFilter, saved: dict[str, TaskFilter] | None = None
+    ) -> bool:
         try:
             criteria.validate()
         except (ValueError, TypeError) as error:
             self.toast.emit(str(error))
             return False
-        if saved is not None and not self.edit("Сохранённые фильтры", lambda p: setattr(p, "saved_filters", deepcopy(saved))):
+        if saved is not None and not self.edit(
+            "Сохранённые фильтры",
+            lambda p: setattr(p, "saved_filters", deepcopy(saved)),
+        ):
             return False
         criteria = deepcopy(criteria)
         criteria.query = criteria.query.strip().casefold()
         if criteria != self.filter_state():
             self._checked.clear()
-        self._query, self._filter, self._advanced = criteria.query, criteria.quick, criteria
+        self._query, self._filter, self._advanced = (
+            criteria.query,
+            criteria.quick,
+            criteria,
+        )
         self.refresh()
         self.filterChanged.emit()
         return True
@@ -801,7 +1223,9 @@ class Controller(QObject):
     def resizeTask(self, task_id, edge, days):
         if self._bulk_mode:
             return False
-        return self.edit("Изменение длительности", lambda p: p.resize(task_id, edge, days))
+        return self.edit(
+            "Изменение длительности", lambda p: p.resize(task_id, edge, days)
+        )
 
     @Slot(str, str, int, result="QVariantMap")
     def preview(self, task_id, mode, days):
@@ -812,9 +1236,12 @@ class Controller(QObject):
             else:
                 project.resize(task_id, mode, days)
             start, end = project.span(task_id)
-            return {"valid": True, "startDay": (start.date() - self._origin).days,
-                    "endDay": (end.date() - self._origin).days + 1,
-                    "hint": f"{start:%d.%m.%Y} — {end:%d.%m.%Y}"}
+            return {
+                "valid": True,
+                "startDay": (start.date() - self._origin).days,
+                "endDay": (end.date() - self._origin).days + 1,
+                "hint": f"{start:%d.%m.%Y} — {end:%d.%m.%Y}",
+            }
         except ScheduleError as error:
             return {"valid": False, "hint": str(error)}
 
@@ -823,17 +1250,33 @@ class Controller(QObject):
         if self._bulk_mode:
             return ""
         task_id = new_id()
-        start = self.project.span(parent)[0] if parent in self.project.tasks else datetime.combine(self._origin + timedelta(days=7), time(9))
+        start = (
+            self.project.span(parent)[0]
+            if parent in self.project.tasks
+            else datetime.combine(self._origin + timedelta(days=7), time(9))
+        )
         selected = self.project.tasks.get(self._selected)
         if selected and selected.parent == parent and selected.kind != "group":
             start = self.project.calendar.normalize(self.project.span(selected.id)[1])
-        name = {"group": "Новая группа", "milestone": "Новая веха", "task": "Новая задача"}.get(kind, "Новая задача")
+        name = {
+            "group": "Новая группа",
+            "milestone": "Новая веха",
+            "task": "Новая задача",
+        }.get(kind, "Новая задача")
 
         def add(project):
             previous = project.group_anchors()
-            project.tasks[task_id] = Task(task_id, name, start, 480 if kind == "task" else 0,
-                                          parent, kind, color="#d65ab1" if kind == "milestone" else "#50c7d6")
+            project.tasks[task_id] = Task(
+                task_id,
+                name,
+                start,
+                480 if kind == "task" else 0,
+                parent,
+                kind,
+                color="#d65ab1" if kind == "milestone" else "#50c7d6",
+            )
             project.hierarchy_changed(project.ancestors(task_id), previous)
+
         if self.edit("Добавление задачи", add):
             self._collapsed.discard(parent)
             self.refresh()
@@ -847,10 +1290,20 @@ class Controller(QObject):
         def update(project):
             task = project.tasks[task_id]
             date_fields = {"start", "end", "startTime", "endTime", "duration"}
-            previous = project.group_anchors() if field_name in date_fields or field_name == "parent" else {}
+            previous = (
+                project.group_anchors()
+                if field_name in date_fields or field_name == "parent"
+                else {}
+            )
             parents = project.ancestors(task_id) if field_name == "parent" else set()
             if field_name == "deadline":
-                task.deadline = date.fromisoformat(value if "-" in value else "-".join(reversed(value.split(".")))) if value.strip() else None
+                task.deadline = (
+                    date.fromisoformat(
+                        value if "-" in value else "-".join(reversed(value.split(".")))
+                    )
+                    if value.strip()
+                    else None
+                )
             elif field_name == "assignee":
                 project.assign_name(task_id, value)
             elif field_name in {"name", "notes", "color", "parent"}:
@@ -870,7 +1323,9 @@ class Controller(QObject):
                     raise ScheduleError("Значение группы вычисляется из её задач.")
                 if field_name == "duration":
                     if task.kind == "milestone" or number <= 0:
-                        raise ScheduleError("Длительность обычной задачи должна быть больше нуля.")
+                        raise ScheduleError(
+                            "Длительность обычной задачи должна быть больше нуля."
+                        )
                     task.duration = round(number * 60)
                     project.align(task_id)
                 elif field_name == "progress":
@@ -884,10 +1339,14 @@ class Controller(QObject):
                 if field_name.endswith("Time"):
                     parsed = time.fromisoformat(value)
                     if parsed.tzinfo is not None or parsed.second or parsed.microsecond:
-                        raise ScheduleError("Время должно быть локальным, с минутной точностью.")
+                        raise ScheduleError(
+                            "Время должно быть локальным, с минутной точностью."
+                        )
                     changed = datetime.combine(current.date(), parsed)
                 else:
-                    parsed_date = date.fromisoformat(value if "-" in value else "-".join(reversed(value.split("."))))
+                    parsed_date = date.fromisoformat(
+                        value if "-" in value else "-".join(reversed(value.split(".")))
+                    )
                     changed = datetime.combine(parsed_date, current.time())
                 if beginning:
                     if task.kind == "group":
@@ -903,7 +1362,9 @@ class Controller(QObject):
                 else:
                     if project.endpoint_locked(task_id, "F"):
                         raise ScheduleError("Завершение закреплено предшественником.")
-                    duration = project.calendar.between(start, project.calendar.normalize(changed, False))
+                    duration = project.calendar.between(
+                        start, project.calendar.normalize(changed, False)
+                    )
                     if duration <= 0:
                         raise ScheduleError("Завершение должно быть позже начала.")
                     task.duration = duration
@@ -911,9 +1372,12 @@ class Controller(QObject):
                 raise ScheduleError("Неизвестное поле.")
             project.validate()
             if field_name == "parent":
-                project.hierarchy_changed(parents | project.ancestors(task_id), previous)
+                project.hierarchy_changed(
+                    parents | project.ancestors(task_id), previous
+                )
             elif field_name in date_fields:
                 project.propagate({task_id}, previous)
+
         return self.edit("Изменение задачи", update)
 
     @Slot(str)
@@ -937,23 +1401,41 @@ class Controller(QObject):
             target_id, placement = target["parentId"], "append"
         else:
             target_id = target["taskId"]
-            placement = "inside" if target["summary"] and allow_inside and 0.25 <= fraction <= 0.75 else "before" if fraction < 0.5 else "after"
+            placement = (
+                "inside"
+                if target["summary"] and allow_inside and 0.25 <= fraction <= 0.75
+                else "before"
+                if fraction < 0.5
+                else "after"
+            )
         project = Project.from_dict(self.project.to_dict())
         try:
             project.relocate(task_id, target_id, placement)
         except ScheduleError as error:
             return {"valid": False, "hint": str(error)}
         label = self.project.tasks[target_id].name if target_id else "верхний уровень"
-        verb = {"before": "Перед", "after": "После", "inside": "В начало группы", "append": "В конец"}[placement]
-        return {"valid": True, "target": target_id, "placement": placement, "row": row,
-                "edge": -1 if placement == "before" else 0 if placement == "inside" else 1,
-                "hint": f"{verb}: {label}"}
+        verb = {
+            "before": "Перед",
+            "after": "После",
+            "inside": "В начало группы",
+            "append": "В конец",
+        }[placement]
+        return {
+            "valid": True,
+            "target": target_id,
+            "placement": placement,
+            "row": row,
+            "edge": -1 if placement == "before" else 0 if placement == "inside" else 1,
+            "hint": f"{verb}: {label}",
+        }
 
     @Slot(str, str, str, result=bool)
     def relocateRow(self, task_id, target_id, placement):
         if self._bulk_mode:
             return False
-        if not self.edit("Перемещение строки", lambda p: p.relocate(task_id, target_id, placement)):
+        if not self.edit(
+            "Перемещение строки", lambda p: p.relocate(task_id, target_id, placement)
+        ):
             return False
         if placement in {"inside", "append"} and target_id in self._collapsed:
             self._collapsed.discard(target_id)
@@ -970,6 +1452,7 @@ class Controller(QObject):
         def add(project):
             minutes = round(parse_number(lag) * 60)
             project.add_link(source, target, kind, minutes)
+
         return self.edit("Создание зависимости", add)
 
     @Slot(str, str, str, str, str, result=bool)
@@ -985,16 +1468,32 @@ class Controller(QObject):
             link.source, link.target, link.kind, link.lag = values
             project.validate()
             project.propagate({target}, previous, align_changed=True)
+
         return self.edit("Изменение зависимости", update)
 
     @Slot(str)
     def removeDependency(self, link_id):
-        self.edit("Удаление зависимости", lambda p: setattr(p, "dependencies", [d for d in p.dependencies if d.id != link_id]))
+        self.edit(
+            "Удаление зависимости",
+            lambda p: setattr(
+                p, "dependencies", [d for d in p.dependencies if d.id != link_id]
+            ),
+        )
 
     @Slot(str, result="QVariantMap")
     def linkDetails(self, link_id):
         link = next((d for d in self.project.dependencies if d.id == link_id), None)
-        return {"id": link.id, "source": link.source, "target": link.target, "kind": link.kind, "lag": link.lag / 60} if link else {}
+        return (
+            {
+                "id": link.id,
+                "source": link.source,
+                "target": link.target,
+                "kind": link.kind,
+                "lag": link.lag / 60,
+            }
+            if link
+            else {}
+        )
 
     @Slot(str, str, float, int, float, result=bool)
     def linkAt(self, source, source_end, day, row, pixels_per_day=10):
@@ -1003,14 +1502,22 @@ class Controller(QObject):
         record = self._rows.records[row]
         if record["rowKind"] != "task":
             return False
-        left = (record["startDay"] + (0.5 if record["milestone"] else 0)) * pixels_per_day
+        left = (
+            record["startDay"] + (0.5 if record["milestone"] else 0)
+        ) * pixels_per_day
         left -= 11 if record["milestone"] else 0
-        right = left + (22 if record["milestone"] else max(6, (record["endDay"] - record["startDay"]) * pixels_per_day))
+        right = left + (
+            22
+            if record["milestone"]
+            else max(6, (record["endDay"] - record["startDay"]) * pixels_per_day)
+        )
         x = day * pixels_per_day
         if x < left - 22 or x > right + 22:
             return False
         target_end = "F" if x > (left + right) / 2 else "S"
-        return self.addDependency(source, record["taskId"], source_end + target_end, "0")
+        return self.addDependency(
+            source, record["taskId"], source_end + target_end, "0"
+        )
 
     @Slot()
     def undo(self):
@@ -1038,8 +1545,14 @@ class Controller(QObject):
     def confirm_discard(self) -> bool:
         if self._history_index == self._clean_index:
             return True
-        answer = QMessageBox.question(None, "Несохранённый проект", "Сохранить изменения перед закрытием?",
-                                      QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+        answer = QMessageBox.question(
+            None,
+            "Несохранённый проект",
+            "Сохранить изменения перед закрытием?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+        )
         if answer == QMessageBox.StandardButton.Save:
             return self.save()
         return answer == QMessageBox.StandardButton.Discard
@@ -1072,14 +1585,24 @@ class Controller(QObject):
         self.load_project(project)
         self._clean_index = -1
         self.historyChanged.emit()
-        self.toast.emit(format_name+" импортирован. Сохраните новым файлом .gantt.json.")
+        self.toast.emit(
+            format_name + " импортирован. Сохраните новым файлом .gantt.json."
+        )
 
     def preview_xml(self, path: Path) -> bool:
         from .xml_import import read_project_xml
 
         try:
             report = read_project_xml(path, local_today())
-        except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError) as error:
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            OverflowError,
+            RecursionError,
+        ) as error:
             self.toast.emit(f"Не удалось импортировать XML: {error}")
             return False
         self.dialogs.showXmlImport(report, path)
@@ -1087,7 +1610,9 @@ class Controller(QObject):
 
     @Slot()
     def importXml(self):
-        path, _filter = QFileDialog.getOpenFileName(None, "Импорт GanttPRO / MS Project XML", "", "MS Project XML (*.xml)")
+        path, _filter = QFileDialog.getOpenFileName(
+            None, "Импорт GanttPRO / MS Project XML", "", "MS Project XML (*.xml)"
+        )
         if path:
             self.preview_xml(Path(path))
 
@@ -1096,7 +1621,15 @@ class Controller(QObject):
 
         try:
             report = read_project_xlsx(path)
-        except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError) as error:
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            OverflowError,
+            RecursionError,
+        ) as error:
             self.toast.emit(f"Не удалось импортировать Excel: {error}")
             return False
         self.dialogs.showXlsxImport(report, path)
@@ -1104,7 +1637,9 @@ class Controller(QObject):
 
     @Slot()
     def importXlsx(self):
-        path, _filter = QFileDialog.getOpenFileName(None, "Импорт GanttPRO Excel · 23 поля", "", "GanttPRO Excel (*.xlsx)")
+        path, _filter = QFileDialog.getOpenFileName(
+            None, "Импорт GanttPRO Excel · 23 поля", "", "GanttPRO Excel (*.xlsx)"
+        )
         if path:
             self.preview_xlsx(Path(path))
 
@@ -1113,7 +1648,15 @@ class Controller(QObject):
 
         try:
             report = read_project_csv(path)
-        except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError) as error:
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            OverflowError,
+            RecursionError,
+        ) as error:
             self.toast.emit(f"Не удалось импортировать CSV: {error}")
             return False
         self.dialogs.showCsvImport(report, path)
@@ -1121,7 +1664,9 @@ class Controller(QObject):
 
     @Slot()
     def importCsv(self):
-        path, _filter = QFileDialog.getOpenFileName(None, "Импорт GanttPRO CSV · 23 поля", "", "GanttPRO CSV (*.csv)")
+        path, _filter = QFileDialog.getOpenFileName(
+            None, "Импорт GanttPRO CSV · 23 поля", "", "GanttPRO CSV (*.csv)"
+        )
         if path:
             self.preview_csv(Path(path))
 
@@ -1129,7 +1674,15 @@ class Controller(QObject):
         try:
             project = Project.from_dict(json.loads(path.read_text(encoding="utf-8")))
             self.load_project(project, path)
-        except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError) as error:
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            OverflowError,
+            RecursionError,
+        ) as error:
             self.toast.emit(f"Не удалось открыть проект: {error}")
             return False
         return True
@@ -1137,7 +1690,9 @@ class Controller(QObject):
     @Slot()
     def openProject(self):
         if self.confirm_discard():
-            path, _ = QFileDialog.getOpenFileName(None, "Открыть проект", "", "Проект Gantt (*.gantt.json *.json)")
+            path, _ = QFileDialog.getOpenFileName(
+                None, "Открыть проект", "", "Проект Gantt (*.gantt.json *.json)"
+            )
             if path:
                 self.load_path(Path(path))
 
@@ -1145,10 +1700,18 @@ class Controller(QObject):
         temporary = None
         try:
             try:
-                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix=".gantt-save-", suffix=".tmp",
-                                                 dir=path.parent, delete=False) as stream:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    prefix=".gantt-save-",
+                    suffix=".tmp",
+                    dir=path.parent,
+                    delete=False,
+                ) as stream:
                     temporary = Path(stream.name)
-                    stream.write(json.dumps(self.project.to_dict(), ensure_ascii=False, indent=2))
+                    stream.write(
+                        json.dumps(self.project.to_dict(), ensure_ascii=False, indent=2)
+                    )
                 temporary.replace(path)
             finally:
                 if temporary is not None:
@@ -1169,23 +1732,69 @@ class Controller(QObject):
 
     @Slot(result=bool)
     def saveAs(self):
-        path, _ = QFileDialog.getSaveFileName(None, "Сохранить проект", str(self._path or "project.gantt.json"), "Проект Gantt (*.gantt.json)")
+        path, _ = QFileDialog.getSaveFileName(
+            None,
+            "Сохранить проект",
+            str(self._path or "project.gantt.json"),
+            "Проект Gantt (*.gantt.json)",
+        )
         return self.save_path(Path(path)) if path else False
 
     @Slot()
     def exportCsv(self):
-        path, _ = QFileDialog.getSaveFileName(None, "Экспорт задач", "tasks.csv", "CSV (*.csv)")
+        path, _ = QFileDialog.getSaveFileName(
+            None, "Экспорт задач", "tasks.csv", "CSV (*.csv)"
+        )
         if not path:
             return
         try:
             with Path(path).open("w", encoding="utf-8-sig", newline="") as stream:
                 writer = csv.writer(stream)
-                writer.writerow(["Задача", "Начало", "Завершение", "Длительность (ч)", "Трудозатраты (ч)", "Стоимость", "Прогресс", "Исполнитель", "Статус", "Приоритет", "Крайний срок", "Базовое начало", "Базовое завершение", "Δ начала, кал. ч", "Δ завершения, кал. ч"]
-                                + [f.name for f in self.project.custom_fields.values()])
+                writer.writerow(
+                    [
+                        "Задача",
+                        "Начало",
+                        "Завершение",
+                        "Длительность (ч)",
+                        "Трудозатраты (ч)",
+                        "Стоимость",
+                        "Прогресс",
+                        "Исполнитель",
+                        "Статус",
+                        "Приоритет",
+                        "Крайний срок",
+                        "Базовое начало",
+                        "Базовое завершение",
+                        "Δ начала, кал. ч",
+                        "Δ завершения, кал. ч",
+                    ]
+                    + [f.name for f in self.project.custom_fields.values()]
+                )
                 for task in self.project.tasks.values():
                     record = self.record(task.id)
-                    writer.writerow([task.name, record["start"], record["end"], record["duration"], record["effortHours"], record["costValue"], record["progress"], task.assignee, record["statusText"], record["priorityText"], record["deadline"], record["baselineStart"], record["baselineEnd"], record["startVarianceHours"], record["endVarianceHours"]]
-                                    + [record["customTexts"][key] for key in self.project.custom_fields])
+                    writer.writerow(
+                        [
+                            task.name,
+                            record["start"],
+                            record["end"],
+                            record["duration"],
+                            record["effortHours"],
+                            record["costValue"],
+                            record["progress"],
+                            task.assignee,
+                            record["statusText"],
+                            record["priorityText"],
+                            record["deadline"],
+                            record["baselineStart"],
+                            record["baselineEnd"],
+                            record["startVarianceHours"],
+                            record["endVarianceHours"],
+                        ]
+                        + [
+                            record["customTexts"][key]
+                            for key in self.project.custom_fields
+                        ]
+                    )
         except OSError as error:
             self.toast.emit(str(error))
 
