@@ -5,7 +5,7 @@ Button {
     id: control
     property var resourceIds: []
     property bool framed: false
-    property string placeholderText: "Не назначен"
+    property string placeholderText: i18n.tr.unassigned
     readonly property var resources: controller.resourceCatalog.filter(r=>resourceIds.indexOf(r.id)>=0)
     readonly property string names: resources.map(r=>r.name).join(", ")
     implicitHeight: 30
@@ -13,7 +13,7 @@ Button {
     hoverEnabled: true
     clip: true
     padding: 0
-    Accessible.name: "Исполнитель: " + (names || placeholderText)
+    Accessible.name: i18n.tr.assignee_prefix + (names || placeholderText)
     background: Rectangle {
         radius: 3
         color: control.framed ? appTheme.colors.input : control.hovered ? appTheme.colors.hover : "transparent"
@@ -38,6 +38,6 @@ Button {
         Text { anchors.right: parent.right; anchors.rightMargin: 6; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: appTheme.colors.muted; font.pixelSize: 12 }
     }
     ToolTip.visible: hovered
-    ToolTip.text: resources.length ? resources.map(r=>r.name).join("\n") : "Выбрать исполнителей из ресурсов проекта"
+    ToolTip.text: resources.length ? resources.map(r=>r.name).join("\n") : i18n.tr.choose_assignees_hint
     ToolTip.delay: 500
 }

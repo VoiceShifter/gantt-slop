@@ -22,11 +22,12 @@ The software is provided "as is", without warranty or liability of any kind.
 - **Calendars:** working weekdays, imported weekly intervals, holidays and dated project/resource exceptions.
 - **Analysis:** bounded current-plan critical-path calculation and immutable baseline snapshots with date comparisons.
 - **Views:** light/dark themes, resizable columns, search, combined filters and project-local saved filter presets.
+- **Internationalization:** full English and Russian localization across all QML views, native dialogs, and date pickers, switchable on the fly in Settings.
 - **Editing history:** document-level snapshot Undo/Redo, bulk property editing and native dialogs.
 - **Files:** native JSON projects, PDF/PNG diagram export, CSV/Excel task tables and supported MS Project XML interchange.
 - **LLM integration:** opt-in, authenticated local MCP access using the standard protocol—not a pi-specific integration.
 
-The scope is tasks, Gantt charts and project-local resources. There is no account system, Board, portfolio or cross-project service. Application labels are currently primarily Russian.
+The scope is tasks, Gantt charts and project-local resources. There is no account system, Board, portfolio or cross-project service. The user interface supports both **English** and **Russian**, configurable via the Settings (**⚙**) panel.
 
 ## Quick start
 
@@ -51,7 +52,7 @@ py -3 -m venv .venv
 
 Use Python **3.11 or newer** when creating the environment. Windows/macOS commands are provided for setup, but those platforms have **not** been runtime-verified. Linux needs the usual system libraries for a Qt graphical application.
 
-The application opens a disposable demonstration project. Use **Сохранить / Save** to save your own `.gantt.json` file; there is no automatic project saving.
+The application opens a disposable demonstration project. Use **Save** (**Сохранить**) to save your own `.gantt.json` file; there is no automatic project saving.
 
 To open a saved project, using your virtual environment's Python:
 
@@ -93,10 +94,11 @@ These constraints match [pyproject.toml](pyproject.toml); they are **not** a fro
 | Edit a dependency | Click its arrow |
 | Cancel an interaction | Press Escape |
 | Undo / redo | Use the toolbar or platform-standard shortcuts |
-| Manage resources/calendars | Open **Люди…** in the bottom bar |
-| Filter tasks | Use **Фильтр**; advanced conditions and named presets are available |
-| Export | Open **Экспорт** for format options and a document preview |
-| Enable LLM access | Open **Файл → MCP-сервер…** |
+| Switch language | Open **Settings** (**⚙**) in the top bar and select **English** or **Русский** |
+| Manage resources/calendars | Open **People...** (**Люди…**) in the bottom bar |
+| Filter tasks | Use **Filter** (**Фильтр**); advanced conditions and named presets are available |
+| Export | Open **Export** (**Экспорт**) for format options and a document preview |
+| Enable LLM access | Open **File → MCP Server...** (**Файл → MCP-сервер…**) |
 
 The default calendar is Monday–Friday, **09:00–13:00 and 14:00–18:00**. Dates and times are local civil values, not UTC. Resource availability affects workload calculations, not automatic task leveling.
 
@@ -104,14 +106,14 @@ The default calendar is Monday–Friday, **09:00–13:00 and 14:00–18:00**. Da
 
 The server uses **standard MCP over Streamable HTTP**. It has no pi dependency and does not restrict the model provider. Use a local MCP-capable host that supports HTTP and custom authorization headers.
 
-1. Open **Файл → MCP-сервер…**.
-2. Leave write permission unchecked; click **Включить**.
-3. Click **Копировать конфигурацию** and adapt the entry to your client's configuration format.
+1. Open **File → MCP Server...** (**Файл → MCP-сервер…**).
+2. Leave write permission unchecked; click **Enable** (**Включить**).
+3. Click **Copy configuration** (**Копировать конфигурацию**) and adapt the entry to your client's configuration format.
 4. Connect the client while the desktop remains open.
 
 **Gemini CLI uses `httpUrl`, not `url`, for Streamable HTTP.** See the [Gemini CLI configuration example](docs/MCP.md#gemini-cli-and-other-clients). That format has been checked against official documentation; a live Gemini session has not yet been verified.
 
-The listener binds only to `127.0.0.1` and requires a fresh bearer token on every enable. Closing the MCP dialog leaves it running; **Выключить**, a successful project switch or application exit stops it. Tokens/access settings are not saved in project files.
+The listener binds only to `127.0.0.1` and requires a fresh bearer token on every enable. Closing the MCP dialog leaves it running; **Disable** (**Выключить**), a successful project switch or application exit stops it. Tokens/access settings are not saved in project files.
 
 Read-only mode exposes `get_project`. Optional write mode adds task, assignment, dependency and shared Undo/Redo tools; it never automatically saves a file. Writes use validated document transactions. After a timeout or disconnect, **re-read before retrying**: a failed response does not guarantee cancellation.
 
@@ -147,21 +149,22 @@ For isolated Linux GUI testing, install **Xvfb and xauth**, then use:
 
 The wrapper uses a private Xvfb display, Qt's offscreen platform and software rendering, without interacting with the physical desktop. The test fixtures also enforce offscreen Qt. The wrapper is for automation, not normal application use.
 
-The [0.19.1 Linux verification](docs/AUDIT.md) passed **1,151 tests**, including **63 additional audit-fix cases**, plus Ruff and full-source Pyright. An independent wheel installation also passed **149 focused audit/MCP/native-UI/calendar tests**. Windows/macOS and live Gemini sessions remain unverified.
+The [0.19.1 Linux verification](docs/AUDIT.md) passed **1,156 tests**, including **63 additional audit-fix cases** and dedicated internationalization tests, plus Ruff and full-source Pyright. An independent wheel installation also passed **149 focused audit/MCP/native-UI/calendar tests**. Windows/macOS and live Gemini sessions remain unverified.
 
 ### Project structure
 
 ```text
 gantt_desktop/
   app.py                Application entry point
+  i18n.py               Internationalization (English/Russian) and reactive state
   domain.py             Tasks, calendars, hierarchy and scheduling
   controller.py         Qt models, editing history, filters and files
   mcp_*.py              MCP transport, Qt-thread bridge and native controls
   *_dialog.py           Native editors and review dialogs
   qml/                  Qt Quick workspace and interaction components
-tests/                  Domain, protocol and isolated GUI tests
+tests/                  Domain, protocol, GUI, and i18n tests
 docs/                   Feature guides, audit findings and screenshots
-tools/isolated-gui.sh    Private-display automation launcher
+tools/isolated-gui.sh   Private-display automation launcher
 pyproject.toml          Package metadata and canonical dependency constraints
 requirements.txt        Direct runtime dependency constraints
 ```

@@ -81,7 +81,7 @@ Item {
     }
     function updateRowPlan() {
         if (rowPointerX<0 || rowPointerX>gridWidth || rowPointerY<headerHeight || rowPointerY>headerHeight+body.height) {
-            rowPlanKey=""; rowPlan=({valid:false,hint:"Отпустите строку в таблице."}); return
+            rowPlanKey=""; rowPlan=({valid:false,hint:i18n.tr.drop_row_hint}); return
         }
         const offset=(rowPointerY-headerHeight+body.contentY)/rowHeight
         const row=Math.floor(offset), fraction=offset-row, inside=rowPointerX+gridScroll>=114
@@ -99,30 +99,30 @@ Item {
         cancelRowDrag()
         if (!moved) return
         if (plan.valid) controller.relocateRow(id,plan.target,plan.placement)
-        else controller.toast(plan.hint || "Нельзя переместить строку.")
+        else controller.toast(plan.hint || i18n.tr.cannot_move_row)
     }
 
     property var columns: {
         let cols = []
-        if (showAssignee) cols.push({key:"assignee", title:"Исполнитель", width:100})
-        if (showEffort) cols.push({key:"effort", title:"Трудозатраты", width:100})
-        if (showCost) cols.push({key:"cost", title:"Стоимость", width:100})
-        if (showStart) cols.push({key:"start", title:"Начало", width:100})
-        if (showEnd) cols.push({key:"end", title:"Завершение", width:100})
-        if (showDeadline) cols.push({key:"deadline", title:"Крайний срок", width:120})
-        if (showDuration) cols.push({key:"duration", title:"Длительность", width:100})
-        if (showProgress) cols.push({key:"progress", title:"Прогресс", width:85})
-        if (showStatus) cols.push({key:"status", title:"Статус", width:120})
-        if (showPriority) cols.push({key:"priority", title:"Приоритет", width:125})
-        if (showBaselineStart) cols.push({key:"baselineStart", title:"Базовое начало", width:150})
-        if (showBaselineEnd) cols.push({key:"baselineEnd", title:"Базовое завершение", width:160})
-        if (showStartVariance) cols.push({key:"startVariance", title:"Δ начала, кал. ч", width:140})
-        if (showEndVariance) cols.push({key:"endVariance", title:"Δ завершения, кал. ч", width:160})
+        if (showAssignee) cols.push({key:"assignee", title:i18n.tr.col_assignee, width:100})
+        if (showEffort) cols.push({key:"effort", title:i18n.tr.col_effort, width:100})
+        if (showCost) cols.push({key:"cost", title:i18n.tr.col_cost, width:100})
+        if (showStart) cols.push({key:"start", title:i18n.tr.col_start, width:100})
+        if (showEnd) cols.push({key:"end", title:i18n.tr.col_end, width:100})
+        if (showDeadline) cols.push({key:"deadline", title:i18n.tr.col_deadline, width:120})
+        if (showDuration) cols.push({key:"duration", title:i18n.tr.col_duration, width:100})
+        if (showProgress) cols.push({key:"progress", title:i18n.tr.col_progress, width:85})
+        if (showStatus) cols.push({key:"status", title:i18n.tr.col_status, width:120})
+        if (showPriority) cols.push({key:"priority", title:i18n.tr.col_priority, width:125})
+        if (showBaselineStart) cols.push({key:"baselineStart", title:i18n.tr.col_baseline_start, width:150})
+        if (showBaselineEnd) cols.push({key:"baselineEnd", title:i18n.tr.col_baseline_end, width:160})
+        if (showStartVariance) cols.push({key:"startVariance", title:i18n.tr.col_start_variance, width:140})
+        if (showEndVariance) cols.push({key:"endVariance", title:i18n.tr.col_end_variance, width:160})
         for (let f of customFields) if (hiddenCustomFields.indexOf(f.id)<0)
             cols.push({key:f.key, title:f.name, width:160, customId:f.id, kind:f.kind})
         let used = 0
         for (let c of cols) { c.width = columnWidths[c.key] || c.width; used += c.width }
-        cols.unshift({key:"name", title:"Задача", width:columnWidths.name || Math.max(250, gridWidth - used - 46)})
+        cols.unshift({key:"name", title:i18n.tr.col_name, width:columnWidths.name || Math.max(250, gridWidth - used - 46)})
         let offset = 0
         for (let c of cols) { c.offset = offset; offset += c.width }
         return cols
@@ -258,7 +258,7 @@ Item {
             ActionButton {
                 objectName: "addColumnButton"
                 x: 6; width: 34; height: parent.height
-                text: "＋"; font.pixelSize: 22; hint: "Добавить или выбрать поля"
+                text: "＋"; font.pixelSize: 22; hint: i18n.tr.add_fields_hint
                 onClicked: view.fieldsRequested()
             }
         }
@@ -323,7 +323,7 @@ Item {
                 width: 2; height: parent.height; color: appTheme.colors.link
             }
             ToolTip.visible: containsMouse && hoveredIndex>=0 && !pressed
-            ToolTip.text: "Перетащите границу, чтобы изменить ширину колонки"
+            ToolTip.text: i18n.tr.resize_col_tooltip
             ToolTip.delay: 500
         }
     }
@@ -355,7 +355,7 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: parent.daily ? String(modelData.number).padStart(2,"0") + "\n" + modelData.weekday
-                              : modelData.number + "–" + view.dayRecords[Math.min(modelData.offset + 6, view.dayRecords.length - 1)].number + " (" + modelData.week + "н)"
+                              : modelData.number + "–" + view.dayRecords[Math.min(modelData.offset + 6, view.dayRecords.length - 1)].number + " (" + modelData.week + i18n.tr.week_unit + ")"
                         color: parent.daily && modelData.weekend ? appTheme.colors.link : appTheme.colors.text
                         font.pixelSize: parent.daily ? 10 : 11
                         horizontalAlignment: Text.AlignHCenter
@@ -462,7 +462,7 @@ Item {
                                     function displayValue() {
                                         const value = gridRow.rowData[key]
                                         if (value === undefined) return ""
-                                        if (key === "duration") return value + "ч"
+                                        if (key === "duration") return value + i18n.tr.hour_unit
                                         if (key === "progress") return Math.round(value) + "%"
                                         if (key === "status") return gridRow.rowData.statusText || ""
                                         if (key === "priority") return gridRow.rowData.priorityText || ""
@@ -538,7 +538,7 @@ Item {
                             x: view.gridContentWidth - 43; width: 40; height: view.rowHeight
                             text: "⋯"; font.pixelSize: 17
                             visible: !controller.bulkMode && gridRow.rowData.rowKind === "task" && (view.hoverRow === gridRow.index || controller.selectedId === gridRow.rowData.taskId)
-                            hint: "Действия с задачей"
+                            hint: i18n.tr.task_actions
                             onClicked: view.taskMenuRequested(gridRow.rowData.taskId)
                         }
                         Item {
@@ -602,14 +602,14 @@ Item {
                                 anchors.centerIn: parent; height: parent.height
                                 ActionButton {
                                     objectName: "inline-add-task-" + gridRow.index
-                                    text: "⊕  Добавить задачу"; palette.buttonText: appTheme.colors.link
+                                    text: i18n.tr.add_task_inline; palette.buttonText: appTheme.colors.link
                                     implicitWidth: contentItem.implicitWidth+8; leftPadding: 4; rightPadding: 4
                                     onClicked: controller.addTask(gridRow.rowData.parentId, "task")
                                 }
                                 Text { height: parent.height; text: " | "; color: appTheme.colors.muted; verticalAlignment: Text.AlignVCenter }
                                 ActionButton {
                                     objectName: "inline-add-milestone-" + gridRow.index
-                                    text: "Добавить веху"; palette.buttonText: appTheme.colors.link
+                                    text: i18n.tr.add_milestone_inline; palette.buttonText: appTheme.colors.link
                                     implicitWidth: contentItem.implicitWidth+8; leftPadding: 4; rightPadding: 4
                                     onClicked: controller.addTask(gridRow.rowData.parentId, "milestone")
                                 }
@@ -879,7 +879,7 @@ Item {
     Text {
         anchors.centerIn: body
         visible: controller.taskCount===0 || controller.rowCount<=1
-        text: controller.taskCount===0 ? "Начните с задачи или группы\nПеретащите блок, чтобы изменить даты" : "Нет задач по заданному фильтру"
+        text: controller.taskCount===0 ? i18n.tr.empty_start_hint : i18n.tr.empty_filter_hint
         color:appTheme.colors.muted; font.pixelSize:16; lineHeight:1.6
         horizontalAlignment:Text.AlignHCenter
     }

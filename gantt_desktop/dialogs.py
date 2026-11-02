@@ -38,12 +38,12 @@ DAY_NAMES = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 RELATIONS = ("FS", "SS", "FF", "SF")
 
 
-def day_controls(prefix: str) -> tuple[QWidget, list[QCheckBox]]:
+def day_controls(prefix: str, names: tuple[str, ...] | list[str] = DAY_NAMES) -> tuple[QWidget, list[QCheckBox]]:
     widget = QWidget()
     layout = QHBoxLayout(widget)
     layout.setContentsMargins(0, 0, 0, 0)
     boxes = []
-    for i, name in enumerate(DAY_NAMES):
+    for i, name in enumerate(names):
         box = QCheckBox(name)
         box.setObjectName(f"{prefix}-{i}")
         layout.addWidget(box)
@@ -80,11 +80,20 @@ class EditorDialog(QDialog):
 
 class ResourceDialog(EditorDialog):
     def __init__(self, controller: Controller):
-        super().__init__(controller, "resourceManager", "Люди и доступность ресурсов")
+        is_en = controller.i18n.language == "en"
+        super().__init__(
+            controller,
+            "resourceManager",
+            "People and Resource Availability" if is_en else "Люди и доступность ресурсов",
+        )
         self.resource_id = ""
         self.capacity_hours = 8.0
         self.resize(760, 540)
-        description = QLabel("Локальные ресурсы проекта. Без приглашений и учётных записей.")
+        description = QLabel(
+            "Local project resources. No invites or accounts."
+            if is_en
+            else "Локальные ресурсы проекта. Без приглашений и учётных записей."
+        )
         description.setWordWrap(True)
         self.layout_root.addWidget(description)
         body = QHBoxLayout()
@@ -93,13 +102,13 @@ class ResourceDialog(EditorDialog):
         self.people.setObjectName("resourceList")
         self.people.currentItemChanged.connect(self.select_person)
         left.addWidget(self.people)
-        add = QPushButton("Добавить человека")
+        add = QPushButton("Add person" if is_en else "Добавить человека")
         add.setObjectName("newResourceButton")
         add.setAutoDefault(False)
         add.clicked.connect(lambda: self.load_resource(""))
         left.addWidget(add)
         body.addLayout(left, 1)
-        group = QGroupBox("Календарь ресурса")
+        group = QGroupBox("Resource calendar" if is_en else "Календарь ресурса")
         form = QFormLayout(group)
         self.name = QLineEdit()
         self.name.setObjectName("resourceName")
@@ -107,25 +116,29 @@ class ResourceDialog(EditorDialog):
         self.capacity.setObjectName("resourceCapacity")
         self.capacity.setRange(0, 24)
         self.capacity.setDecimals(2)
-        self.capacity.setSuffix(" ч")
+        self.capacity.setSuffix(" h" if is_en else " ч")
         self.capacity.valueChanged.connect(self.capacity_changed)
-        days_widget, self.days = day_controls("resourceDay")
-        form.addRow("Имя", self.name)
-        form.addRow("Доступно часов в день", self.capacity)
-        form.addRow("Рабочие дни", days_widget)
-        self.exceptions_button = QPushButton("Отпуска и исключения…")
+        days_widget, self.days = day_controls("resourceDay", controller.i18n.dayNames)
+        form.addRow("Name" if is_en else "Имя", self.name)
+        form.addRow("Available hours per day" if is_en else "Доступно часов в день", self.capacity)
+        form.addRow("Workdays" if is_en else "Рабочие дни", days_widget)
+        self.exceptions_button = QPushButton("Leaves and exceptions…" if is_en else "Отпуска и исключения…")
         self.exceptions_button.setObjectName("resourceExceptionsButton")
         self.exceptions_button.setAutoDefault(False)
         self.exceptions_button.clicked.connect(lambda: self.controller.dialogs.showCalendar(self.resource_id))
         form.addRow(self.exceptions_button)
-        note = QLabel("Доступность влияет на предупреждения, а не переносит задачи.")
+        note = QLabel(
+            "Availability affects workload warnings, tasks are not automatically leveled."
+            if is_en
+            else "Доступность влияет на предупреждения, а не переносит задачи."
+        )
         note.setWordWrap(True)
         form.addRow(note)
         actions = QHBoxLayout()
-        self.remove = QPushButton("Удалить")
+        self.remove = QPushButton("Delete" if is_en else "Удалить")
         self.remove.setObjectName("removeResourceButton")
         self.remove.clicked.connect(self.confirm_remove)
-        save = QPushButton("Сохранить ресурс")
+        save = QPushButton("Save resource" if is_en else "Сохранить ресурс")
         save.setObjectName("saveResourceButton")
         self.save_button = save
         save.clicked.connect(self.save_resource)
@@ -135,20 +148,25 @@ class ResourceDialog(EditorDialog):
         form.addRow(actions)
         body.addWidget(group, 2)
         self.layout_root.addLayout(body, 1)
-        project = QGroupBox("Рабочие дни проекта · планирование задач")
+        project = QGroupBox("Project workdays · task scheduling" if is_en else "Рабочие дни проекта · планирование задач")
         project_layout = QVBoxLayout(project)
-        project_days, self.project_days = day_controls("projectDay")
+        project_days, self.project_days = day_controls("projectDay", controller.i18n.dayNames)
         project_layout.addWidget(project_days)
-        exceptions = QPushButton("Праздники и исключения…")
+        exceptions = QPushButton("Holidays and exceptions…" if is_en else "Праздники и исключения…")
         exceptions.setObjectName("projectExceptionsButton")
         exceptions.setAutoDefault(False)
         exceptions.clicked.connect(lambda: self.controller.dialogs.showCalendar(""))
         project_layout.addWidget(exceptions, 0, Qt.AlignmentFlag.AlignLeft)
-        note = QLabel("Изменение календаря проекта пересчитывает сроки одной отменяемой операцией. "
-                      "Календарь человека остаётся независимым.")
+        note = QLabel(
+            "Changing project calendar recalculates dates in one undoable operation. "
+            "Personal calendar remains independent."
+            if is_en
+            else "Изменение календаря проекта пересчитывает сроки одной отменяемой операцией. "
+            "Календарь человека остаётся независимым."
+        )
         note.setWordWrap(True)
         project_layout.addWidget(note)
-        apply_calendar = QPushButton("Применить календарь")
+        apply_calendar = QPushButton("Apply calendar" if is_en else "Применить календарь")
         apply_calendar.setObjectName("applyProjectCalendar")
         apply_calendar.clicked.connect(self.apply_calendar)
         project_layout.addWidget(apply_calendar, 0, Qt.AlignmentFlag.AlignRight)
@@ -156,7 +174,7 @@ class ResourceDialog(EditorDialog):
         self.layout_root.addWidget(self.error)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.button(QDialogButtonBox.StandardButton.Close).setObjectName("closeResourcesButton")
-        buttons.button(QDialogButtonBox.StandardButton.Close).setText("Закрыть")
+        buttons.button(QDialogButtonBox.StandardButton.Close).setText("Close" if is_en else "Закрыть")
         buttons.rejected.connect(self.reject)
         self.layout_root.addWidget(buttons)
         controller.viewChanged.connect(self.refresh_catalog)
@@ -225,17 +243,31 @@ class ResourceDialog(EditorDialog):
     @Slot()
     def confirm_remove(self) -> None:
         key = self.resource_id
-        box = QMessageBox(QMessageBox.Icon.Question, "Удалить ресурс?",
-                          "Назначения ресурса будут сняты. Задачи и общие трудозатраты сохранятся. "
-                          "Действие можно отменить.",
-                          QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel, self)
+        is_en = self.controller.i18n.language == "en"
+        title = "Delete resource?" if is_en else "Удалить ресурс?"
+        text = (
+            "Resource assignments will be removed. Tasks and total effort will be preserved. Can be undone."
+            if is_en
+            else "Назначения ресурса будут сняты. Задачи и общие трудозатраты сохранятся. Действие можно отменить."
+        )
+        box = QMessageBox(
+            QMessageBox.Icon.Question,
+            title,
+            text,
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            self,
+        )
         box.setObjectName("deleteResourceDialog")
-        box.button(QMessageBox.StandardButton.Cancel).setText("Отмена")
+        box.button(QMessageBox.StandardButton.Cancel).setText("Cancel" if is_en else "Отмена")
+        if is_en and box.button(QMessageBox.StandardButton.Ok):
+            box.button(QMessageBox.StandardButton.Ok).setText("Delete")
         box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
         def confirmed(result: int) -> None:
             if result == QMessageBox.StandardButton.Ok and self.controller.removeResource(key):
                 self.refresh_catalog()
                 self.load_resource(next(iter(self.controller.project.resources), ""))
+
         box.finished.connect(confirmed)
         box.open()
 
@@ -244,7 +276,12 @@ class AssignmentDialog(EditorDialog):
     manageRequested = Signal()
 
     def __init__(self, controller: Controller):
-        super().__init__(controller, "resourcePicker", "Исполнители и трудозатраты")
+        is_en = controller.i18n.language == "en"
+        super().__init__(
+            controller,
+            "resourcePicker",
+            "Assignees and Effort" if is_en else "Исполнители и трудозатраты",
+        )
         self.task_id = ""
         self.chosen: list[str] = []
         self.hours: dict[str, float] = {}
@@ -254,12 +291,18 @@ class AssignmentDialog(EditorDialog):
         self.caption = QLabel()
         self.caption.setTextFormat(Qt.TextFormat.PlainText)
         self.layout_root.addWidget(self.caption)
-        note = QLabel("Выберите людей. По умолчанию трудозатраты делятся поровну.")
+        note = QLabel(
+            "Select people. By default effort is divided equally."
+            if is_en
+            else "Выберите людей. По умолчанию трудозатраты делятся поровну."
+        )
         note.setWordWrap(True)
         self.layout_root.addWidget(note)
         self.table = QTableWidget(0, 3)
         self.table.setObjectName("assignmentTable")
-        self.table.setHorizontalHeaderLabels(["", "Ресурс", "Всего часов"])
+        self.table.setHorizontalHeaderLabels(
+            ["", "Resource", "Total hours"] if is_en else ["", "Ресурс", "Всего часов"]
+        )
         self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -267,15 +310,15 @@ class AssignmentDialog(EditorDialog):
         self.layout_root.addWidget(self.table)
         self.layout_root.addWidget(self.error)
         actions = QHBoxLayout()
-        manage = QPushButton("Ресурсы…")
+        manage = QPushButton("People…" if is_en else "Ресурсы…")
         manage.clicked.connect(self.manage)
         actions.addWidget(manage)
         actions.addStretch()
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        buttons.button(QDialogButtonBox.StandardButton.Save).setText("Применить")
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText("Apply" if is_en else "Применить")
         buttons.button(QDialogButtonBox.StandardButton.Save).setObjectName("applyResourceAssignment")
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setObjectName("cancelResourceAssignment")
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Отмена")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancel" if is_en else "Отмена")
         buttons.accepted.connect(self.apply)
         buttons.rejected.connect(self.reject)
         actions.addWidget(buttons)
@@ -341,7 +384,12 @@ class AssignmentDialog(EditorDialog):
 
 class DependencyDialog(EditorDialog):
     def __init__(self, controller: Controller):
-        super().__init__(controller, "dependencyDialog", "Зависимость")
+        is_en = controller.i18n.language == "en"
+        super().__init__(
+            controller,
+            "dependencyDialog",
+            "Dependency" if is_en else "Зависимость",
+        )
         self.link_id = ""
         self.resize(540, 290)
         form = QFormLayout()
@@ -351,24 +399,44 @@ class DependencyDialog(EditorDialog):
         self.target.setObjectName("dependencyTarget")
         self.kind = QComboBox()
         self.kind.setObjectName("dependencyKind")
-        self.kind.addItems(["FS · Окончание → Начало", "SS · Начало → Начало",
-                            "FF · Окончание → Окончание", "SF · Начало → Окончание"])
+        if is_en:
+            self.kind.addItems(
+                [
+                    "FS · Finish → Start",
+                    "SS · Start → Start",
+                    "FF · Finish → Finish",
+                    "SF · Start → Finish",
+                ]
+            )
+        else:
+            self.kind.addItems(
+                [
+                    "FS · Окончание → Начало",
+                    "SS · Начало → Начало",
+                    "FF · Окончание → Окончание",
+                    "SF · Начало → Окончание",
+                ]
+            )
         self.lag = QDoubleSpinBox()
         self.lag.setObjectName("dependencyLag")
         self.lag.setRange(-1e9, 1e9)
         self.lag.setDecimals(2)
-        self.lag.setSuffix(" ч")
-        form.addRow("Предшественник", self.source)
-        form.addRow("Последователь", self.target)
-        form.addRow("Тип связи", self.kind)
-        form.addRow("Лаг, рабочие часы", self.lag)
+        self.lag.setSuffix(" h" if is_en else " ч")
+        form.addRow("Predecessor" if is_en else "Предшественник", self.source)
+        form.addRow("Successor" if is_en else "Последователь", self.target)
+        form.addRow("Dependency type" if is_en else "Тип связи", self.kind)
+        form.addRow("Lag, working hours" if is_en else "Лаг, рабочие часы", self.lag)
         self.layout_root.addLayout(form)
-        note = QLabel("Отрицательный лаг разрешён. Циклические связи не допускаются.")
+        note = QLabel(
+            "Negative lag is allowed. Cyclic dependencies are not allowed."
+            if is_en
+            else "Отрицательный лаг разрешён. Циклические связи не допускаются."
+        )
         note.setWordWrap(True)
         self.layout_root.addWidget(note)
         self.layout_root.addWidget(self.error)
         actions = QHBoxLayout()
-        self.remove = QPushButton("Удалить связь")
+        self.remove = QPushButton("Delete dependency" if is_en else "Удалить связь")
         self.remove.setObjectName("deleteDependency")
         self.remove.clicked.connect(self.delete)
         actions.addWidget(self.remove)
@@ -376,9 +444,9 @@ class DependencyDialog(EditorDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         self.save = buttons.button(QDialogButtonBox.StandardButton.Save)
         self.save.setObjectName("saveDependency")
-        self.save.setText("Сохранить")
+        self.save.setText("Save" if is_en else "Сохранить")
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setObjectName("cancelDependency")
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Отмена")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancel" if is_en else "Отмена")
         buttons.accepted.connect(self.apply)
         buttons.rejected.connect(self.reject)
         actions.addWidget(buttons)
@@ -390,10 +458,17 @@ class DependencyDialog(EditorDialog):
         self.link_id = link_id
         detail = self.controller.linkDetails(link_id) if link_id else {}
         self.error.hide()
-        self.setWindowTitle("Изменить зависимость" if link_id else "Добавить зависимость")
+        is_en = self.controller.i18n.language == "en"
+        title = (
+            ("Edit dependency" if link_id else "Add dependency")
+            if is_en
+            else ("Изменить зависимость" if link_id else "Добавить зависимость")
+        )
+        self.setWindowTitle(title)
+        placeholder = "Choose task" if is_en else "Выберите задачу"
         for combo, selected in ((self.source, source), (self.target, target)):
             combo.clear()
-            combo.addItem("Выберите задачу", "")
+            combo.addItem(placeholder, "")
             for task in self.controller.project.tasks.values():
                 combo.addItem(task.name, task.id)
             combo.setCurrentIndex(max(0, combo.findData(selected)))
@@ -622,13 +697,21 @@ class NativeDialogs(QObject):
     def confirmCustomFieldDelete(self, field_id: str) -> None:
         if field_id not in self.controller.project.custom_fields:
             return
+        is_en = self.controller.i18n.language == "en"
         name = self.controller.project.custom_fields[field_id].name
-        box = QMessageBox(QMessageBox.Icon.Question, "Удалить поле?",
-                          f"Поле «{name}» и его значения во всех задачах будут удалены. Действие можно отменить.",
+        title = "Delete field?" if is_en else "Удалить поле?"
+        text = (
+            f"Field '{name}' and its values across all tasks will be deleted. Can be undone."
+            if is_en
+            else f"Поле «{name}» и его значения во всех задачах будут удалены. Действие можно отменить."
+        )
+        box = QMessageBox(QMessageBox.Icon.Question, title, text,
                           QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         box.setObjectName("deleteCustomFieldDialog")
         box.setTextFormat(Qt.TextFormat.PlainText)
-        box.button(QMessageBox.StandardButton.Cancel).setText("Отмена")
+        box.button(QMessageBox.StandardButton.Cancel).setText("Cancel" if is_en else "Отмена")
+        if is_en and box.button(QMessageBox.StandardButton.Ok):
+            box.button(QMessageBox.StandardButton.Ok).setText("Delete")
         self._actions[box] = lambda: self.controller.removeCustomField(field_id)
         self.present(box)
 
@@ -647,12 +730,18 @@ class NativeDialogs(QObject):
     def confirmBaselineDelete(self, baseline_id: str) -> None:
         if baseline_id not in self.controller.project.baselines:
             return
-        box = QMessageBox(QMessageBox.Icon.Question, "Удалить базовый план?",
-                          "Снимок будет удалён. Текущие задачи не изменятся. Действие можно отменить.",
+        is_en = self.controller.i18n.language == "en"
+        title = "Delete baseline?" if is_en else "Удалить базовый план?"
+        text = (
+            "The snapshot will be deleted. Current tasks will remain unchanged. Can be undone."
+            if is_en
+            else "Снимок будет удалён. Текущие задачи не изменятся. Действие можно отменить."
+        )
+        box = QMessageBox(QMessageBox.Icon.Question, title, text,
                           QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         box.setObjectName("deleteBaselineDialog")
-        box.button(QMessageBox.StandardButton.Ok).setText("Удалить")
-        box.button(QMessageBox.StandardButton.Cancel).setText("Отмена")
+        box.button(QMessageBox.StandardButton.Ok).setText("Delete" if is_en else "Удалить")
+        box.button(QMessageBox.StandardButton.Cancel).setText("Cancel" if is_en else "Отмена")
         self._actions[box] = lambda: self.controller.removeBaseline(baseline_id)
         self.present(box)
 
@@ -691,12 +780,18 @@ class NativeDialogs(QObject):
 
     @Slot(str, str, str)
     def confirmCalendarException(self, resource_id: str, exception_id: str, holiday: str) -> None:
-        box = QMessageBox(QMessageBox.Icon.Question, "Удалить исключение?",
-                          "Вернётся базовый график. Изменение можно отменить. Для календаря проекта сроки пересчитаются.",
+        is_en = self.controller.i18n.language == "en"
+        title = "Delete exception?" if is_en else "Удалить исключение?"
+        text = (
+            "Base schedule will be restored. Change can be undone. Project calendar dates will be recalculated."
+            if is_en
+            else "Вернётся базовый график. Изменение можно отменить. Для календаря проекта сроки пересчитаются."
+        )
+        box = QMessageBox(QMessageBox.Icon.Question, title, text,
                           QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         box.setObjectName("deleteCalendarExceptionDialog")
-        box.button(QMessageBox.StandardButton.Ok).setText("Удалить")
-        box.button(QMessageBox.StandardButton.Cancel).setText("Отмена")
+        box.button(QMessageBox.StandardButton.Ok).setText("Delete" if is_en else "Удалить")
+        box.button(QMessageBox.StandardButton.Cancel).setText("Cancel" if is_en else "Отмена")
         self._actions[box] = lambda: self.controller.removeCalendarException(resource_id, exception_id, holiday)
         self.present(box)
 
@@ -734,34 +829,70 @@ class NativeDialogs(QObject):
 
     @Slot(str, bool)
     def confirmDelete(self, task_id: str, bulk: bool) -> None:
-        title = f"Удалить задач: {self.controller.bulkDeleteCount}?" if bulk else "Удалить задачу?"
-        text = ("Удалятся только полностью выбранные задачи и группы. Снятые отметки сохраняются."
-                if bulk else "Задача, её подзадачи и связанные зависимости будут удалены.")
-        box = QMessageBox(QMessageBox.Icon.Question, title, text + " Действие можно отменить.",
+        is_en = self.controller.i18n.language == "en"
+        if is_en:
+            title = f"Delete tasks: {self.controller.bulkDeleteCount}?" if bulk else "Delete task?"
+            text = (
+                "Only fully selected tasks and groups will be deleted. Unchecked items are preserved."
+                if bulk
+                else "The task, its subtasks, and related dependencies will be deleted."
+            ) + " Can be undone."
+        else:
+            title = f"Удалить задач: {self.controller.bulkDeleteCount}?" if bulk else "Удалить задачу?"
+            text = (
+                "Удалятся только полностью выбранные задачи и группы. Снятые отметки сохраняются."
+                if bulk
+                else "Задача, её подзадачи и связанные зависимости будут удалены."
+            ) + " Действие можно отменить."
+        box = QMessageBox(QMessageBox.Icon.Question, title, text,
                           QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         box.setObjectName("deleteDialog")
-        box.button(QMessageBox.StandardButton.Cancel).setText("Отмена")
+        box.button(QMessageBox.StandardButton.Cancel).setText("Cancel" if is_en else "Отмена")
+        if is_en and box.button(QMessageBox.StandardButton.Ok):
+            box.button(QMessageBox.StandardButton.Ok).setText("Delete")
         self._actions[box] = self.controller.deleteChecked if bulk else lambda: self.controller.deleteTask(task_id)
         self.present(box)
 
     @Slot()
     def showHelp(self) -> None:
-        box = QMessageBox(QMessageBox.Icon.Information, "Работа с диаграммой",
-                          "• Перетаскивайте свободную задачу или группу за тело блока.\n"
-                          "• Задача с предшественником закреплена: измените связь или лаг.\n"
-                          "• Тяните края задачи для изменения начала или завершения.\n"
-                          "• Круги по бокам создают связи: перетащите круг на другую задачу.\n"
-                          "• Маленький ромб под блоком меняет прогресс.\n"
-                          "• Двойной щелчок открывает свойства; название редактируется в таблице.\n"
-                          "• Пустую область диаграммы можно перетаскивать.\n"
-                          "• Загрузка ресурсов и Люди… находятся в нижней панели.\n"
-                          "• Ctrl+колесо — масштаб; Shift+колесо — горизонтальная прокрутка.\n"
-                          "• Ctrl+Z / Ctrl+Shift+Z — отмена и повтор; Ctrl+S — сохранить.\n\n"
-                          "По умолчанию: Пн–Пт, 09:00–13:00 и 14:00–18:00.\n"
-                          "Длительность и трудозатраты — разные величины.",
-                          QMessageBox.StandardButton.Close)
+        is_en = self.controller.i18n.language == "en"
+        if is_en:
+            title = "Working with Gantt Chart"
+            text = (
+                "• Drag a free task or group by the block body.\n"
+                "• A task with a predecessor is fixed: change the dependency or lag.\n"
+                "• Drag task edges to change start or end date.\n"
+                "• Circles on the sides create dependencies: drag a circle to another task.\n"
+                "• The small diamond below the block changes progress.\n"
+                "• Double click opens properties; task name is edited in the table.\n"
+                "• Empty area of the chart can be panned by dragging.\n"
+                "• Resource Workload and People… are in the bottom bar.\n"
+                "• Ctrl+Wheel — zoom; Shift+Wheel — horizontal scroll.\n"
+                "• Ctrl+Z / Ctrl+Shift+Z — undo and redo; Ctrl+S — save.\n\n"
+                "Default work hours: Mon–Fri, 09:00–13:00 and 14:00–18:00.\n"
+                "Duration and effort are different quantities."
+            )
+            close_text = "Close"
+        else:
+            title = "Работа с диаграммой"
+            text = (
+                "• Перетаскивайте свободную задачу или группу за тело блока.\n"
+                "• Задача с предшественником закреплена: измените связь или лаг.\n"
+                "• Тяните края задачи для изменения начала или завершения.\n"
+                "• Круги по бокам создают связи: перетащите круг на другую задачу.\n"
+                "• Маленький ромб под блоком меняет прогресс.\n"
+                "• Двойной щелчок открывает свойства; название редактируется в таблице.\n"
+                "• Пустую область диаграммы можно перетаскивать.\n"
+                "• Загрузка ресурсов и Люди… находятся в нижней панели.\n"
+                "• Ctrl+колесо — масштаб; Shift+колесо — горизонтальная прокрутка.\n"
+                "• Ctrl+Z / Ctrl+Shift+Z — отмена и повтор; Ctrl+S — сохранить.\n\n"
+                "По умолчанию: Пн–Пт, 09:00–13:00 и 14:00–18:00.\n"
+                "Длительность и трудозатраты — разные величины."
+            )
+            close_text = "Закрыть"
+        box = QMessageBox(QMessageBox.Icon.Information, title, text, QMessageBox.StandardButton.Close)
         box.setObjectName("helpDialog")
-        box.button(QMessageBox.StandardButton.Close).setText("Закрыть")
+        box.button(QMessageBox.StandardButton.Close).setText(close_text)
         self.present(box)
 
     @Slot()
@@ -773,6 +904,14 @@ class NativeDialogs(QObject):
                 dialog.reject()
             else:
                 self._active.discard(dialog)
+
+    @Slot()
+    def on_language_changed(self) -> None:
+        self.closeAll()
+        for dialog in self._editors.values():
+            if isValid(dialog):
+                dialog.deleteLater()
+        self._editors.clear()
 
     @Slot()
     def dispose(self) -> None:

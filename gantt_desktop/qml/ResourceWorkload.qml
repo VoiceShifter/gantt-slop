@@ -74,16 +74,16 @@ Item {
     }
     Rectangle { anchors.fill:parent; color:appTheme.colors.surface }
     Rectangle { width:parent.width; height:44; color:appTheme.colors.surface; border.color:appTheme.colors.border }
-    Text { x:24; y:15; text:"Загрузка ресурсов"; font.bold:true; font.pixelSize:13; color:appTheme.colors.text }
-    ActionButton { x:180; y:7; text:"Люди…"; objectName:"manageResourcesButton"; onClicked:view.manageResource("") }
+    Text { x:24; y:15; text:i18n.tr.workload_toggle; font.bold:true; font.pixelSize:13; color:appTheme.colors.text }
+    ActionButton { x:180; y:7; text:i18n.tr.people_btn; objectName:"manageResourcesButton"; onClicked:view.manageResource("") }
     Text { x:265; y:16; width:Math.max(0,view.gridWidth-x-15); text:controller.projectName; elide:Text.ElideRight; font.pixelSize:11; color:appTheme.colors.muted }
     Row {
         x:view.gridWidth+Math.max(12,(view.width-view.gridWidth-width)/2); y:10; spacing:16
-        ModeChoice { objectName:"workloadHoursMode"; text:"Часы"; checked:view.mode===0; onClicked:view.mode=0 }
-        ModeChoice { objectName:"workloadPercentMode"; text:"Проценты"; checked:view.mode===1; onClicked:view.mode=1 }
-        ModeChoice { objectName:"workloadTasksMode"; text:"Задачи"; checked:view.mode===2; onClicked:view.mode=2 }
+        ModeChoice { objectName:"workloadHoursMode"; text:i18n.tr.hours_mode; checked:view.mode===0; onClicked:view.mode=0 }
+        ModeChoice { objectName:"workloadPercentMode"; text:i18n.tr.percent_mode; checked:view.mode===1; onClicked:view.mode=1 }
+        ModeChoice { objectName:"workloadTasksMode"; text:i18n.tr.tasks_mode; checked:view.mode===2; onClicked:view.mode=2 }
     }
-    ActionButton { anchors.right:parent.right; y:7; text:"×"; hint:"Скрыть загрузку ресурсов"; onClicked:view.closeRequested() }
+    ActionButton { anchors.right:parent.right; y:7; text:"×"; hint:i18n.tr.hide_workload; onClicked:view.closeRequested() }
     Flickable {
         id:body
         objectName:"workloadFlick"
@@ -108,7 +108,7 @@ Item {
                     }
                     Text { x:60; y:8; width:parent.width-112; text:modelData.resource.name+(modelData.resource.warningDays?"  ⚠ "+modelData.resource.warningDays:""); font.pixelSize:12; color:appTheme.colors.text; font.bold:!!view.expanded[modelData.resource.id]; elide:Text.ElideRight }
                     MouseArea { width:parent.width-36; height:30; cursorShape:Qt.PointingHandCursor; onClicked:view.toggle(modelData.resource.id) }
-                    ActionButton { x:parent.width-34; y:2; width:30; text:"▦"; hint:"Календарь ресурса"; objectName:"resource-calendar-"+modelData.resource.id; onClicked:view.manageResource(modelData.resource.id) }
+                    ActionButton { x:parent.width-34; y:2; width:30; text:"▦"; hint:i18n.tr.resource_calendar_hint; objectName:"resource-calendar-"+modelData.resource.id; onClicked:view.manageResource(modelData.resource.id) }
                 }
             }
         }
@@ -157,7 +157,7 @@ Item {
                             const col=view.columns.find(c=>x>=c.offset*view.pixelsPerDay&&x<(c.offset+c.length)*view.pixelsPerDay)
                             if(!row||!col)return ""
                             const d=view.aggregate(row.resource,col),date=row.resource.days[col.offset].date
-                            return row.resource.name+" · "+date+"\n"+view.number(d.hours)+"ч / "+view.number(d.capacity)+"ч"+(d.warning?" · Перегрузка":"")+(d.weekend?" · Работа в выходной":"")+(d.names.length?"\n"+d.names.join("\n"):"")
+                            return row.resource.name+" · "+date+"\n"+view.number(d.hours)+i18n.tr.hour_unit+" / "+view.number(d.capacity)+i18n.tr.hour_unit+(d.warning?(" · "+i18n.tr.overload):"")+(d.weekend?(" · "+i18n.tr.weekend_work):"")+(d.names.length?"\n"+d.names.join("\n"):"")
                         }
                         onPositionChanged:function(mouse){hint=describe(mouse.x,mouse.y)}
                         onExited:hint=""
@@ -202,7 +202,7 @@ Item {
         }
     }
     Rectangle { x:view.gridWidth-1; y:44; width:1; height:parent.height-44; color:appTheme.colors.border }
-    Text { anchors.centerIn:body; visible:view.rows.length===0; text:"Добавьте людей и назначьте их задачам"; font.pixelSize:13; color:appTheme.colors.muted }
+    Text { anchors.centerIn:body; visible:view.rows.length===0; text:i18n.tr.empty_workload_hint; font.pixelSize:13; color:appTheme.colors.muted }
     Popup {
         id:detailPopup
         objectName:"workloadDetail"

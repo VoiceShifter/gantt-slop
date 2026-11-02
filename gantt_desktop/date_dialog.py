@@ -14,14 +14,15 @@ if TYPE_CHECKING:
 
 class TaskDateDialog(EditorDialog):
     def __init__(self, controller: Controller):
-        super().__init__(controller, "taskDateDialog", "Дата задачи")
+        is_en = controller.i18n.language == "en"
+        super().__init__(controller, "taskDateDialog", "Task Date" if is_en else "Дата задачи")
         self.task_id = self.field = ""
         self.calendar = QCalendarWidget()
         self.calendar.setObjectName("taskDateCalendar")
         self.calendar.setDateRange(QDate(1, 1, 1), QDate(9999, 12, 31))
         self.calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
         self.layout_root.addWidget(self.calendar)
-        self.unset = QCheckBox("Убрать крайний срок")
+        self.unset = QCheckBox("Remove deadline" if is_en else "Убрать крайний срок")
         self.unset.setObjectName("taskDeadlineUnset")
         self.unset.toggled.connect(self.calendar.setDisabled)
         self.layout_root.addWidget(self.unset)
@@ -31,11 +32,11 @@ class TaskDateDialog(EditorDialog):
         self.layout_root.addWidget(self.error)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         save = buttons.button(QDialogButtonBox.StandardButton.Save)
-        save.setText("Применить")
+        save.setText("Apply" if is_en else "Применить")
         save.setObjectName("taskDateSave")
         save.setDefault(True)
         cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
-        cancel.setText("Отмена")
+        cancel.setText("Cancel" if is_en else "Отмена")
         cancel.setObjectName("taskDateCancel")
         buttons.accepted.connect(self.apply)
         buttons.rejected.connect(self.reject)
@@ -43,6 +44,7 @@ class TaskDateDialog(EditorDialog):
 
     def prepare(self, task_id: str, field: str) -> None:
         self.task_id, self.field = task_id, field
+        is_en = self.controller.i18n.language == "en"
         task = self.controller.project.tasks[task_id]
         start, end = self.controller.project.span(task_id)
         current = start if field == "start" else end
@@ -53,9 +55,20 @@ class TaskDateDialog(EditorDialog):
         self.calendar.setEnabled(True)
         self.calendar.setSelectedDate(QDate(current.year, current.month, current.day))
         self.calendar.showSelectedDate()
-        self.hint.setText("Срок включителен до конца выбранного дня. Расписание не изменится." if field == "deadline" else
-                          "Время сохранится. Нерабочая дата будет приведена к рабочему календарю проекта.")
-        title = {"start": "Начало", "end": "Завершение", "deadline": "Крайний срок"}[field]
+        if is_en:
+            self.hint.setText(
+                "Deadline is inclusive until the end of the selected day. Schedule will not change."
+                if field == "deadline"
+                else "Time will be preserved. Non-working date will be aligned to the project calendar."
+            )
+            title = {"start": "Start", "end": "Finish", "deadline": "Deadline"}[field]
+        else:
+            self.hint.setText(
+                "Срок включителен до конца выбранного дня. Расписание не изменится."
+                if field == "deadline"
+                else "Время сохранится. Нерабочая дата будет приведена к рабочему календарю проекта."
+            )
+            title = {"start": "Начало", "end": "Завершение", "deadline": "Крайний срок"}[field]
         self.setWindowTitle(title + " — " + self.controller.project.tasks[task_id].name)
         self.error.hide()
 

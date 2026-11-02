@@ -19,7 +19,7 @@ Item {
         checkState: cell.value === true ? Qt.Checked : cell.value === false ? Qt.Unchecked : Qt.PartiallyChecked
         nextCheckState: function() { return checkState }
         onClicked: controller.toggleCustomValue(cell.taskId, cell.definition.customId)
-        Accessible.name: cell.definition.title || "Флажок"
+        Accessible.name: cell.definition.title || i18n.tr.checkbox_field
     }
     Button {
         id: button
@@ -28,7 +28,7 @@ Item {
         width: parent.width-x; height: parent.height
         hoverEnabled: true
         onClicked: if (cell.editable) cell.editRequested()
-        Accessible.name: (cell.definition.title || "Поле") + ": " + cell.displayText
+        Accessible.name: (cell.definition.title || i18n.tr.field_label) + ": " + cell.displayText
         background: Rectangle { color: button.hovered && cell.editable ? appTheme.colors.hover : "transparent" }
         contentItem: Item {
             Rectangle {
@@ -48,7 +48,7 @@ Item {
             }
         }
         ToolTip.visible: hovered
-        ToolTip.text: cell.editable ? "Изменить значение поля" : "Значение вычисляется или редактирование недоступно"
+        ToolTip.text: cell.editable ? i18n.tr.change_field_value : i18n.tr.value_read_only
         ToolTip.delay: 600
     }
 }

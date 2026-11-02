@@ -24,7 +24,7 @@ Drawer {
     }
     ColorDialog {
         id: colorDialog
-        title: "Цвет задачи"
+        title: i18n.tr.task_color
         onAccepted: controller.editField(controller.selectedId, "color", selectedColor.toString())
     }
     contentItem: ColumnLayout {
@@ -32,7 +32,7 @@ Drawer {
         Item {
             Layout.fillWidth: true; Layout.preferredHeight: 120
             Text { x: 32; y: 27; text: controller.projectName; color: appTheme.colors.muted; font.pixelSize: 12 }
-            ActionButton { anchors.right: parent.right; anchors.rightMargin: 22; y: 21; text: "×"; font.pixelSize: 21; hint: "Закрыть"; onClicked: drawer.close() }
+            ActionButton { anchors.right: parent.right; anchors.rightMargin: 22; y: 21; text: "×"; font.pixelSize: 21; hint: i18n.tr.close; onClicked: drawer.close() }
             Rectangle {
                 x: 34; y: 65; width: 23; height: 23; radius: 3
                 color: controller.selected.color || "#50c7d6"
@@ -107,8 +107,8 @@ Drawer {
                     }
                     Item { Layout.fillWidth: true }
                     ActionButton {
-                        text: drawer.width < 760 ? "＋ Связь" : "＋  Добавить зависимость"
-                        hint: "Добавить зависимость"
+                        text: drawer.width < 760 ? i18n.tr.add_link_short : i18n.tr.add_link
+                        hint: i18n.tr.menu_add_dependency
                         enabled: !!controller.selectedId
                         onClicked: drawer.dependencyRequested("", controller.selectedId, "FS", "")
                     }
@@ -118,17 +118,17 @@ Drawer {
                     Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
                     visible: controller.criticalPath && !!controller.selectedId
                     textFormat: Text.PlainText; wrapMode: Text.WordWrap; font.pixelSize: 12
-                    text: controller.selected.totalFloat === null || controller.selected.totalFloat === undefined ? "Резерв не рассчитан: " + controller.criticalPathError :
-                          (controller.selected.critical ? (controller.selected.summary ? "Критическая группа. " : "Критическая задача. ") : "") +
-                          "Резерв: " + Number(controller.selected.totalFloat/60).toLocaleString(Qt.locale(),"g",6) + " рабочих ч."
+                    text: controller.selected.totalFloat === null || controller.selected.totalFloat === undefined ? i18n.tr.float_not_calculated + controller.criticalPathError :
+                          (controller.selected.critical ? (controller.selected.summary ? i18n.tr.critical_group : i18n.tr.critical_task) : "") +
+                          i18n.tr.float_prefix + Number(controller.selected.totalFloat/60).toLocaleString(Qt.locale(),"g",6) + i18n.tr.work_h
                     color: controller.selected.critical ? appTheme.colors.danger : appTheme.colors.secondary
                 }
                 GridLayout {
                     columns: 4
                     columnSpacing: 12; rowSpacing: 9
                     Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
-                    Label { text: "Начало"; color: appTheme.colors.muted; font.pixelSize: 12; Layout.columnSpan: 2 }
-                    Label { text: "Завершение"; color: appTheme.colors.muted; font.pixelSize: 12; Layout.columnSpan: 2 }
+                    Label { text: i18n.tr.start_label; color: appTheme.colors.muted; font.pixelSize: 12; Layout.columnSpan: 2 }
+                    Label { text: i18n.tr.end_label; color: appTheme.colors.muted; font.pixelSize: 12; Layout.columnSpan: 2 }
                     DateField {
                         objectName: "inspectorStart"
                         Layout.fillWidth: true; text: controller.selected.start || ""; enabled: controller.selected.canMove || false
@@ -143,8 +143,8 @@ Drawer {
                         onCalendarRequested: nativeDialogs.showTaskDate(controller.selectedId,"end")
                     }
                     CellEditor { Layout.preferredWidth: 64; text: controller.selected.endTime || ""; enabled: controller.selected.canResizeEnd || false; onEditingFinished: if(text!==controller.selected.endTime) controller.editField(controller.selectedId,"endTime",text) }
-                    Label { text: "Длительность, ч"; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
-                    Label { text: "Трудозатраты, ч"; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
+                    Label { text: i18n.tr.duration_h; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
+                    Label { text: i18n.tr.effort_h; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
                     CellEditor {
                         objectName: "inspectorDuration"
                         Layout.columnSpan: 2; Layout.fillWidth: true
@@ -157,8 +157,8 @@ Drawer {
                         text: String(controller.selected.effortHours || 0); enabled: !controller.selected.summary
                         onEditingFinished: if(text!==String(controller.selected.effortHours)) controller.editField(controller.selectedId,"effort",text)
                     }
-                    Label { text: "Исполнитель"; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
-                    Label { text: "Стоимость"; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
+                    Label { text: i18n.tr.col_assignee; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
+                    Label { text: i18n.tr.cost_label; color: appTheme.colors.muted; Layout.columnSpan: 2; font.pixelSize: 12 }
                     RowLayout {
                         Layout.columnSpan:2; Layout.fillWidth:true
                         AssigneeField {
@@ -169,7 +169,7 @@ Drawer {
                             enabled:!!controller.selectedId&&!controller.selected.summary
                             onClicked:drawer.assigneePickerRequested(controller.selectedId,assigneeField)
                         }
-                        ActionButton { objectName:"chooseResourcesButton"; text:"⋯"; hint:"Выбрать ресурсы и распределить часы"; enabled:!!controller.selectedId&&!controller.selected.summary; onClicked:drawer.assignmentRequested(controller.selectedId) }
+                        ActionButton { objectName:"chooseResourcesButton"; text:"⋯"; hint:i18n.tr.choose_resources_hint; enabled:!!controller.selectedId&&!controller.selected.summary; onClicked:drawer.assignmentRequested(controller.selectedId) }
                     }
                     CellEditor {
                         Layout.columnSpan: 2; Layout.fillWidth: true
@@ -182,35 +182,35 @@ Drawer {
                     visible: !!controller.baselineName && !!controller.selectedId
                     Label {
                         Layout.fillWidth: true; elide: Text.ElideRight
-                        text: "Базовый план: " + controller.baselineName; textFormat: Text.PlainText
+                        text: i18n.tr.baseline_prefix + controller.baselineName; textFormat: Text.PlainText
                         color: appTheme.colors.muted; font.pixelSize: 12
                     }
                     Label {
                         objectName: "inspectorBaseline"
                         Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText
-                        text: controller.selected.hasBaseline ? "Начало: " + controller.selected.baselineStart + " · завершение: " + controller.selected.baselineEnd +
-                              "\nΔ начала: " + controller.selected.startVariance + " · Δ завершения: " + controller.selected.endVariance + " календарных ч." : "Элемента нет в выбранном базовом плане."
+                        text: controller.selected.hasBaseline ? i18n.tr.baseline_start_prefix + controller.selected.baselineStart + i18n.tr.baseline_end_prefix + controller.selected.baselineEnd +
+                              i18n.tr.delta_start_prefix + controller.selected.startVariance + i18n.tr.delta_end_prefix + controller.selected.endVariance + i18n.tr.cal_h : i18n.tr.baseline_missing_item
                         color: controller.selected.endVarianceHours > 0 ? appTheme.colors.danger : appTheme.colors.secondary
                         font.pixelSize: 12
                     }
                 }
                 ColumnLayout {
                     Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
-                    Label { text: "Крайний срок"; color: appTheme.colors.muted; font.pixelSize: 12 }
+                    Label { text: i18n.tr.deadline_label; color: appTheme.colors.muted; font.pixelSize: 12 }
                     RowLayout {
                         Layout.fillWidth: true
                         DateField {
                             objectName: "inspectorDeadline"
                             Layout.fillWidth: true
                             text: controller.selected.deadline || ""
-                            placeholderText: "Не задан"
+                            placeholderText: i18n.tr.not_set
                             enabled: !!controller.selectedId
                             onEditingFinished: if (text!==controller.selected.deadline) controller.editField(controller.selectedId,"deadline",text)
                             onCalendarRequested: nativeDialogs.showTaskDate(controller.selectedId,"deadline")
                         }
                         ActionButton {
                             objectName: "clearDeadline"
-                            text: "×"; hint: "Убрать крайний срок"
+                            text: "×"; hint: i18n.tr.remove_deadline_hint
                             visible: !!controller.selected.deadline
                             onClicked: controller.editField(controller.selectedId,"deadline","")
                         }
@@ -219,19 +219,19 @@ Drawer {
                         objectName: "deadlineWarning"
                         Layout.fillWidth: true; wrapMode: Text.WordWrap
                         visible: !!controller.selected.deadlineMissed || !!controller.selected.deadlineOverdue
-                        text: controller.selected.deadlineMissed ? "Плановое завершение позже крайнего срока." : "Крайний срок прошёл, задача не завершена."
+                        text: controller.selected.deadlineMissed ? i18n.tr.deadline_missed : i18n.tr.deadline_passed
                         color: appTheme.colors.danger; font.pixelSize: 12
                     }
                 }
                 Label {
                     Layout.leftMargin: 40; Layout.rightMargin: 40; Layout.fillWidth: true
                     visible: !!controller.selectedId && !controller.selected.canMove
-                    text: "Даты закреплены зависимостями. Чтобы сдвинуть задачу, измените связь или её лаг."
+                    text: i18n.tr.dates_locked_deps
                     color: appTheme.colors.secondary; font.pixelSize: 12; wrapMode: Text.WordWrap
                 }
                 ColumnLayout {
                     Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
-                    Label { text: "Группа"; color: appTheme.colors.muted; font.pixelSize: 12 }
+                    Label { text: i18n.tr.group_label; color: appTheme.colors.muted; font.pixelSize: 12 }
                     ComboBox {
                         Layout.fillWidth: true
                         model: controller.groupChoices; textRole: "name"; valueRole: "id"
@@ -244,7 +244,7 @@ Drawer {
                     Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.fillWidth: true
                     Layout.preferredHeight: 150
                     text: controller.selected.notes || ""
-                    placeholderText: "Добавить описание задачи"
+                    placeholderText: i18n.tr.task_desc_placeholder
                     wrapMode: TextEdit.Wrap
                     font.pixelSize: 14; color: appTheme.colors.text
                     placeholderTextColor: appTheme.colors.muted
@@ -253,7 +253,7 @@ Drawer {
                     background: Rectangle { color: appTheme.colors.input }
                     onActiveFocusChanged: if (!activeFocus && controller.selectedId && text!==controller.selected.notes) controller.editField(controller.selectedId,"notes",text)
                 }
-                Label { Layout.leftMargin: 32; text: "Зависимости между задачами"; font.bold: true; color: appTheme.colors.text }
+                Label { Layout.leftMargin: 32; text: i18n.tr.task_deps_title; font.bold: true; color: appTheme.colors.text }
                 Repeater {
                     model: controller.selected.dependencies || []
                     delegate: RowLayout {
@@ -263,10 +263,10 @@ Drawer {
                         ColumnLayout {
                             Layout.fillWidth: true
                             Label { text: modelData.incoming ? modelData.sourceName : modelData.targetName; elide: Text.ElideRight; Layout.fillWidth: true; color: appTheme.colors.text }
-                            Label { text: modelData.incoming ? "ПРЕДШЕСТВЕННИК" : "ПОСЛЕДОВАТЕЛЬ"; color: appTheme.colors.muted; font.pixelSize: 10 }
+                            Label { text: modelData.incoming ? i18n.tr.predecessor : i18n.tr.successor; color: appTheme.colors.muted; font.pixelSize: 10 }
                         }
-                        ActionButton { text: modelData.kind + " · Лаг: " + modelData.lag + "ч"; onClicked: drawer.dependencyRequested(modelData.source,modelData.target,modelData.kind,modelData.id) }
-                        ActionButton { text: "×"; hint: "Удалить связь (можно отменить)"; onClicked: controller.removeDependency(modelData.id) }
+                        ActionButton { text: modelData.kind + " · " + i18n.tr.lag_label + modelData.lag + i18n.tr.hour_unit; onClicked: drawer.dependencyRequested(modelData.source,modelData.target,modelData.kind,modelData.id) }
+                        ActionButton { text: "×"; hint: i18n.tr.delete_link_hint; onClicked: controller.removeDependency(modelData.id) }
                     }
                 }
                 Item { height: 20; Layout.fillWidth: true }
@@ -275,9 +275,9 @@ Drawer {
         Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.colors.border }
         RowLayout {
             Layout.fillWidth: true; Layout.margins: 20
-            ActionButton { text: "Показать на диаграмме"; onClicked: { controller.focusTask(controller.selectedId); drawer.close() } }
+            ActionButton { text: i18n.tr.show_on_chart; onClicked: { controller.focusTask(controller.selectedId); drawer.close() } }
             Item { Layout.fillWidth: true }
-            ActionButton { text: "Удалить задачу"; onClicked: drawer.deleteRequested(controller.selectedId) }
+            ActionButton { text: i18n.tr.delete_task_btn; onClicked: drawer.deleteRequested(controller.selectedId) }
         }
     }
 }

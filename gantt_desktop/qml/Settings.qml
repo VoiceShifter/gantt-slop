@@ -22,16 +22,16 @@ Drawer {
             spacing: 18
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Настройки"; font.bold: true; font.pixelSize: 20; color: appTheme.colors.text }
+                Label { text: i18n.tr.settings; font.bold: true; font.pixelSize: 20; color: appTheme.colors.text }
                 Item { Layout.fillWidth: true }
-                ActionButton { objectName: "closeSettingsButton"; text: "×"; hint: "Закрыть настройки"; onClicked: drawer.close() }
+                ActionButton { objectName: "closeSettingsButton"; text: "×"; hint: i18n.tr.close_settings; onClicked: drawer.close() }
             }
             Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.colors.border }
-            Label { text: "Внешний вид"; font.bold: true; color: appTheme.colors.text }
+            Label { text: i18n.tr.appearance; font.bold: true; color: appTheme.colors.text }
             Switch {
                 id: themeSwitch
                 objectName: "themeSwitch"
-                text: "Тёмная тема"
+                text: i18n.tr.dark_theme
                 checked: appTheme.dark
                 onClicked: appTheme.setDark(checked)
                 Accessible.name: text
@@ -50,19 +50,42 @@ Drawer {
             }
             Label {
                 Layout.fillWidth: true
-                text: "Одна тема для диаграммы, таблицы, панелей и всех диалогов."
+                text: i18n.tr.theme_description
+                wrapMode: Text.WordWrap
+                color: appTheme.colors.secondary
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.colors.border }
+            Label { text: i18n.tr.language; font.bold: true; color: appTheme.colors.text }
+            ComboBox {
+                id: languageCombo
+                objectName: "languageCombo"
+                Layout.fillWidth: true
+                model: i18n.languages
+                textRole: "label"
+                valueRole: "code"
+                currentIndex: i18n.language === "en" ? 1 : 0
+                onActivated: function(index) {
+                    var selected = model[index];
+                    if (selected && selected.code) {
+                        i18n.setLanguage(selected.code);
+                    }
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: i18n.tr.language_description
                 wrapMode: Text.WordWrap
                 color: appTheme.colors.secondary
             }
             Item { Layout.fillHeight: true }
             Label {
                 Layout.fillWidth: true
-                text: "Изменения применяются сразу и сохраняются между запусками на этом компьютере. Файл проекта не меняется."
+                text: i18n.tr.settings_note
                 wrapMode: Text.WordWrap
                 font.pixelSize: 12
                 color: appTheme.colors.muted
             }
-            ActionButton { text: "Готово"; primary: true; Layout.fillWidth: true; implicitHeight: 34; onClicked: drawer.close() }
+            ActionButton { text: i18n.tr.done; primary: true; Layout.fillWidth: true; implicitHeight: 34; onClicked: drawer.close() }
         }
     }
 }

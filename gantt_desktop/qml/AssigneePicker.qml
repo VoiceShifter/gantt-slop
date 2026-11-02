@@ -63,12 +63,12 @@ Popup {
         Keys.onEscapePressed: picker.close()
         ColumnLayout {
             anchors.fill: parent; anchors.margins: 12; spacing: 8
-            Label { text: "Исполнители"; color: appTheme.colors.text; font.bold: true; font.pixelSize: 13 }
+            Label { text: i18n.tr.assignees; color: appTheme.colors.text; font.bold: true; font.pixelSize: 13 }
             CellEditor {
                 id: search
                 objectName: "assigneeSearch"
                 Layout.fillWidth: true
-                placeholderText: "Найти ресурс"
+                placeholderText: i18n.tr.find_resource
                 background: Rectangle { color: appTheme.colors.input; border.color: search.activeFocus ? appTheme.colors.link : appTheme.colors.border; radius: 3 }
             }
             ListView {
@@ -96,18 +96,18 @@ Popup {
                     Text { x: 63; width: Math.max(0,parent.width-x-8); height: parent.height; text: modelData.name; textFormat: Text.PlainText; color: appTheme.colors.text; font.pixelSize: 12; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter }
                     MouseArea { x: 31; width: parent.width-x; height: parent.height; cursorShape: Qt.PointingHandCursor; onClicked: picker.toggle(modelData.id) }
                 }
-                Label { anchors.centerIn: parent; visible: picker.resources.length===0; text: "Ресурсы не найдены"; color: appTheme.colors.muted; font.pixelSize: 12 }
+                Label { anchors.centerIn: parent; visible: picker.resources.length===0; text: i18n.tr.no_resources_found; color: appTheme.colors.muted; font.pixelSize: 12 }
             }
-            Label { text: "Выбрано: "+picker.selectedIds.length+" · Применить по «Ок»"; color: appTheme.colors.muted; font.pixelSize: 11 }
+            Label { text: i18n.tr.selected_count_prefix + picker.selectedIds.length + i18n.tr.apply_by_ok; color: appTheme.colors.muted; font.pixelSize: 11 }
             RowLayout {
                 Layout.fillWidth: true; spacing: 4
-                ActionButton { objectName: "resetAssignees"; text: "Сбросить"; enabled: picker.selectedIds.length>0; onClicked: picker.selectedIds=[] }
-                ActionButton { objectName: "assigneeHoursButton"; text: "Часы…"; visible: !picker.bulkEdit; onClicked: picker.apply(true) }
+                ActionButton { objectName: "resetAssignees"; text: i18n.tr.reset; enabled: picker.selectedIds.length>0; onClicked: picker.selectedIds=[] }
+                ActionButton { objectName: "assigneeHoursButton"; text: i18n.tr.hours_btn; visible: !picker.bulkEdit; onClicked: picker.apply(true) }
                 Item { Layout.fillWidth: true }
-                ActionButton { objectName: "cancelAssignees"; text: "Отмена"; onClicked: picker.close() }
-                ActionButton { objectName: "applyAssignees"; text: "Ок"; primary: true; onClicked: picker.apply(false) }
+                ActionButton { objectName: "cancelAssignees"; text: i18n.tr.cancel; onClicked: picker.close() }
+                ActionButton { objectName: "applyAssignees"; text: i18n.tr.ok; primary: true; onClicked: picker.apply(false) }
             }
-            ActionButton { objectName: "addAssigneeResource"; text: "＋ Добавить ресурс…"; Layout.fillWidth: true; palette.buttonText: appTheme.colors.link; onClicked: picker.createRequested(search.text.trim()) }
+            ActionButton { objectName: "addAssigneeResource"; text: i18n.tr.add_resource_btn; Layout.fillWidth: true; palette.buttonText: appTheme.colors.link; onClicked: picker.createRequested(search.text.trim()) }
         }
     }
 }

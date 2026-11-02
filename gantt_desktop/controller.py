@@ -42,6 +42,7 @@ from .domain import (
     new_id,
     status_for_progress,
 )
+from .i18n import FIELD_TYPES_EN, I18n, get_i18n
 from .sample import sample_project
 from .workload import workload_rows
 
@@ -128,9 +129,11 @@ class Controller(QObject):
 
     def __init__(self, project: Project | None = None):
         super().__init__()
+        self._i18n: I18n = I18n(parent=self)
+        self._i18n.changed.connect(self._on_i18n_changed)
+        self.theme: AppTheme | None = None
         self.project = project or sample_project()
         self.dialogs = NativeDialogs(self)
-        self.theme: AppTheme | None = None
         self._rows = TaskRows(self)
         self._selected = ""
         self._bulk_mode = False
@@ -169,6 +172,29 @@ class Controller(QObject):
         ),
         notify=bulkChanged,
     )
+    @property
+    def i18n(self) -> I18n:
+        if self._i18n is None:
+            self._i18n = get_i18n()
+        return self._i18n
+
+    @i18n.setter
+    def i18n(self, value: I18n | None) -> None:
+        if self._i18n is not None:
+            try:
+                self._i18n.changed.disconnect(self._on_i18n_changed)
+            except (RuntimeError, TypeError):
+                pass
+        self._i18n = value
+        if value is not None:
+            value.changed.connect(self._on_i18n_changed)
+
+    def _on_i18n_changed(self) -> None:
+        self.viewChanged.emit()
+        self.selectionChanged.emit()
+        if hasattr(self.dialogs, "on_language_changed"):
+            self.dialogs.on_language_changed()
+
     bulkDeleteCount = Property(
         int, lambda self: len(self._bulk_delete_ids()), notify=bulkChanged
     )
@@ -190,7 +216,7 @@ class Controller(QObject):
     )
     fileName = Property(
         str,
-        lambda self: self._path.name if self._path else "Без файла",
+        lambda self: self._path.name if self._path else self.i18n.t("no_file"),
         notify=fileChanged,
     )
     taskCount = Property(
@@ -217,9 +243,18 @@ class Controller(QObject):
     @Property(str, notify=viewChanged)
     def criticalPathInfo(self):
         if self._critical_error:
+            if self.i18n.language == "en":
+                return self.i18n.t("float_not_calculated") + self._critical_error
             return "Критический путь не рассчитан: " + self._critical_error
         if self._critical is None or self._critical.finish is None:
+            if self.i18n.language == "en":
+                return "No items to calculate critical path."
             return "Нет элементов для расчёта критического пути."
+        if self.i18n.language == "en":
+            return (
+                f"Across entire current plan · zero float: {len(self._critical.critical_tasks)} items · "
+                f"finish: {self._critical.finish:%d.%m.%Y %H:%M}. Float is in working time."
+            )
         return (
             f"По всему текущему плану · нулевой резерв: {len(self._critical.critical_tasks)} элементов · "
             f"завершение: {self._critical.finish:%d.%m.%Y %H:%M}. Резерв — в рабочем времени."
@@ -242,12 +277,20 @@ class Controller(QObject):
         if baseline is None:
             return ""
         saved, current = set(baseline.tasks), set(self.project.tasks)
-        text = (
-            f"Базовый план: {baseline.name} · совпадает: {len(saved & current)} · "
-            f"новых: {len(current - saved)} · удалённых: {len(saved - current)}. Δ — календарные часы."
-        )
-        if self._baseline_range_warning:
-            text += " Диапазон больше 100 лет не расширяет диаграмму; даты доступны в полях."
+        if self.i18n.language == "en":
+            text = (
+                f"Baseline: {baseline.name} · matches: {len(saved & current)} · "
+                f"new: {len(current - saved)} · removed: {len(saved - current)}. Δ — calendar hours."
+            )
+            if self._baseline_range_warning:
+                text += " Range over 100 years does not expand chart; dates are available in fields."
+        else:
+            text = (
+                f"Базовый план: {baseline.name} · совпадает: {len(saved & current)} · "
+                f"новых: {len(current - saved)} · удалённых: {len(saved - current)}. Δ — календарные часы."
+            )
+            if self._baseline_range_warning:
+                text += " Диапазон больше 100 лет не расширяет диаграмму; даты доступны в полях."
         return text
 
     @Slot(str, result=str)
@@ -368,7 +411,7 @@ class Controller(QObject):
                     "name": "",
                     "startDay": (start.date() - self._origin).days,
                     "endDay": (end.date() - self._origin).days + 1,
-                    "effort": f"{sum(t.effort for t in leaves):g}ч",
+                    "effort": f"{sum(t.effort for t in leaves):g}{self.i18n.t('hour_unit')}",
                     "cost": f"{sum(t.cost for t in leaves):,.2f}",
                     **self.custom_record(""),
                 }
@@ -492,7 +535,7 @@ class Controller(QObject):
             "duration": duration / 60,
             "effortHours": effort,
             "costValue": cost,
-            "effort": f"{effort:g}ч",
+            "effort": f"{effort:g}{self.i18n.t('hour_unit')}",
             "cost": f"{cost:,.2f}",
             "progress": progress,
             "assignee": task.assignee,
@@ -518,9 +561,9 @@ class Controller(QObject):
             "canResizeEnd": task.kind == "task"
             and not self.project.endpoint_locked(task_id, "F"),
             "status": status,
-            "statusText": STATUS_LABELS[status],
+            "statusText": self.i18n.statuses.get(status, STATUS_LABELS[status]),
             "priority": task.priority,
-            "priorityText": "" if summary else PRIORITY_LABELS[task.priority],
+            "priorityText": "" if summary else self.i18n.priorities.get(task.priority, PRIORITY_LABELS[task.priority]),
             "hasChildren": bool(self.project.children(task.id)),
             "kind": task.kind,
             **self.custom_record(task_id),
@@ -547,7 +590,7 @@ class Controller(QObject):
                 "key": "custom:" + f.id,
                 "name": f.name,
                 "kind": f.kind,
-                "typeLabel": FIELD_TYPES[f.kind],
+                "typeLabel": (FIELD_TYPES_EN if self.i18n.language == "en" else FIELD_TYPES)[f.kind],
                 "options": list(f.options),
                 "aggregate": f.aggregate,
             }
@@ -619,7 +662,7 @@ class Controller(QObject):
         ]
         return result
 
-    @Property(list, constant=True)
+    @Property(list, notify=viewChanged)
     def statusChoices(self):
         colors = {
             "open": "#999999",
@@ -627,17 +670,19 @@ class Controller(QObject):
             "completed": "#50c7d6",
             "closed": "#13b64b",
         }
+        labels = self.i18n.statuses
         return [
-            {"value": key, "label": label, "color": colors[key], "symbol": ""}
+            {"value": key, "label": labels.get(key, label), "color": colors[key], "symbol": ""}
             for key, label in STATUS_LABELS.items()
         ]
 
-    @Property(list, constant=True)
+    @Property(list, notify=viewChanged)
     def priorityChoices(self):
         colors = ("#e84a4a", "#ffa726", "#4f9347", "#777777", "#aaaaaa")
         symbols = ("↑", "↑", "↑", "↓", "↓")
+        labels = self.i18n.priorities
         return [
-            {"value": key, "label": label, "color": color, "symbol": symbol}
+            {"value": key, "label": labels.get(key, label), "color": color, "symbol": symbol}
             for (key, label), color, symbol in zip(
                 PRIORITY_LABELS.items(), colors, symbols, strict=True
             )
@@ -683,6 +728,17 @@ class Controller(QObject):
 
     @Property(str, notify=viewChanged)
     def calendarLabel(self):
+        count = len(self.project.calendar.holidays) + len(
+            self.project.calendar.exceptions
+        )
+        if self.i18n.language == "en":
+            if self.project.calendar.workdays == set(range(5)):
+                base = "Mon–Fri · 8h/day"
+            elif not self.project.calendar.weekly_periods:
+                base = f"{len(self.project.calendar.workdays)} days/wk · 8h/day"
+            else:
+                base = f"{len(self.project.calendar.workdays)} days/wk · intervals from XML"
+            return base + (f" · exceptions: {count}" if count else "")
         base = (
             "Пн–Пт · 8ч/день"
             if self.project.calendar.workdays == set(range(5))
@@ -690,9 +746,6 @@ class Controller(QObject):
         )
         if self.project.calendar.weekly_periods:
             base = f"{len(self.project.calendar.workdays)} дн/нед · интервалы из XML"
-        count = len(self.project.calendar.holidays) + len(
-            self.project.calendar.exceptions
-        )
         return base + (f" · исключений: {count}" if count else "")
 
     @Slot(str, result=str)
@@ -876,7 +929,7 @@ class Controller(QObject):
                 {
                     "offset": (day - self._origin).days,
                     "length": (end - day).days,
-                    "label": f"{MONTHS[day.month - 1]} {day.year}",
+                    "label": f"{self.i18n.months[day.month - 1]} {day.year}",
                 }
             )
             day = end
@@ -1393,10 +1446,10 @@ class Controller(QObject):
     @Slot(str, int, float, bool, result=dict)
     def rowDropPreview(self, task_id, row, fraction, allow_inside):
         if self._bulk_mode or not 0 <= row < len(self._rows.records):
-            return {"valid": False, "hint": "Отпустите на строке таблицы."}
+            return {"valid": False, "hint": "Drop on a table row." if self.i18n.language == "en" else "Отпустите на строке таблицы."}
         target = self._rows.records[row]
         if target["rowKind"] == "total":
-            return {"valid": False, "hint": "Итоговая строка не перемещается."}
+            return {"valid": False, "hint": "Total row cannot be moved." if self.i18n.language == "en" else "Итоговая строка не перемещается."}
         if target["rowKind"] == "add":
             target_id, placement = target["parentId"], "append"
         else:
@@ -1413,13 +1466,22 @@ class Controller(QObject):
             project.relocate(task_id, target_id, placement)
         except ScheduleError as error:
             return {"valid": False, "hint": str(error)}
-        label = self.project.tasks[target_id].name if target_id else "верхний уровень"
-        verb = {
-            "before": "Перед",
-            "after": "После",
-            "inside": "В начало группы",
-            "append": "В конец",
-        }[placement]
+        top_level = "top level" if self.i18n.language == "en" else "верхний уровень"
+        label = self.project.tasks[target_id].name if target_id else top_level
+        if self.i18n.language == "en":
+            verb = {
+                "before": "Before",
+                "after": "After",
+                "inside": "To group start",
+                "append": "To end",
+            }[placement]
+        else:
+            verb = {
+                "before": "Перед",
+                "after": "После",
+                "inside": "В начало группы",
+                "append": "В конец",
+            }[placement]
         return {
             "valid": True,
             "target": target_id,

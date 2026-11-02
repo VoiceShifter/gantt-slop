@@ -32,7 +32,7 @@ Drawer {
     }
     ColorDialog {
         id: colorDialog
-        title: "Цвет выбранных задач"
+        title: i18n.tr.bulk_edit_title
         onAccepted: { drawer.draftColor = selectedColor.toString(); drawer.colorPending = true }
     }
     contentItem: Item {
@@ -42,16 +42,16 @@ Drawer {
             spacing: 9
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Массовое изменение"; font.bold: true; font.pixelSize: 14; color: appTheme.colors.text }
+                Label { text: i18n.tr.bulk_edit_title; font.bold: true; font.pixelSize: 14; color: appTheme.colors.text }
                 Item { Layout.fillWidth: true }
-                ActionButton { text: "×"; hint: "Отменить неприменённые изменения"; onClicked: controller.setBulkMode(false) }
+                ActionButton { text: "×"; hint: i18n.tr.cancel_unapplied; onClicked: controller.setBulkMode(false) }
             }
-            Label { objectName: "bulkCount"; text: "Выбрано: " + controller.checkedCount; color: appTheme.colors.muted; font.pixelSize: 11 }
+            Label { objectName: "bulkCount"; text: i18n.tr.selected_prefix + controller.checkedCount; color: appTheme.colors.muted; font.pixelSize: 11 }
             Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.colors.border }
             CheckBox {
                 id: assign
                 objectName: "bulkAssignEnabled"
-                text: "Исполнитель"
+                text: i18n.tr.col_assignee
                 enabled: controller.checkedLeafCount > 0
                 font.pixelSize: 12
                 implicitHeight: 26
@@ -77,41 +77,41 @@ Drawer {
                 Layout.fillWidth: true; framed: true
                 enabled: assign.checked && controller.checkedLeafCount > 0
                 resourceIds: drawer.draftResourceIds
-                placeholderText: "Снять назначение"
+                placeholderText: i18n.tr.unassign
                 onClicked: drawer.assigneePickerRequested(drawer.draftResourceIds,assignee)
             }
-            Label { text: "Статус"; font.pixelSize: 12; color: appTheme.colors.secondary }
+            Label { text: i18n.tr.col_status; font.pixelSize: 12; color: appTheme.colors.secondary }
             MetadataChoice {
                 id: status
                 objectName: "bulkStatus"
                 Layout.fillWidth: true
                 enabled: controller.checkedLeafCount > 0
-                model: [{value:"",label:"Не менять",color:"#999999",symbol:""}].concat(controller.statusChoices)
+                model: [{value:"",label:i18n.tr.dont_change,color:"#999999",symbol:""}].concat(controller.statusChoices)
             }
-            Label { text: "Приоритет"; font.pixelSize: 12; color: appTheme.colors.secondary }
+            Label { text: i18n.tr.col_priority; font.pixelSize: 12; color: appTheme.colors.secondary }
             MetadataChoice {
                 id: priority
                 objectName: "bulkPriority"
                 Layout.fillWidth: true
                 enabled: controller.checkedLeafCount > 0
-                model: [{value:"",label:"Не менять",color:"#999999",symbol:""}].concat(controller.priorityChoices)
+                model: [{value:"",label:i18n.tr.dont_change,color:"#999999",symbol:""}].concat(controller.priorityChoices)
             }
-            Label { text: "Цвет задачи"; font.pixelSize: 12; color: appTheme.colors.secondary }
+            Label { text: i18n.tr.task_color; font.pixelSize: 12; color: appTheme.colors.secondary }
             RowLayout {
                 Layout.fillWidth: true
                 Rectangle { width: 22; height: 22; radius: 3; color: drawer.colorPending ? drawer.draftColor : appTheme.colors.input; border.color: appTheme.colors.border }
                 ActionButton {
                     objectName: "bulkColorButton"
                     Layout.fillWidth: true
-                    text: drawer.colorPending ? drawer.draftColor : "Выбрать цвет…"
+                    text: drawer.colorPending ? drawer.draftColor : i18n.tr.choose_color
                     enabled: controller.checkedCount > 0
                     onClicked: { colorDialog.selectedColor=drawer.draftColor; colorDialog.open() }
                 }
-                ActionButton { text: "×"; visible: drawer.colorPending; hint: "Не менять цвет"; onClicked: drawer.colorPending=false }
+                ActionButton { text: "×"; visible: drawer.colorPending; hint: i18n.tr.keep_color_hint; onClicked: drawer.colorPending=false }
             }
             Label {
                 Layout.fillWidth: true
-                text: "Отмечаются только нужные поля. Статус меняет процент выполнения; даты и трудозатраты сохраняются."
+                text: i18n.tr.bulk_note
                 wrapMode: Text.WordWrap
                 color: appTheme.colors.muted; font.pixelSize: 11
             }
@@ -121,7 +121,7 @@ Drawer {
                 Layout.fillWidth: true
                 implicitHeight: 36
                 primary: true
-                text: "Применить изменения"
+                text: i18n.tr.apply_changes
                 enabled: controller.checkedCount > 0 && (drawer.colorPending || (controller.checkedLeafCount > 0 && (assign.checked || status.currentIndex > 0 || priority.currentIndex > 0)))
                 onClicked: {
                     drawer.contentItem.forceActiveFocus()
@@ -140,7 +140,7 @@ Drawer {
                 Layout.fillWidth: true
                 implicitHeight: 34
                 palette.buttonText: appTheme.colors.danger
-                text: "Удалить задачи (" + controller.bulkDeleteCount + ")"
+                text: i18n.tr.delete_tasks_prefix + controller.bulkDeleteCount + ")"
                 enabled: controller.bulkDeleteCount > 0
                 background: Rectangle { color: appTheme.colors.surface; radius: 3; border.color: appTheme.colors.danger; opacity: parent.enabled ? 1 : 0.4 }
                 onClicked: drawer.deleteRequested()

@@ -14,7 +14,7 @@ CellEditor {
             ActionButton {
                 objectName: "calendar-" + field.objectName
                 text: "▦"
-                hint: "Выбрать дату в календаре"
+                hint: i18n.tr.choose_date_in_calendar
                 leftPadding: 0; rightPadding: 0
                 enabled: field.enabled && !field.readOnly
                 onClicked: field.calendarRequested()

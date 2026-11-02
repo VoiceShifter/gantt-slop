@@ -10,16 +10,25 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
 from .controller import Controller
+from .i18n import I18n, set_i18n
 from .theme import AppTheme
 
 
-def create_window(controller: Controller, theme: AppTheme | None = None) -> tuple[QQmlApplicationEngine, QQuickWindow]:
+def create_window(
+    controller: Controller,
+    theme: AppTheme | None = None,
+    i18n: I18n | None = None,
+) -> tuple[QQmlApplicationEngine, QQuickWindow]:
     controller.theme = theme if theme is not None else AppTheme()
     controller.theme.setParent(controller)
+    controller.i18n = i18n if i18n is not None else I18n()
+    controller.i18n.setParent(controller)
+    set_i18n(controller.i18n)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("controller", controller)
     engine.rootContext().setContextProperty("nativeDialogs", controller.dialogs)
     engine.rootContext().setContextProperty("appTheme", controller.theme)
+    engine.rootContext().setContextProperty("i18n", controller.i18n)
     engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / "qml" / "Main.qml")))
     objects = engine.rootObjects()
     if not objects or not isinstance(objects[0], QQuickWindow):
@@ -52,8 +61,9 @@ def main() -> int:
     if args.project and not controller.load_path(args.project):
         print(f"Could not open {args.project}", file=sys.stderr)
         return 2
+    settings = QSettings()
     try:
-        engine, window = create_window(controller, AppTheme(QSettings()))
+        engine, window = create_window(controller, AppTheme(settings), I18n(settings))
     except RuntimeError as error:
         print(error, file=sys.stderr)
         return 1

@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from .dialogs import EditorDialog
 from .domain import FIELD_TYPES
+from .i18n import FIELD_TYPES_EN
 
 if TYPE_CHECKING:
     from .controller import Controller
@@ -37,15 +38,22 @@ BUILTIN_FIELDS = {"assignee": "Исполнитель", "effort": "Трудоз�
                   "baselineStart": "Базовое начало", "baselineEnd": "Базовое завершение",
                   "startVariance": "Δ начала, кал. ч", "endVariance": "Δ завершения, кал. ч"}
 
+BUILTIN_FIELDS_EN = {"assignee": "Assignee", "effort": "Effort", "cost": "Cost",
+                     "start": "Start", "end": "Finish", "duration": "Duration",
+                     "progress": "Progress", "status": "Status", "priority": "Priority", "deadline": "Deadline",
+                     "baselineStart": "Baseline start", "baselineEnd": "Baseline finish",
+                     "startVariance": "Start variance, cal. h", "endVariance": "Finish variance, cal. h"}
+
 
 def editor_buttons(dialog: EditorDialog, apply, prefix: str) -> QDialogButtonBox:
+    is_en = getattr(dialog, "controller", None) is not None and dialog.controller.i18n.language == "en"
     buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
     save = buttons.button(QDialogButtonBox.StandardButton.Save)
-    save.setText("Сохранить")
+    save.setText("Save" if is_en else "Сохранить")
     save.setObjectName(prefix + "Save")
     save.setDefault(True)
     cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
-    cancel.setText("Отмена")
+    cancel.setText("Cancel" if is_en else "Отмена")
     cancel.setObjectName(prefix + "Cancel")
     buttons.accepted.connect(apply)
     buttons.rejected.connect(dialog.reject)
@@ -59,7 +67,8 @@ class FieldsDialog(EditorDialog):
     removeRequested = Signal(str)
 
     def __init__(self, controller: Controller):
-        super().__init__(controller, "fieldsDialog", "Показать/скрыть поля")
+        is_en = controller.i18n.language == "en"
+        super().__init__(controller, "fieldsDialog", "Show/Hide Fields" if is_en else "Показать/скрыть поля")
         self.resize(540, 460)
         self.shown: dict[str, bool] = {}
         self.tabs = QTabWidget()
@@ -67,31 +76,35 @@ class FieldsDialog(EditorDialog):
         self.standard.setObjectName("standardFields")
         self.custom = QListWidget()
         self.custom.setObjectName("customFields")
-        self.tabs.addTab(self.standard, "Стандартные")
-        self.tabs.addTab(self.custom, "Пользовательские")
+        self.tabs.addTab(self.standard, "Standard" if is_en else "Стандартные")
+        self.tabs.addTab(self.custom, "Custom" if is_en else "Пользовательские")
         self.tabs.setObjectName("fieldTabs")
         self.layout_root.addWidget(self.tabs)
         actions = QHBoxLayout()
-        new = QPushButton("Создать поле…")
+        new = QPushButton("Create field…" if is_en else "Создать поле…")
         new.setObjectName("newCustomField")
         new.clicked.connect(lambda: self.editRequested.emit(""))
-        self.rename = QPushButton("Изменить…")
+        self.rename = QPushButton("Edit…" if is_en else "Изменить…")
         self.rename.setObjectName("editCustomField")
         self.rename.clicked.connect(lambda: self.editRequested.emit(self.selected_id()))
-        self.remove = QPushButton("Удалить…")
+        self.remove = QPushButton("Delete…" if is_en else "Удалить…")
         self.remove.setObjectName("removeCustomField")
         self.remove.clicked.connect(lambda: self.removeRequested.emit(self.selected_id()))
         for button in (new, self.rename, self.remove):
             button.setAutoDefault(False)
             actions.addWidget(button)
         self.layout_root.addLayout(actions)
-        note = QLabel("Скрытие не удаляет значения. Пользовательские поля и значения сохраняются в проекте.")
+        note = QLabel(
+            "Hiding does not delete values. Custom fields and values are saved in the project."
+            if is_en
+            else "Скрытие не удаляет значения. Пользовательские поля и значения сохраняются в проекте."
+        )
         note.setWordWrap(True)
         self.layout_root.addWidget(note)
         self.layout_root.addWidget(self.error)
         close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         close.button(QDialogButtonBox.StandardButton.Close).setObjectName("closeFields")
-        close.button(QDialogButtonBox.StandardButton.Close).setText("Закрыть")
+        close.button(QDialogButtonBox.StandardButton.Close).setText("Close" if is_en else "Закрыть")
         close.rejected.connect(self.reject)
         self.layout_root.addWidget(close)
         self.standard.itemChanged.connect(self.changed_item)
@@ -116,9 +129,12 @@ class FieldsDialog(EditorDialog):
 
     def refresh(self) -> None:
         selected = self.selected_id()
+        is_en = self.controller.i18n.language == "en"
+        types = FIELD_TYPES_EN if is_en else FIELD_TYPES
+        builtin = BUILTIN_FIELDS_EN if is_en else BUILTIN_FIELDS
         definitions = self.controller.project.custom_fields.values()
-        custom = {"custom:" + f.id: f.name + " · " + FIELD_TYPES[f.kind] for f in definitions}
-        for widget, fields in ((self.standard, BUILTIN_FIELDS), (self.custom, custom)):
+        custom = {"custom:" + f.id: f.name + " · " + types[f.kind] for f in definitions}
+        for widget, fields in ((self.standard, builtin), (self.custom, custom)):
             widget.blockSignals(True)
             widget.clear()
             for key, label in fields.items():
@@ -142,7 +158,8 @@ class FieldsDialog(EditorDialog):
 
 class FieldDefinitionDialog(EditorDialog):
     def __init__(self, controller: Controller):
-        super().__init__(controller, "fieldDefinitionDialog", "Пользовательское поле")
+        is_en = controller.i18n.language == "en"
+        super().__init__(controller, "fieldDefinitionDialog", "Custom Field" if is_en else "Пользовательское поле")
         self.field_id = ""
         self.resize(480, 380)
         self.form = QFormLayout()
@@ -150,22 +167,27 @@ class FieldDefinitionDialog(EditorDialog):
         self.name.setObjectName("customFieldName")
         self.kind = QComboBox()
         self.kind.setObjectName("customFieldType")
-        for key, label in FIELD_TYPES.items():
+        for key, label in (FIELD_TYPES_EN if is_en else FIELD_TYPES).items():
             self.kind.addItem(label, key)
         self.options = QPlainTextEdit()
         self.options.setObjectName("customFieldOptions")
-        self.options.setPlaceholderText("Одна опция на строку")
+        self.options.setPlaceholderText("One option per line" if is_en else "Одна опция на строку")
         self.aggregate = QComboBox()
         self.aggregate.setObjectName("customFieldAggregate")
-        self.aggregate.addItem("Сумма", "sum")
-        self.aggregate.addItem("Среднее", "average")
-        self.form.addRow("Название", self.name)
-        self.form.addRow("Тип", self.kind)
-        self.form.addRow("Опции", self.options)
-        self.form.addRow("Агрегирование", self.aggregate)
+        self.aggregate.addItem("Sum" if is_en else "Сумма", "sum")
+        self.aggregate.addItem("Average" if is_en else "Среднее", "average")
+        self.form.addRow("Name" if is_en else "Название", self.name)
+        self.form.addRow("Type" if is_en else "Тип", self.kind)
+        self.form.addRow("Options" if is_en else "Опции", self.options)
+        self.form.addRow("Aggregation" if is_en else "Агрегирование", self.aggregate)
         self.layout_root.addLayout(self.form)
-        note = QLabel("Тип после создания не меняется. Для списка нельзя удалить используемую опцию. "
-                      "Люди — ресурсы проекта; лейблы вводятся отдельно для каждой задачи.")
+        note = QLabel(
+            "Type cannot be changed after creation. Options in use cannot be removed. "
+            "People are project resources; labels are entered separately for each task."
+            if is_en
+            else "Тип после создания не меняется. Для списка нельзя удалить используемую опцию. "
+            "Люди — ресурсы проекта; лейблы вводятся отдельно для каждой задачи."
+        )
         note.setWordWrap(True)
         self.layout_root.addWidget(note)
         self.layout_root.addWidget(self.error)
@@ -197,10 +219,11 @@ class FieldDefinitionDialog(EditorDialog):
 
 class FieldValueDialog(EditorDialog):
     def __init__(self, controller: Controller):
-        super().__init__(controller, "fieldValueDialog", "Значение поля")
+        is_en = controller.i18n.language == "en"
+        super().__init__(controller, "fieldValueDialog", "Field Value" if is_en else "Значение поля")
         self.task_id = self.field_id = self.kind = ""
         self.resize(440, 330)
-        self.unset = QCheckBox("Не задано")
+        self.unset = QCheckBox("Not set" if is_en else "Не задано")
         self.unset.setObjectName("customValueUnset")
         self.layout_root.addWidget(self.unset)
         self.stack = QStackedWidget()
@@ -218,7 +241,7 @@ class FieldValueDialog(EditorDialog):
         self.choice.setObjectName("customChoiceValue")
         self.many = QListWidget()
         self.many.setObjectName("customManyValues")
-        self.checkbox = QCheckBox("Да")
+        self.checkbox = QCheckBox("Yes" if is_en else "Да")
         self.checkbox.setObjectName("customCheckboxValue")
         self.color = QLineEdit()
         self.color.setObjectName("customColorValue")
@@ -226,7 +249,7 @@ class FieldValueDialog(EditorDialog):
         color_layout = QHBoxLayout(color_root)
         color_layout.setContentsMargins(0, 0, 0, 0)
         color_layout.addWidget(self.color)
-        choose = QPushButton("Выбрать цвет…")
+        choose = QPushButton("Choose color…" if is_en else "Выбрать цвет…")
         choose.setObjectName("chooseCustomColor")
         choose.clicked.connect(self.choose_color)
         color_layout.addWidget(choose)
@@ -249,6 +272,7 @@ class FieldValueDialog(EditorDialog):
 
     def prepare(self, task_id: str, field_id: str) -> None:
         self.task_id, self.field_id = task_id, field_id
+        is_en = self.controller.i18n.language == "en"
         definition = self.controller.project.custom_fields[field_id]
         self.kind = definition.kind
         value = self.controller.project.tasks[task_id].custom_values.get(field_id)
@@ -257,7 +281,10 @@ class FieldValueDialog(EditorDialog):
         self.unset.setChecked(value is None)
         self.stack.setEnabled(value is not None)
         self.stack.setCurrentWidget(self.pages[self.widgets[self.kind]])
-        self.text.setPlaceholderText("Один лейбл на строку" if self.kind == "labels" else "Текст")
+        if is_en:
+            self.text.setPlaceholderText("One label per line" if self.kind == "labels" else "Text")
+        else:
+            self.text.setPlaceholderText("Один лейбл на строку" if self.kind == "labels" else "Текст")
         self.text.setPlainText("\n".join(value or []) if self.kind == "labels" else str(value or ""))
         self.number.setText(str(value) if value is not None else "")
         self.date.setDate(QDate.fromString(str(value), Qt.DateFormat.ISODate) if self.kind == "date" and value else QDate.currentDate())
@@ -276,11 +303,13 @@ class FieldValueDialog(EditorDialog):
             item.setCheckState(Qt.CheckState.Checked if isinstance(value, list) and key in value else Qt.CheckState.Unchecked)
 
     def choose_color(self) -> None:
-        color = QColorDialog.getColor(QColor(self.color.text()), self, "Цвет значения")
+        is_en = self.controller.i18n.language == "en"
+        color = QColorDialog.getColor(QColor(self.color.text()), self, "Value Color" if is_en else "Цвет значения")
         if color.isValid():
             self.color.setText(color.name())
 
     def apply(self) -> None:
+        is_en = self.controller.i18n.language == "en"
         value: object = None
         if not self.unset.isChecked():
             if self.kind in {"text", "labels"}:
@@ -290,7 +319,7 @@ class FieldValueDialog(EditorDialog):
                 try:
                     value = float(self.number.text().replace(",", ".")) if self.number.text().strip() else None
                 except ValueError:
-                    self.report_error("Введите число, например 8 или 2,5.")
+                    self.report_error("Enter a number, e.g. 8 or 2.5." if is_en else "Введите число, например 8 или 2,5.")
                     return
             elif self.kind == "date":
                 value = self.date.date().toString(Qt.DateFormat.ISODate)

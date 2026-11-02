@@ -29,7 +29,7 @@ Item {
     z: dragging || over ? 5 : 2
     opacity: dragging ? 0.65 : task.status === "closed" ? 0.45 : 1
     Accessible.role: Accessible.Graphic
-    Accessible.name: task.name + ", " + task.start + " — " + task.end + (bar.critical ? ", критическая" : "")
+    Accessible.name: task.name + ", " + task.start + " — " + task.end + (bar.critical ? i18n.tr.critical_comma : "")
     Connections {
         target: workspace
         function onCancelDrags() { bar.cancelled = true; bar.dragging = false; bar.preview = ({}); bar.progressPreview = -1 }
@@ -222,7 +222,7 @@ Item {
                 }
                 onCanceled: workspace.cancelLink()
                 ToolTip.visible: containsMouse
-                ToolTip.text: modelData === "S" ? "Связь от начала задачи" : "Связь от завершения задачи"
+                ToolTip.text: modelData === "S" ? i18n.tr.link_from_start : i18n.tr.link_from_end
             }
         }
     }
@@ -250,5 +250,5 @@ Item {
     ToolTip.visible: bar.dragging || (body.containsMouse && workspace.linkSource === "")
     ToolTip.delay: bar.dragging ? 0 : 600
     ToolTip.text: bar.dragging ? (bar.preview.hint || "") : task.name + "\n" + task.start + " — " + task.end + " · " + Math.round(task.progress) + "%" +
-                  (controller.criticalPath && task.totalFloat !== null && task.totalFloat !== undefined ? "\n" + (bar.critical ? "Критическая · " : "") + "Резерв: " + Number(task.totalFloat/60).toLocaleString(Qt.locale(),"g",6) + " рабочих ч." : "")
+                  (controller.criticalPath && task.totalFloat !== null && task.totalFloat !== undefined ? "\n" + (bar.critical ? (i18n.tr.critical_label + " · ") : "") + i18n.tr.float_prefix + Number(task.totalFloat/60).toLocaleString(Qt.locale(),"g",6) + i18n.tr.work_h : "")
 }
