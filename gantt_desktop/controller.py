@@ -46,6 +46,7 @@ from .domain import (
 )
 from .i18n import FIELD_TYPES_EN, I18n, get_i18n
 from .sample import sample_project
+from .settings_utils import read_bool_setting, read_str_setting, write_setting
 from .workload import workload_rows
 
 if TYPE_CHECKING:
@@ -129,17 +130,21 @@ class Controller(QObject):
     customFieldCreated = Signal(str)
     filterChanged = Signal()
     openLastFileChanged = Signal()
+    milestoneEnterTopChanged = Signal()
+    milestoneExitBottomChanged = Signal()
 
     def __init__(self, project: Project | None = None, settings: QSettings | None = None):
         super().__init__()
+        if settings is None and QCoreApplication.instance() is not None:
+            settings = QSettings()
         self._settings = settings
-        self._open_last_file = False
-        self._last_edited_file = ""
-        if settings is not None:
-            self._open_last_file = bool(settings.value("general/open_last_file", False, type=bool))
-            self._last_edited_file = str(settings.value("general/last_edited_file", "") or "")
-        self._i18n: I18n = I18n(parent=self)
+        self._open_last_file = read_bool_setting(settings, "General/open_last_file", False)
+        self._last_edited_file = read_str_setting(settings, "General/last_edited_file", "")
+        self._milestone_enter_top = read_bool_setting(settings, "General/milestone_enter_top", False)
+        self._milestone_exit_bottom = read_bool_setting(settings, "General/milestone_exit_bottom", False)
+        self._i18n: I18n = I18n(settings=settings, parent=self)
         self._i18n.changed.connect(self._on_i18n_changed)
+
         self.theme: AppTheme | None = None
         self.project = project or sample_project()
         self.dialogs = NativeDialogs(self)
@@ -206,26 +211,34 @@ class Controller(QObject):
 
     @property
     def settings(self) -> QSettings | None:
+        if self._settings is None and QCoreApplication.instance() is not None:
+            self._settings = QSettings()
         return self._settings
 
     @settings.setter
     def settings(self, s: QSettings | None) -> None:
         self._settings = s
         if s is not None:
-            self._open_last_file = bool(s.value("general/open_last_file", False, type=bool))
-            self._last_edited_file = str(s.value("general/last_edited_file", "") or "")
+            self._open_last_file = read_bool_setting(s, "General/open_last_file", False)
+            self._last_edited_file = read_str_setting(s, "General/last_edited_file", "")
+            self._milestone_enter_top = read_bool_setting(s, "General/milestone_enter_top", False)
+            self._milestone_exit_bottom = read_bool_setting(s, "General/milestone_exit_bottom", False)
             self.openLastFileChanged.emit()
+            self.milestoneEnterTopChanged.emit()
+            self.milestoneExitBottomChanged.emit()
+        if hasattr(self, "_i18n") and self._i18n is not None:
+            self._i18n.settings = s
 
     @property
     def open_last_file(self) -> bool:
         if self._settings is not None:
-            return bool(self._settings.value("general/open_last_file", False, type=bool))
+            return read_bool_setting(self._settings, "General/open_last_file", self._open_last_file)
         return self._open_last_file
 
     @property
     def last_edited_file(self) -> str:
         if self._settings is not None:
-            return str(self._settings.value("general/last_edited_file", "") or "")
+            return read_str_setting(self._settings, "General/last_edited_file", self._last_edited_file)
         return self._last_edited_file
 
     @Property(bool, notify=openLastFileChanged)
@@ -241,9 +254,62 @@ class Controller(QObject):
         if s is None and QCoreApplication.instance() is not None:
             s = self._settings = QSettings()
         if s is not None:
-            s.setValue("general/open_last_file", value)
-            s.sync()
+            write_setting(s, "General/open_last_file", value)
         self.openLastFileChanged.emit()
+
+    @property
+    def milestone_enter_top(self) -> bool:
+        if self._settings is not None:
+            return read_bool_setting(self._settings, "General/milestone_enter_top", self._milestone_enter_top)
+        return self._milestone_enter_top
+
+    @milestone_enter_top.setter
+    def milestone_enter_top(self, value: bool) -> None:
+        self.set_milestone_enter_top(value)
+
+    @Property(bool, notify=milestoneEnterTopChanged)
+    def milestoneEnterTop(self) -> bool:
+        return self.milestone_enter_top
+
+    @Slot(bool)
+    def set_milestone_enter_top(self, value: bool) -> None:
+        if self.milestone_enter_top == value:
+            return
+        self._milestone_enter_top = value
+        s = self._settings
+        if s is None and QCoreApplication.instance() is not None:
+            s = self._settings = QSettings()
+        if s is not None:
+            write_setting(s, "General/milestone_enter_top", value)
+        self.milestoneEnterTopChanged.emit()
+        self.viewChanged.emit()
+
+    @property
+    def milestone_exit_bottom(self) -> bool:
+        if self._settings is not None:
+            return read_bool_setting(self._settings, "General/milestone_exit_bottom", self._milestone_exit_bottom)
+        return self._milestone_exit_bottom
+
+    @milestone_exit_bottom.setter
+    def milestone_exit_bottom(self, value: bool) -> None:
+        self.set_milestone_exit_bottom(value)
+
+    @Property(bool, notify=milestoneExitBottomChanged)
+    def milestoneExitBottom(self) -> bool:
+        return self.milestone_exit_bottom
+
+    @Slot(bool)
+    def set_milestone_exit_bottom(self, value: bool) -> None:
+        if self.milestone_exit_bottom == value:
+            return
+        self._milestone_exit_bottom = value
+        s = self._settings
+        if s is None and QCoreApplication.instance() is not None:
+            s = self._settings = QSettings()
+        if s is not None:
+            write_setting(s, "General/milestone_exit_bottom", value)
+        self.milestoneExitBottomChanged.emit()
+        self.viewChanged.emit()
 
     def record_last_edited_file(self, path: Path) -> None:
         resolved = str(path.resolve())
@@ -252,8 +318,8 @@ class Controller(QObject):
         if s is None and QCoreApplication.instance() is not None:
             s = self._settings = QSettings()
         if s is not None:
-            s.setValue("general/last_edited_file", resolved)
-            s.sync()
+            write_setting(s, "General/last_edited_file", resolved)
+
 
     def apply_startup_project(self) -> None:
         if self.open_last_file and self.last_edited_file:

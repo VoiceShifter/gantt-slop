@@ -283,3 +283,96 @@ def test_dependency_paths_are_strokes_not_filled_open_polygons(qapp):
     image = doc.image()
     # Inside the orthogonal route, away from the actual line/bar/grid: it must remain white.
     assert image.pixelColor(round(doc.left + 70), 105).name() == "#ffffff"
+
+
+def test_export_milestone_arrow_routing_down_and_up(qapp, monkeypatch):
+    from PySide6.QtGui import QPainter, QPainterPath, QPolygonF
+    from PySide6.QtCore import QPointF
+
+    p = Project()
+    p.tasks = {
+        "t1": Task("t1", "Task 1", datetime.fromisoformat("2026-01-05T09:00"), duration=60),
+        "m1": Task("m1", "Milestone 1", datetime.fromisoformat("2026-01-08T09:00"), duration=0, kind="milestone"),
+        "t2": Task("t2", "Task 2", datetime.fromisoformat("2026-01-05T09:00"), duration=60),
+    }
+    p.dependencies = [
+        Dependency("d1", "t1", "m1", "FS"),
+        Dependency("d2", "t2", "m1", "FS"),
+    ]
+    doc = ExportDocument(ExportSource.capture(Controller(p)), ExportOptions(columns=("name",), pixels_per_day=26, milestone_enter_top=True))
+
+    drawn_paths = []
+    drawn_polys = []
+    orig_path = QPainter.drawPath
+    orig_poly = QPainter.drawPolygon
+
+    def fake_path(self, path):
+        drawn_paths.append(QPainterPath(path))
+        return orig_path(self, path)
+
+    def fake_poly(self, poly):
+        drawn_polys.append(QPolygonF(poly))
+        return orig_poly(self, poly)
+
+    monkeypatch.setattr(QPainter, "drawPath", fake_path)
+    monkeypatch.setattr(QPainter, "drawPolygon", fake_poly)
+
+    doc.image()
+
+    assert len(drawn_paths) == 2
+    # d1: t1 (row 0) -> m1 (row 1) (downwards into top vertex)
+    p1 = drawn_paths[0]
+    assert p1.elementCount() == 3
+    # Point 0: start at t1 finish
+    # Point 1: horizontal to m1's X
+    # Point 2: vertical down to m1's top vertex (y - 10)
+    assert abs(p1.elementAt(0).y - p1.elementAt(1).y) < 0.001
+    assert abs(p1.elementAt(1).x - p1.elementAt(2).x) < 0.001
+    assert p1.elementAt(2).y > p1.elementAt(1).y
+    poly1 = drawn_polys[0]
+    # Triangle pointing down: tip at bottom of triangle
+    assert poly1.at(0).y() > poly1.at(1).y() and poly1.at(0).y() > poly1.at(2).y()
+
+    # d2: t2 (row 2) -> m1 (row 1) (upwards into bottom vertex)
+    p2 = drawn_paths[1]
+    assert p2.elementCount() == 3
+    assert abs(p2.elementAt(0).y - p2.elementAt(1).y) < 0.001
+    assert abs(p2.elementAt(1).x - p2.elementAt(2).x) < 0.001
+    assert p2.elementAt(2).y < p2.elementAt(1).y
+    poly2 = drawn_polys[1]
+    # Triangle pointing up: tip at top of triangle
+    assert poly2.at(0).y() < poly2.at(1).y() and poly2.at(0).y() < poly2.at(2).y()
+
+
+def test_export_milestone_arrow_bottom_exit(qapp, monkeypatch):
+    from PySide6.QtGui import QPainter, QPainterPath, QPolygonF
+    from PySide6.QtCore import QPointF
+
+    p = Project()
+    p.tasks = {
+        "m": Task("m", "Milestone", datetime.fromisoformat("2026-01-05T09:00"), duration=0, kind="milestone"),
+        "t": Task("t", "Task Below", datetime.fromisoformat("2026-01-08T09:00"), duration=60),
+    }
+    p.dependencies = [Dependency("mt", "m", "t", "FS")]
+
+    drawn_paths = []
+    orig_path = QPainter.drawPath
+    def fake_path(self, path):
+        drawn_paths.append(QPainterPath(path))
+        return orig_path(self, path)
+    monkeypatch.setattr(QPainter, "drawPath", fake_path)
+
+    # When milestone_exit_bottom is True, exits directly from bottom vertex:
+    # route = [start_pt (mx, sy+10), (mx, ty), end]
+    doc = ExportDocument(ExportSource.capture(Controller(p)), ExportOptions(columns=("name",), pixels_per_day=26, milestone_exit_bottom=True))
+    doc.image()
+    assert len(drawn_paths) == 1
+    path = drawn_paths[0]
+    assert path.elementCount() == 3
+    # First segment: vertical straight down from milestone bottom vertex
+    assert abs(path.elementAt(0).x - path.elementAt(1).x) < 0.001
+    assert path.elementAt(1).y > path.elementAt(0).y
+    # Second segment: horizontal straight into task
+    assert abs(path.elementAt(1).y - path.elementAt(2).y) < 0.001
+    assert path.elementAt(2).x > path.elementAt(1).x
+

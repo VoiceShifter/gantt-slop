@@ -3,6 +3,8 @@ from PySide6.QtCore import Property, QObject, QSettings, Qt, Signal, Slot
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
+from .settings_utils import read_bool_setting, write_setting
+
 LIGHT = {
     "surface": "#ffffff", "panel": "#f8f8f8", "raised": "#fafbfc", "input": "#ffffff",
     "text": "#30363b", "secondary": "#66727e", "muted": "#7b858e", "disabled": "#9b9b9b",
@@ -34,9 +36,25 @@ class AppTheme(QObject):
 
     def __init__(self, settings: QSettings | None = None):
         super().__init__()
+        if settings is None and QApplication.instance() is not None:
+            settings = QSettings()
         self._settings = settings
-        self._dark = bool(settings.value("appearance/dark", False, type=bool)) if settings is not None else False
+        self._dark = read_bool_setting(settings, "appearance/dark", False)
         self.apply_palette()
+
+    @property
+    def settings(self) -> QSettings | None:
+        return self._settings
+
+    @settings.setter
+    def settings(self, s: QSettings | None) -> None:
+        self._settings = s
+        if s is not None:
+            new_dark = read_bool_setting(s, "appearance/dark", self._dark)
+            if new_dark != self._dark:
+                self._dark = new_dark
+                self.apply_palette()
+                self.changed.emit()
 
     dark = Property(bool, lambda self: self._dark, notify=changed)
     colors = Property(dict, lambda self: dict(DARK if self._dark else LIGHT), notify=changed)
@@ -46,11 +64,13 @@ class AppTheme(QObject):
         if self._dark == dark:
             return
         self._dark = dark
+        if self._settings is None and QApplication.instance() is not None:
+            self._settings = QSettings()
         if self._settings is not None:
-            self._settings.setValue("appearance/dark", dark)
-            self._settings.sync()
+            write_setting(self._settings, "appearance/dark", dark)
         self.apply_palette()
         self.changed.emit()
+
 
     def apply_palette(self) -> None:
         app = QApplication.instance()

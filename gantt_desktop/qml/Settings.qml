@@ -105,6 +105,60 @@ Drawer {
                 wrapMode: Text.WordWrap
                 color: appTheme.colors.secondary
             }
+            Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.colors.border }
+            Label { text: i18n.tr.dependency_arrows; font.bold: true; color: appTheme.colors.text }
+            Switch {
+                id: milestoneEnterTopSwitch
+                objectName: "milestoneEnterTopSwitch"
+                text: i18n.tr.milestone_enter_top
+                checked: controller.milestoneEnterTop
+                onClicked: controller.set_milestone_enter_top(checked)
+                Accessible.name: text
+                indicator: Rectangle {
+                    objectName: "milestoneEnterTopSwitchTrack"
+                    implicitWidth: 46; implicitHeight: 24; radius: 12
+                    x: milestoneEnterTopSwitch.leftPadding; y: (milestoneEnterTopSwitch.height-height)/2
+                    color: milestoneEnterTopSwitch.checked ? appTheme.colors.accent : appTheme.colors.strongBorder
+                    Rectangle {
+                        objectName: "milestoneEnterTopSwitchThumb"
+                        width: 20; height: 20; radius: 10; y: 2
+                        x: 2 + (parent.width-width-4)*milestoneEnterTopSwitch.visualPosition
+                        color: "white"
+                    }
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: i18n.tr.milestone_enter_top_description
+                wrapMode: Text.WordWrap
+                color: appTheme.colors.secondary
+            }
+            Switch {
+                id: milestoneExitBottomSwitch
+                objectName: "milestoneExitBottomSwitch"
+                text: i18n.tr.milestone_exit_bottom
+                checked: controller.milestoneExitBottom
+                onClicked: controller.set_milestone_exit_bottom(checked)
+                Accessible.name: text
+                indicator: Rectangle {
+                    objectName: "milestoneExitBottomSwitchTrack"
+                    implicitWidth: 46; implicitHeight: 24; radius: 12
+                    x: milestoneExitBottomSwitch.leftPadding; y: (milestoneExitBottomSwitch.height-height)/2
+                    color: milestoneExitBottomSwitch.checked ? appTheme.colors.accent : appTheme.colors.strongBorder
+                    Rectangle {
+                        objectName: "milestoneExitBottomSwitchThumb"
+                        width: 20; height: 20; radius: 10; y: 2
+                        x: 2 + (parent.width-width-4)*milestoneExitBottomSwitch.visualPosition
+                        color: "white"
+                    }
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: i18n.tr.milestone_exit_bottom_description
+                wrapMode: Text.WordWrap
+                color: appTheme.colors.secondary
+            }
             Item { Layout.fillHeight: true }
             Label {
                 Layout.fillWidth: true

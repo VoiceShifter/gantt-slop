@@ -322,7 +322,9 @@ class ExportDialog(EditorDialog):
                              critical=self.critical.isChecked() and visual and self.content.currentData() != "table",
                              baseline=self.baseline.isChecked() and visual and self.content.currentData() != "table",
                              site_import=self.site_import.isChecked() and format_ in {"ganttpro_csv", "ganttpro_xlsx"},
-                             table_headers=self.table_headers.isChecked())
+                             table_headers=self.table_headers.isChecked(),
+                             milestone_enter_top=self.source.milestone_enter_top,
+                             milestone_exit_bottom=self.source.milestone_exit_bottom)
 
     def update_preview(self) -> None:
         if self.source is None:

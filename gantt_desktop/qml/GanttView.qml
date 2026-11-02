@@ -656,19 +656,104 @@ Item {
                         for (let i=0; i<=controller.rowCount; i++) { ctx.moveTo(0,i*view.rowHeight+0.5); ctx.lineTo(width,i*view.rowHeight+0.5) }
                         ctx.stroke()
                         let hitPaths = []
+                        const enterTopEnabled = controller.milestoneEnterTop
+                        const exitBottomEnabled = controller.milestoneExitBottom
+
+                        let incomingByTarget = {}
+                        if (enterTopEnabled) {
+                            for (let link of view.linkRecords) {
+                                if (link.targetMilestone && link.sourceFinish && !link.targetFinish && link.targetRow !== link.sourceRow) {
+                                    const mx = link.tx * view.pixelsPerDay
+                                    const sx = link.sx * view.pixelsPerDay + (link.sourceMilestone ? (link.sourceFinish ? 14 : -14) : link.sourceFinish ? Math.max(0, 6 - link.sourceSpan * view.pixelsPerDay) : 0)
+                                    if (sx < mx) {
+                                        if (!incomingByTarget[link.targetRow]) incomingByTarget[link.targetRow] = { above: [], below: [] }
+                                        if (link.targetRow > link.sourceRow) {
+                                            incomingByTarget[link.targetRow].above.push(link)
+                                        } else {
+                                            incomingByTarget[link.targetRow].below.push(link)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        let enterTopLinks = {}
+                        let enterBottomLinks = {}
+                        for (let tr in incomingByTarget) {
+                            const group = incomingByTarget[tr]
+                            if (group.above.length === 1) {
+                                enterTopLinks[group.above[0].id] = true
+                            } else if (group.above.length > 1) {
+                                group.above.sort(function(a, b) { return a.sourceRow - b.sourceRow })
+                                for (let i = 0; i < group.above.length - 1; i++) {
+                                    enterTopLinks[group.above[i].id] = true
+                                }
+                            }
+                            if (group.below.length === 1) {
+                                enterBottomLinks[group.below[0].id] = true
+                            } else if (group.below.length > 1) {
+                                group.below.sort(function(a, b) { return b.sourceRow - a.sourceRow })
+                                for (let i = 0; i < group.below.length - 1; i++) {
+                                    enterBottomLinks[group.below[i].id] = true
+                                }
+                            }
+                        }
+
                         for (let link of view.linkRecords) {
-                            const sx=link.sx*view.pixelsPerDay+(link.sourceMilestone?(link.sourceFinish?14:-14):link.sourceFinish?Math.max(0,6-link.sourceSpan*view.pixelsPerDay):0)
-                            const tx=link.tx*view.pixelsPerDay+(link.targetMilestone?(link.targetFinish?14:-14):link.targetFinish?Math.max(0,6-link.targetSpan*view.pixelsPerDay):0)
-                            const sy=(link.sourceRow+0.5)*view.rowHeight+(link.sourceSummary?8.5:0)
-                            const ty=(link.targetRow+0.5)*view.rowHeight+(link.targetSummary?8.5:0)
-                            const stubS=sx+(link.sourceFinish?12:-12), stubT=tx+(link.targetFinish?12:-12)
+                            const mx = link.tx * view.pixelsPerDay
+                            const smx = link.sx * view.pixelsPerDay
+                            const sx = smx + (link.sourceMilestone ? (link.sourceFinish ? 14 : -14) : link.sourceFinish ? Math.max(0, 6 - link.sourceSpan * view.pixelsPerDay) : 0)
+                            const tx = mx + (link.targetMilestone ? (link.targetFinish ? 14 : -14) : link.targetFinish ? Math.max(0, 6 - link.targetSpan * view.pixelsPerDay) : 0)
+                            const sy = (link.sourceRow + 0.5) * view.rowHeight + (link.sourceSummary ? 8.5 : 0)
+                            const ty = (link.targetRow + 0.5) * view.rowHeight + (link.targetSummary ? 8.5 : 0)
+                            const stubS = sx + (link.sourceFinish ? 12 : -12), stubT = tx + (link.targetFinish ? 12 : -12)
                             let points
-                            if (link.sourceFinish && !link.targetFinish && sx < tx) {
-                                const middle=(sx+tx)/2
-                                points=[[sx,sy],[middle,sy],[middle,ty],[tx,ty]]
+                            let arrowDir = "horizontal"
+                            let arrowTip = [tx, ty]
+
+                            const isEnterTop = !!enterTopLinks[link.id]
+                            const isEnterBottom = !!enterBottomLinks[link.id]
+                            const isExitBottom = exitBottomEnabled && link.sourceMilestone && link.sourceFinish && !link.targetFinish && link.targetRow > link.sourceRow
+
+                            if (isExitBottom) {
+                                const startX = smx
+                                const startY = sy + 14
+                                if (isEnterTop) {
+                                    const endX = mx, endY = ty - 14
+                                    if (endX === startX) {
+                                        points = [[startX, startY], [endX, endY]]
+                                    } else {
+                                        const midY = (startY + endY) / 2
+                                        points = [[startX, startY], [startX, midY], [endX, midY], [endX, endY]]
+                                    }
+                                    arrowDir = "down"
+                                    arrowTip = [endX, endY]
+                                } else {
+                                    if (tx >= startX) {
+                                        points = [[startX, startY], [startX, ty], [tx, ty]]
+                                    } else {
+                                        const midY = sy + view.rowHeight / 2
+                                        points = [[startX, startY], [startX, midY], [stubT, midY], [stubT, ty], [tx, ty]]
+                                    }
+                                    arrowDir = "horizontal"
+                                    arrowTip = [tx, ty]
+                                }
+                            } else if (isEnterTop) {
+                                const endX = mx, endY = ty - 14
+                                points = [[sx, sy], [endX, sy], [endX, endY]]
+                                arrowDir = "down"
+                                arrowTip = [endX, endY]
+                            } else if (isEnterBottom) {
+                                const endX = mx, endY = ty + 14
+                                points = [[sx, sy], [endX, sy], [endX, endY]]
+                                arrowDir = "up"
+                                arrowTip = [endX, endY]
+                            } else if (link.sourceFinish && !link.targetFinish && sx < tx) {
+                                const middle = (sx + tx) / 2
+                                points = [[sx, sy], [middle, sy], [middle, ty], [tx, ty]]
                             } else {
-                                const midY=sy+(ty>=sy?view.rowHeight/2:-view.rowHeight/2)
-                                points=[[sx,sy],[stubS,sy],[stubS,midY],[stubT,midY],[stubT,ty],[tx,ty]]
+                                const midY = sy + (ty >= sy ? view.rowHeight / 2 : -view.rowHeight / 2)
+                                points = [[sx, sy], [stubS, sy], [stubS, midY], [stubT, midY], [stubT, ty], [tx, ty]]
                             }
                             const highlighted=hoveredLink===link.id || view.activeLinkId===link.id
                             const color=highlighted?appTheme.colors.link:link.critical?"#c93b3b":"#ffa726"
@@ -676,9 +761,16 @@ Item {
                             ctx.beginPath(); ctx.moveTo(points[0][0],points[0][1])
                             for (let p of points.slice(1)) ctx.lineTo(p[0],p[1])
                             ctx.stroke()
-                            const direction=link.targetFinish?-1:1
                             ctx.fillStyle=color; ctx.beginPath()
-                            ctx.moveTo(tx,ty); ctx.lineTo(tx-direction*5,ty-3); ctx.lineTo(tx-direction*5,ty+3); ctx.closePath(); ctx.fill()
+                            if (arrowDir==="down") {
+                                ctx.moveTo(arrowTip[0],arrowTip[1]); ctx.lineTo(arrowTip[0]-3,arrowTip[1]-5); ctx.lineTo(arrowTip[0]+3,arrowTip[1]-5)
+                            } else if (arrowDir==="up") {
+                                ctx.moveTo(arrowTip[0],arrowTip[1]); ctx.lineTo(arrowTip[0]-3,arrowTip[1]+5); ctx.lineTo(arrowTip[0]+3,arrowTip[1]+5)
+                            } else {
+                                const direction=link.targetFinish?-1:1
+                                ctx.moveTo(tx,ty); ctx.lineTo(tx-direction*5,ty-3); ctx.lineTo(tx-direction*5,ty+3)
+                            }
+                            ctx.closePath(); ctx.fill()
                             hitPaths.push({id:link.id,points:points,label:link.label})
                         }
                         paths=hitPaths

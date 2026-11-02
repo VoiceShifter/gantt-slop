@@ -190,6 +190,116 @@ def test_ctrl_q_shortcut_closes_window(gui, qapp):
     assert len(calls) == 2
 
 
+def test_milestone_settings_controller_and_qsettings(tmp_path):
+    ini_path = str(tmp_path / "milestone_settings.ini")
+    settings = QSettings(ini_path, QSettings.Format.IniFormat)
+    c = Controller(Project(), settings=settings)
+
+    assert not c.milestone_enter_top
+    assert not c.milestoneEnterTop
+    assert not c.milestone_exit_bottom
+    assert not c.milestoneExitBottom
+
+    signals_top = []
+    signals_bottom = []
+    c.milestoneEnterTopChanged.connect(lambda: signals_top.append(True))
+    c.milestoneExitBottomChanged.connect(lambda: signals_bottom.append(True))
+
+    c.set_milestone_enter_top(True)
+    assert c.milestoneEnterTop
+    assert len(signals_top) == 1
+    assert settings.value("general/milestone_enter_top", type=bool) is True
+
+    c.set_milestone_exit_bottom(True)
+    assert c.milestoneExitBottom
+    assert len(signals_bottom) == 1
+    assert settings.value("general/milestone_exit_bottom", type=bool) is True
+
+    # Reload controller with the same settings
+    c2 = Controller(Project(), settings=settings)
+    assert c2.milestoneEnterTop
+    assert c2.milestoneExitBottom
+
+
+def test_milestone_settings_switches_in_settings_ui(gui, qapp, tmp_path):
+    controller, window = gui
+    ini_path = str(tmp_path / "ui_settings_milestone.ini")
+    settings = QSettings(ini_path, QSettings.Format.IniFormat)
+    controller.settings = settings
+
+    # Open settings drawer
+    settings_btn = window.findChild(QObject, "settingsButton")
+    assert settings_btn is not None
+    settings_btn.clicked.emit()
+    qapp.processEvents()
+
+    drawer = window.findChild(QObject, "settingsDrawer")
+    assert drawer is not None
+    wait_until(lambda: drawer.property("opened"))
+
+    top_switch = item(window, "milestoneEnterTopSwitch")
+    bottom_switch = item(window, "milestoneExitBottomSwitch")
+    assert top_switch is not None
+    assert bottom_switch is not None
+    assert top_switch.property("checked") is False
+    assert bottom_switch.property("checked") is False
+
+    # Toggle enter-top switch
+    QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point(top_switch))
+    qapp.processEvents()
+    wait_until(lambda: controller.milestone_enter_top is True)
+    assert top_switch.property("checked") is True
+    assert settings.value("general/milestone_enter_top", type=bool) is True
+
+    # Toggle exit-bottom switch
+    QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point(bottom_switch))
+    qapp.processEvents()
+    wait_until(lambda: controller.milestone_exit_bottom is True)
+    assert bottom_switch.property("checked") is True
+    assert settings.value("general/milestone_exit_bottom", type=bool) is True
+
+
+def test_settings_persistence_across_launches_with_percent_general_ini(qapp, tmp_path):
+    ini_file = tmp_path / "Gantt Desktop.conf"
+    ini_file.write_text(
+        "[%General]\n"
+        "language=en\n"
+        "last_edited_file=/tmp/saved_project.gantt.json\n"
+        "milestone_enter_top=true\n"
+        "milestone_exit_bottom=true\n"
+        "open_last_file=true\n\n"
+        "[appearance]\n"
+        "dark=true\n",
+        encoding="utf-8",
+    )
+
+    settings = QSettings(str(ini_file), QSettings.Format.IniFormat)
+    c = Controller(settings=settings)
+
+    assert c.open_last_file is True
+    assert c.last_edited_file == "/tmp/saved_project.gantt.json"
+    assert c.milestone_enter_top is True
+    assert c.milestone_exit_bottom is True
+    assert c.i18n.language == "en"
+
+    # Modify settings through controller APIs
+    c.set_milestone_enter_top(False)
+    c.set_open_last_file(False)
+    c.i18n.setLanguage("ru")
+
+    # Re-launch in a fresh controller with a fresh QSettings instance
+    settings2 = QSettings(str(ini_file), QSettings.Format.IniFormat)
+    c2 = Controller(settings=settings2)
+
+    assert c2.milestone_enter_top is False
+    assert c2.open_last_file is False
+    assert c2.i18n.language == "ru"
+    assert c2.milestone_exit_bottom is True
+    assert c2.last_edited_file == "/tmp/saved_project.gantt.json"
+
+
+
+
 
 
 

@@ -3,7 +3,7 @@ import os
 import time
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, qInstallMessageHandler
+from PySide6.QtCore import QCoreApplication, QEvent, QSettings, qInstallMessageHandler
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -44,11 +44,13 @@ def wait_until(condition, timeout=3):
 
 
 @pytest.fixture
-def gui(qapp):
+def gui(qapp, tmp_path):
     messages = []
     previous = qInstallMessageHandler(lambda _kind, _context, message: messages.append(message))
-    controller = Controller()
-    engine, window = create_window(controller)
+    settings = QSettings(str(tmp_path / "test_gui.ini"), QSettings.Format.IniFormat)
+    controller = Controller(settings=settings)
+    engine, window = create_window(controller, settings=settings)
+
     window.resize(1920, 960)
     window.setProperty("allowClose", True)
     assert QTest.qWaitForWindowExposed(window, 3000)

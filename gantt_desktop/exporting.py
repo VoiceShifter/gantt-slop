@@ -77,6 +77,8 @@ class ExportOptions:
     baseline: bool = False
     site_import: bool = False
     table_headers: bool = True
+    milestone_enter_top: bool = False
+    milestone_exit_bottom: bool = False
 
     def validate(self) -> None:
         if self.format not in {"pdf", "png", "xlsx", "xml", "csv", "ganttpro_csv", "ganttpro_xlsx"} or self.scope not in {"all", "visible"}:
@@ -103,6 +105,8 @@ class ExportSource:
     columns: dict[str, dict]
     default_columns: tuple[str, ...]
     today: date
+    milestone_enter_top: bool = False
+    milestone_exit_bottom: bool = False
 
     @classmethod
     def capture(cls, controller: Controller, context: dict | None = None) -> ExportSource:
@@ -136,7 +140,11 @@ class ExportSource:
         if len(defaults) == 1:
             defaults = ["wbs", "name", "assignee", "effort", "cost"]
         qdate = QDate.currentDate()
-        return cls(project, rows, visible, columns, tuple(defaults), date(qdate.year(), qdate.month(), qdate.day()))
+        return cls(
+            project, rows, visible, columns, tuple(defaults), date(qdate.year(), qdate.month(), qdate.day()),
+            bool(getattr(controller, "milestone_enter_top", False)),
+            bool(getattr(controller, "milestone_exit_bottom", False)),
+        )
 
     def selected_rows(self, scope: str) -> list[dict]:
         return [r for r in self.rows if scope == "all" or r["taskId"] in self.visible_ids]
@@ -459,6 +467,48 @@ class ExportDocument:
         ppd = self.options.pixels_per_day
         painter.save()
         painter.setClipRect(QRectF(self.left, self.header, len(self.dates)*ppd, self.body_rows*self.row_height), Qt.ClipOperation.IntersectClip)
+
+        enter_top_enabled = getattr(self.options, "milestone_enter_top", False)
+        exit_bottom_enabled = getattr(self.options, "milestone_exit_bottom", False)
+
+        incoming_by_target: dict[int, dict[str, list]] = {}
+        if enter_top_enabled:
+            for link in self.source.project.dependencies:
+                if link.source not in indices or link.target not in indices:
+                    continue
+                if link.source == link.target:
+                    continue
+                sr = data[link.source]
+                tr = data[link.target]
+                if tr["milestone"] and link.kind == "FS" and indices[link.source] != indices[link.target]:
+                    target_mx = self.left + ((tr["startValue"].date() - self.start).days + 0.5) * ppd
+                    sx = self.left + ((sr["endValue"].date() - self.start).days + (1 if not sr["milestone"] else 0.5)) * ppd
+                    if sx < target_mx:
+                        src_idx = indices[link.source]
+                        tgt_idx = indices[link.target]
+                        if tgt_idx not in incoming_by_target:
+                            incoming_by_target[tgt_idx] = {"above": [], "below": []}
+                        if tgt_idx > src_idx:
+                            incoming_by_target[tgt_idx]["above"].append((src_idx, link.id))
+                        else:
+                            incoming_by_target[tgt_idx]["below"].append((src_idx, link.id))
+
+        enter_top_links = set()
+        enter_bottom_links = set()
+        for tgt_idx, group in incoming_by_target.items():
+            if len(group["above"]) == 1:
+                enter_top_links.add(group["above"][0][1])
+            elif len(group["above"]) > 1:
+                group["above"].sort(key=lambda item: item[0])
+                for src_idx, link_id in group["above"][:-1]:
+                    enter_top_links.add(link_id)
+            if len(group["below"]) == 1:
+                enter_bottom_links.add(group["below"][0][1])
+            elif len(group["below"]) > 1:
+                group["below"].sort(key=lambda item: -item[0])
+                for src_idx, link_id in group["below"][:-1]:
+                    enter_bottom_links.add(link_id)
+
         for link in self.source.project.dependencies:
             if link.source not in indices or link.target not in indices:
                 continue
@@ -478,18 +528,61 @@ class ExportDocument:
             stub_s = start.x() + (12 if link.kind[0] == "F" else -12)
             stub_t = end.x() + (12 if link.kind[1] == "F" else -12)
             middle = (start.x() + end.x()) / 2
-            route = [start, QPointF(middle, start.y()), QPointF(middle, end.y()), end]
-            if not (link.kind == "FS" and start.x() < end.x()):
+            source_row = data[link.source]
+            target_row = data[link.target]
+            target_mx = self.left + ((target_row["startValue"].date() - self.start).days + 0.5) * ppd
+            source_mx = self.left + ((source_row["startValue"].date() - self.start).days + 0.5) * ppd
+            arrow_dir = "horizontal"
+
+            is_enter_top = link.id in enter_top_links
+            is_enter_bottom = link.id in enter_bottom_links
+            is_exit_bottom = exit_bottom_enabled and source_row["milestone"] and link.kind == "FS" and indices[link.target] > indices[link.source]
+
+            if is_exit_bottom:
+                start_pt = QPointF(source_mx, start.y() + 10)
+                if is_enter_top:
+                    end_pt = QPointF(target_mx, end.y() - 10)
+                    if target_mx == source_mx:
+                        route = [start_pt, end_pt]
+                    else:
+                        mid_y = (start_pt.y() + end_pt.y()) / 2
+                        route = [start_pt, QPointF(source_mx, mid_y), QPointF(target_mx, mid_y), end_pt]
+                    arrow_dir = "down"
+                else:
+                    if end.x() >= source_mx:
+                        route = [start_pt, QPointF(source_mx, end.y()), end]
+                    else:
+                        mid_y = start.y() + self.row_height / 2
+                        route = [start_pt, QPointF(source_mx, mid_y), QPointF(stub_t, mid_y), QPointF(stub_t, end.y()), end]
+                    arrow_dir = "horizontal"
+            elif is_enter_top:
+                end_pt = QPointF(target_mx, end.y() - 10)
+                route = [start, QPointF(target_mx, start.y()), end_pt]
+                arrow_dir = "down"
+            elif is_enter_bottom:
+                end_pt = QPointF(target_mx, end.y() + 10)
+                route = [start, QPointF(target_mx, start.y()), end_pt]
+                arrow_dir = "up"
+            elif link.kind == "FS" and start.x() < end.x():
+                route = [start, QPointF(middle, start.y()), QPointF(middle, end.y()), end]
+            else:
                 mid_y = start.y() + (15 if end.y() >= start.y() else -15)
                 route = [start, QPointF(stub_s, start.y()), QPointF(stub_s, mid_y), QPointF(stub_t, mid_y), QPointF(stub_t, end.y()), end]
-            path = QPainterPath(start)
+            path = QPainterPath(route[0])
             for point in route[1:]:
                 path.lineTo(point)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
-            direction = -1 if link.kind[1] == "F" else 1
             painter.setBrush(color)
-            painter.drawPolygon(QPolygonF([end, QPointF(end.x()-direction*5, end.y()-3), QPointF(end.x()-direction*5, end.y()+3)]))
+            if arrow_dir == "down":
+                tip = route[-1]
+                painter.drawPolygon(QPolygonF([tip, QPointF(tip.x() - 3, tip.y() - 5), QPointF(tip.x() + 3, tip.y() - 5)]))
+            elif arrow_dir == "up":
+                tip = route[-1]
+                painter.drawPolygon(QPolygonF([tip, QPointF(tip.x() - 3, tip.y() + 5), QPointF(tip.x() + 3, tip.y() + 5)]))
+            else:
+                direction = -1 if link.kind[1] == "F" else 1
+                painter.drawPolygon(QPolygonF([end, QPointF(end.x()-direction*5, end.y()-3), QPointF(end.x()-direction*5, end.y()+3)]))
         painter.restore()
 
     def _workload(self, painter: QPainter, first: int, count: int, chart_width: float) -> None:

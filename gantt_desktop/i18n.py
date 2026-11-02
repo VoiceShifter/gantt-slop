@@ -1,7 +1,9 @@
 """Application-wide localization (i18n) for QML and QWidget components."""
 from __future__ import annotations
 
-from PySide6.QtCore import Property, QObject, QSettings, Signal, Slot
+from PySide6.QtCore import Property, QCoreApplication, QObject, QSettings, Signal, Slot
+
+from .settings_utils import read_str_setting, write_setting
 
 LANGUAGES = [
     {"code": "ru", "label": "Русский"},
@@ -83,6 +85,11 @@ MESSAGES_RU: dict[str, str] = {
     "startup": "Запуск",
     "open_last_file": "Открывать последний файл",
     "open_last_file_description": "При запуске открывать последний отредактированный файл. Если выключено — открывается пустой проект.",
+    "dependency_arrows": "Стрелки зависимостей",
+    "milestone_enter_top": "Вход в вехи сверху",
+    "milestone_enter_top_description": "Разрешить стрелкам связей входить в верхнюю вершину вехи при переходе сверху вниз.",
+    "milestone_exit_bottom": "Выход из вех снизу",
+    "milestone_exit_bottom_description": "Разрешить стрелкам связей выходить из нижней вершины вехи к задачам ниже, устраняя лишние изломы линий.",
     "settings_note": "Изменения применяются сразу и сохраняются между запусками на этом компьютере. Файл проекта не меняется.",
     "done": "Готово",
 
@@ -311,6 +318,11 @@ MESSAGES_EN: dict[str, str] = {
     "startup": "Startup",
     "open_last_file": "Open last edited file",
     "open_last_file_description": "Open the last edited project file on startup. If disabled, a blank project is opened.",
+    "dependency_arrows": "Dependency arrows",
+    "milestone_enter_top": "Enter milestones from top",
+    "milestone_enter_top_description": "Allow dependency arrows to enter the top vertex of a milestone to avoid piercing intermediate tasks.",
+    "milestone_exit_bottom": "Exit milestones from bottom",
+    "milestone_exit_bottom_description": "Allow dependency arrows to exit the bottom vertex of a milestone to tasks below, avoiding unnecessary line breaks.",
     "settings_note": "Changes apply immediately and are saved across launches on this computer. The project file does not change.",
     "done": "Done",
 
@@ -533,9 +545,24 @@ class I18n(QObject):
 
     def __init__(self, settings: QSettings | None = None, parent: QObject | None = None):
         super().__init__(parent)
+        if settings is None and QCoreApplication.instance() is not None:
+            settings = QSettings()
         self._settings = settings
-        saved = str(settings.value("general/language", "ru")) if settings is not None else "ru"
+        saved = read_str_setting(settings, "General/language", "ru")
         self._language = saved if saved in {"ru", "en"} else "ru"
+
+    @property
+    def settings(self) -> QSettings | None:
+        return self._settings
+
+    @settings.setter
+    def settings(self, s: QSettings | None) -> None:
+        self._settings = s
+        if s is not None:
+            saved = read_str_setting(s, "General/language", self._language)
+            if saved in {"ru", "en"} and saved != self._language:
+                self._language = saved
+                self.changed.emit()
 
     @Property(str, notify=changed)
     def language(self) -> str:
@@ -570,10 +597,12 @@ class I18n(QObject):
         if language not in {"ru", "en"} or self._language == language:
             return
         self._language = language
+        if self._settings is None and QCoreApplication.instance() is not None:
+            self._settings = QSettings()
         if self._settings is not None:
-            self._settings.setValue("general/language", language)
-            self._settings.sync()
+            write_setting(self._settings, "General/language", language)
         self.changed.emit()
+
 
     @Slot(str, result=str)
     def t(self, key: str) -> str:
