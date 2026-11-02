@@ -81,6 +81,7 @@ ApplicationWindow {
     Shortcut { sequence: "Escape"; enabled:!window.modalBlocked; onActivated: { gantt.cancelInteractions(); if (controller.bulkMode) controller.setBulkMode(false); if (inspector.opened) inspector.close(); contentItem.forceActiveFocus() } }
     Shortcut { sequence: "Return"; enabled:!window.modalBlocked && !controller.bulkMode && !window.editingText && !!controller.selectedId && !inspector.opened; onActivated: window.inspectTask(controller.selectedId) }
     Shortcut { sequence: "Ctrl+F"; enabled:!window.modalBlocked; onActivated: { search.forceActiveFocus(); search.selectAll() } }
+    Shortcut { objectName: "quitShortcut"; sequences: ["Ctrl+Q", "Ctrl+й", "Ctrl+Й"]; enabled: !window.modalBlocked; onActivated: window.close(); onActivatedAmbiguously: window.close() }
 
     Menu {
         id: fileMenu
@@ -96,6 +97,8 @@ ApplicationWindow {
         MenuItem { text: i18n.tr.menu_open_sample; onTriggered: controller.loadExample() }
         MenuSeparator {}
         MenuItem { objectName:"mcpMenuItem"; text: i18n.tr.menu_mcp; onTriggered:{gantt.cancelInteractions();nativeDialogs.showMcp()} }
+        MenuSeparator {}
+        MenuItem { objectName:"quitMenuItem"; text: i18n.tr.menu_quit; onTriggered: window.close() }
     }
     Menu {
         id: taskMenu

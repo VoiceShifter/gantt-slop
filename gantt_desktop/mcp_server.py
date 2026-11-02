@@ -12,7 +12,7 @@ from copy import deepcopy
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
@@ -26,9 +26,15 @@ class McpServer(QObject):
     changed = Signal()
     requested = Signal(str, dict, int, object)
 
-    def __init__(self, controller: Controller):
+    def __init__(self, controller: Controller, settings: QSettings | None = None):
         super().__init__(controller.dialogs)
         self._controller = weakref.ref(controller)
+        self._settings = settings if settings is not None else getattr(controller, "settings", None)
+        self.persistent_token_enabled = False
+        self.persistent_token = ""
+        if self._settings is not None:
+            self.persistent_token_enabled = bool(self._settings.value("mcp/persistent_token", False, type=bool))
+            self.persistent_token = str(self._settings.value("mcp/token", "") or "")
         self._generation = 0
         self._revision = 0
         self._enabled = False
@@ -44,7 +50,62 @@ class McpServer(QObject):
         self._timer.timeout.connect(self._poll)
         self.requested.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
         controller.historyChanged.connect(self._revised)
-        controller.projectLoaded.connect(self.stop)
+        controller.projectLoaded.connect(self._on_project_loaded)
+
+    @property
+    def settings(self) -> QSettings | None:
+        if self._settings is not None:
+            return self._settings
+        controller = self._controller()
+        if controller is not None and getattr(controller, "settings", None) is not None:
+            self._settings = controller.settings
+            return self._settings
+        return None
+
+    def _ensure_settings(self) -> QSettings:
+        current = self.settings
+        if current is not None:
+            return current
+        self._settings = QSettings()
+        return self._settings
+
+    def get_persistent_token(self) -> str:
+        if not self.persistent_token:
+            current = self.settings
+            if current is not None:
+                stored = str(current.value("mcp/token", "") or "")
+                if stored:
+                    self.persistent_token = stored
+            if not self.persistent_token:
+                self.regenerate_persistent_token()
+        return self.persistent_token
+
+    def set_persistent_token(self, token: str) -> None:
+        self.persistent_token = token
+        settings = self._ensure_settings()
+        settings.setValue("mcp/token", token)
+        settings.sync()
+
+    def regenerate_persistent_token(self) -> str:
+        new_token = secrets.token_urlsafe(32)
+        self.set_persistent_token(new_token)
+        return new_token
+
+    def set_persistent_token_enabled(self, enabled: bool) -> None:
+        self.persistent_token_enabled = enabled
+        settings = self._ensure_settings()
+        settings.setValue("mcp/persistent_token", enabled)
+        settings.sync()
+        if enabled and not self.persistent_token:
+            self.get_persistent_token()
+
+    @Slot()
+    def _on_project_loaded(self):
+        if self.persistent_token_enabled and self.active:
+            self._revision = 0
+            self.changed.emit()
+        else:
+            self.stop()
 
     @Slot()
     def _revised(self):
@@ -68,10 +129,13 @@ class McpServer(QObject):
         if not self.running:
             return ""
         return json.dumps({"mcpServers": {"gantt-desktop": {
-            "type": "http", "url": self.url, "headers": {"Authorization": f"Bearer {self.token}"},
+            "type": "http",
+            "url": self.url,
+            "httpUrl": self.url,
+            "headers": {"Authorization": f"Bearer {self.token}"},
         }}}, indent=2)
 
-    def start(self, port: int, allow_writes: bool = False) -> None:
+    def start(self, port: int, allow_writes: bool = False, token: str | None = None) -> None:
         if self._thread is not None:
             raise ValueError("Сначала остановите текущий MCP-сервер.")
         if type(port) is not int or not 0 <= port <= 65535:
@@ -84,7 +148,11 @@ class McpServer(QObject):
         try:
             sock.setblocking(False)
             port = sock.getsockname()[1]
-            token = secrets.token_urlsafe(32)
+            if not token:
+                if self.persistent_token_enabled and self.get_persistent_token():
+                    token = self.get_persistent_token()
+                else:
+                    token = secrets.token_urlsafe(32)
             generation = self._generation + 1
             app = build_app(self.request, generation, token, port, allow_writes)
             server = uvicorn.Server(uvicorn.Config(app, log_config=None, log_level="warning", access_log=False,

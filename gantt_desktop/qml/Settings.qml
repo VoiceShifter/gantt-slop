@@ -77,6 +77,34 @@ Drawer {
                 wrapMode: Text.WordWrap
                 color: appTheme.colors.secondary
             }
+            Rectangle { Layout.fillWidth: true; height: 1; color: appTheme.colors.border }
+            Label { text: i18n.tr.startup; font.bold: true; color: appTheme.colors.text }
+            Switch {
+                id: openLastFileSwitch
+                objectName: "openLastFileSwitch"
+                text: i18n.tr.open_last_file
+                checked: controller.openLastFile
+                onClicked: controller.set_open_last_file(checked)
+                Accessible.name: text
+                indicator: Rectangle {
+                    objectName: "openLastFileSwitchTrack"
+                    implicitWidth: 46; implicitHeight: 24; radius: 12
+                    x: openLastFileSwitch.leftPadding; y: (openLastFileSwitch.height-height)/2
+                    color: openLastFileSwitch.checked ? appTheme.colors.accent : appTheme.colors.strongBorder
+                    Rectangle {
+                        objectName: "openLastFileSwitchThumb"
+                        width: 20; height: 20; radius: 10; y: 2
+                        x: 2 + (parent.width-width-4)*openLastFileSwitch.visualPosition
+                        color: "white"
+                    }
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: i18n.tr.open_last_file_description
+                wrapMode: Text.WordWrap
+                color: appTheme.colors.secondary
+            }
             Item { Layout.fillHeight: true }
             Label {
                 Layout.fillWidth: true

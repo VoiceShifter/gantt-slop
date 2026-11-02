@@ -9,7 +9,7 @@ import pytest
 from conftest import wait_until
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
-from PySide6.QtCore import Qt, QThread
+from PySide6.QtCore import QSettings, Qt, QThread
 from test_filters import filter_project
 
 from gantt_desktop.controller import Controller
@@ -982,4 +982,122 @@ def test_mcp_bulk_edit_tasks(access):
         call(server, "bulk_edit_tasks", task_ids=[])
     with pytest.raises(ValueError, match="Unknown task ID"):
         call(server, "bulk_edit_tasks", task_ids=["c", "nonexistent"])
+
+
+def test_persistent_token_saved_to_qsettings_and_reused_on_restart(qapp, tmp_path):
+    ini_path = str(tmp_path / "mcp_settings.ini")
+    settings = QSettings(ini_path, QSettings.Format.IniFormat)
+    c = Controller(filter_project())
+    server = McpServer(c, settings=settings)
+    assert not server.persistent_token_enabled
+    server.set_persistent_token_enabled(True)
+    assert server.persistent_token_enabled
+    token1 = server.get_persistent_token()
+    assert token1 and len(token1) >= 32
+    assert settings.value("mcp/token") == token1
+    assert settings.value("mcp/persistent_token", type=bool) is True
+
+    # Start server - should use persistent token
+    server.start(0)
+    wait_until(lambda: server.running)
+    assert server.token == token1
+    port = int(server.url.split(":")[-1].split("/")[0])
+
+    # Restart server - should reuse same persistent token
+    server.stop()
+    assert not server.running
+    server.start(port)
+    wait_until(lambda: server.running)
+    assert server.token == token1
+    server.stop()
+    c.dialogs.dispose()
+
+
+def test_persistent_token_across_mcp_server_instances(qapp, tmp_path):
+    ini_path = str(tmp_path / "mcp_settings.ini")
+    settings1 = QSettings(ini_path, QSettings.Format.IniFormat)
+    c1 = Controller(filter_project())
+    server1 = McpServer(c1, settings=settings1)
+    server1.set_persistent_token_enabled(True)
+    token = server1.get_persistent_token()
+    c1.dialogs.dispose()
+
+    # Second instance with same settings file
+    settings2 = QSettings(ini_path, QSettings.Format.IniFormat)
+    c2 = Controller(filter_project())
+    server2 = McpServer(c2, settings=settings2)
+    assert server2.persistent_token_enabled
+    assert server2.persistent_token == token
+    assert server2.get_persistent_token() == token
+    server2.start(0)
+    wait_until(lambda: server2.running)
+    assert server2.token == token
+    server2.stop()
+    c2.dialogs.dispose()
+
+
+def test_project_switch_with_persistent_token_keeps_server_online(qapp, tmp_path):
+    ini_path = str(tmp_path / "mcp_settings.ini")
+    settings = QSettings(ini_path, QSettings.Format.IniFormat)
+    c = Controller(filter_project())
+    server = McpServer(c, settings=settings)
+    server.set_persistent_token_enabled(True)
+    server.start(0, allow_writes=True)
+    wait_until(lambda: server.running)
+    port = int(server.url.split(":")[-1].split("/")[0])
+    token = server.token
+
+    # Verify HTTP connection before switch
+    snapshot1 = run_async(lambda: connect(server, lambda client: client.call_tool("get_project", {})))
+    data1 = json.loads(snapshot1.content[0].text)
+    assert "project" in data1 and data1["project"]["name"] != "Second Project"
+
+    # Load new project while server is running
+    c.load_project(Project(name="Second Project"))
+    assert server.running and server.active
+    assert server.token == token
+    assert int(server.url.split(":")[-1].split("/")[0]) == port
+    assert server._revision == 0
+
+    # Verify HTTP connection returns new project
+    snapshot2 = run_async(lambda: connect(server, lambda client: client.call_tool("get_project", {})))
+    data2 = json.loads(snapshot2.content[0].text)
+    assert data2["project"]["name"] == "Second Project"
+    assert data2["revision"] == 0
+
+    server.stop()
+    c.dialogs.dispose()
+
+
+def test_regenerate_and_custom_persistent_token(qapp, tmp_path):
+    ini_path = str(tmp_path / "mcp_settings.ini")
+    settings = QSettings(ini_path, QSettings.Format.IniFormat)
+    c = Controller(filter_project())
+    server = McpServer(c, settings=settings)
+    server.set_persistent_token_enabled(True)
+    token1 = server.get_persistent_token()
+
+    # Regenerate
+    token2 = server.regenerate_persistent_token()
+    assert token2 != token1
+    assert settings.value("mcp/token") == token2
+
+    # Custom token
+    server.set_persistent_token("my-custom-persistent-token-12345")
+    assert server.get_persistent_token() == "my-custom-persistent-token-12345"
+    assert settings.value("mcp/token") == "my-custom-persistent-token-12345"
+
+    server.start(0)
+    wait_until(lambda: server.running)
+    assert server.token == "my-custom-persistent-token-12345"
+
+    # Test HTTP auth with custom token
+    async def check_auth(client):
+        return await client.call_tool("get_project", {})
+
+    res = run_async(lambda: connect(server, check_auth))
+    assert res.content
+
+    server.stop()
+    c.dialogs.dispose()
 

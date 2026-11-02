@@ -18,10 +18,13 @@ def create_window(
     controller: Controller,
     theme: AppTheme | None = None,
     i18n: I18n | None = None,
+    settings: QSettings | None = None,
 ) -> tuple[QQmlApplicationEngine, QQuickWindow]:
-    controller.theme = theme if theme is not None else AppTheme()
+    if settings is not None:
+        controller.settings = settings
+    controller.theme = theme if theme is not None else AppTheme(settings)
     controller.theme.setParent(controller)
-    controller.i18n = i18n if i18n is not None else I18n()
+    controller.i18n = i18n if i18n is not None else I18n(settings)
     controller.i18n.setParent(controller)
     set_i18n(controller.i18n)
     engine = QQmlApplicationEngine()
@@ -57,13 +60,16 @@ def main() -> int:
     app.setApplicationName("Gantt Desktop")
     app.setOrganizationName("GanttDesktop")
     QQuickStyle.setStyle("Basic")
-    controller = Controller()
-    if args.project and not controller.load_path(args.project):
-        print(f"Could not open {args.project}", file=sys.stderr)
-        return 2
     settings = QSettings()
+    controller = Controller(settings=settings)
+    if args.project:
+        if not controller.load_path(args.project):
+            print(f"Could not open {args.project}", file=sys.stderr)
+            return 2
+    else:
+        controller.apply_startup_project()
     try:
-        engine, window = create_window(controller, AppTheme(settings), I18n(settings))
+        engine, window = create_window(controller, AppTheme(settings), I18n(settings), settings)
     except RuntimeError as error:
         print(error, file=sys.stderr)
         return 1

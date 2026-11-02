@@ -614,7 +614,7 @@ class NativeDialogs(QObject):
         from .mcp_server import McpServer
 
         if self._mcp is None:
-            self._mcp = McpServer(self.controller)
+            self._mcp = McpServer(self.controller, settings=getattr(self.controller, "settings", None))
             self._mcp.changed.connect(self.mcpChanged)
         dialog = self._editors.get("mcp")
         if not isinstance(dialog, McpDialog):

@@ -80,6 +80,9 @@ MESSAGES_RU: dict[str, str] = {
     "theme_description": "Одна тема для диаграммы, таблицы, панелей и всех диалогов.",
     "language": "Язык",
     "language_description": "Выбор языка интерфейса приложения.",
+    "startup": "Запуск",
+    "open_last_file": "Открывать последний файл",
+    "open_last_file_description": "При запуске открывать последний отредактированный файл. Если выключено — открывается пустой проект.",
     "settings_note": "Изменения применяются сразу и сохраняются между запусками на этом компьютере. Файл проекта не меняется.",
     "done": "Готово",
 
@@ -139,6 +142,7 @@ MESSAGES_RU: dict[str, str] = {
     "menu_save_as": "Сохранить как…",
     "menu_open_sample": "Открыть демонстрационный проект",
     "menu_mcp": "MCP-сервер…",
+    "menu_quit": "Выход",
 
     "menu_open_task": "Открыть задачу",
     "menu_show_on_chart": "Показать на диаграмме",
@@ -304,6 +308,9 @@ MESSAGES_EN: dict[str, str] = {
     "theme_description": "One theme for chart, table, panels and all dialogs.",
     "language": "Language",
     "language_description": "Choose application interface language.",
+    "startup": "Startup",
+    "open_last_file": "Open last edited file",
+    "open_last_file_description": "Open the last edited project file on startup. If disabled, a blank project is opened.",
     "settings_note": "Changes apply immediately and are saved across launches on this computer. The project file does not change.",
     "done": "Done",
 
@@ -363,6 +370,7 @@ MESSAGES_EN: dict[str, str] = {
     "menu_save_as": "Save as…",
     "menu_open_sample": "Open sample project",
     "menu_mcp": "MCP server…",
+    "menu_quit": "Quit",
 
     "menu_open_task": "Open task",
     "menu_show_on_chart": "Show on chart",

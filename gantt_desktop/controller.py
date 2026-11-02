@@ -16,10 +16,12 @@ from PySide6.QtCore import (
     Property,
     QAbstractListModel,
     QByteArray,
+    QCoreApplication,
     QDate,
     QModelIndex,
     QObject,
     QPersistentModelIndex,
+    QSettings,
     Qt,
     Signal,
     Slot,
@@ -126,9 +128,16 @@ class Controller(QObject):
     focusRequested = Signal(float)
     customFieldCreated = Signal(str)
     filterChanged = Signal()
+    openLastFileChanged = Signal()
 
-    def __init__(self, project: Project | None = None):
+    def __init__(self, project: Project | None = None, settings: QSettings | None = None):
         super().__init__()
+        self._settings = settings
+        self._open_last_file = False
+        self._last_edited_file = ""
+        if settings is not None:
+            self._open_last_file = bool(settings.value("general/open_last_file", False, type=bool))
+            self._last_edited_file = str(settings.value("general/last_edited_file", "") or "")
         self._i18n: I18n = I18n(parent=self)
         self._i18n.changed.connect(self._on_i18n_changed)
         self.theme: AppTheme | None = None
@@ -194,6 +203,64 @@ class Controller(QObject):
         self.selectionChanged.emit()
         if hasattr(self.dialogs, "on_language_changed"):
             self.dialogs.on_language_changed()
+
+    @property
+    def settings(self) -> QSettings | None:
+        return self._settings
+
+    @settings.setter
+    def settings(self, s: QSettings | None) -> None:
+        self._settings = s
+        if s is not None:
+            self._open_last_file = bool(s.value("general/open_last_file", False, type=bool))
+            self._last_edited_file = str(s.value("general/last_edited_file", "") or "")
+            self.openLastFileChanged.emit()
+
+    @property
+    def open_last_file(self) -> bool:
+        if self._settings is not None:
+            return bool(self._settings.value("general/open_last_file", False, type=bool))
+        return self._open_last_file
+
+    @property
+    def last_edited_file(self) -> str:
+        if self._settings is not None:
+            return str(self._settings.value("general/last_edited_file", "") or "")
+        return self._last_edited_file
+
+    @Property(bool, notify=openLastFileChanged)
+    def openLastFile(self) -> bool:
+        return self.open_last_file
+
+    @Slot(bool)
+    def set_open_last_file(self, value: bool) -> None:
+        if self.open_last_file == value:
+            return
+        self._open_last_file = value
+        s = self._settings
+        if s is None and QCoreApplication.instance() is not None:
+            s = self._settings = QSettings()
+        if s is not None:
+            s.setValue("general/open_last_file", value)
+            s.sync()
+        self.openLastFileChanged.emit()
+
+    def record_last_edited_file(self, path: Path) -> None:
+        resolved = str(path.resolve())
+        self._last_edited_file = resolved
+        s = self._settings
+        if s is None and QCoreApplication.instance() is not None:
+            s = self._settings = QSettings()
+        if s is not None:
+            s.setValue("general/last_edited_file", resolved)
+            s.sync()
+
+    def apply_startup_project(self) -> None:
+        if self.open_last_file and self.last_edited_file:
+            path = Path(self.last_edited_file)
+            if path.is_file() and self.load_path(path):
+                return
+        self.load_project(Project())
 
     bulkDeleteCount = Property(
         int, lambda self: len(self._bulk_delete_ids()), notify=bulkChanged
@@ -1637,6 +1704,8 @@ class Controller(QObject):
         project.validate()
         self.restore(project.to_dict(), reset_view=True)
         self._path = path
+        if path is not None:
+            self.record_last_edited_file(path)
         self._history = [("", self.project.to_dict())]
         self._history_index = self._clean_index = 0
         self.historyChanged.emit()
@@ -1783,6 +1852,7 @@ class Controller(QObject):
             return False
         self._path = path
         self._clean_index = self._history_index
+        self.record_last_edited_file(path)
         self.historyChanged.emit()
         self.fileChanged.emit()
         self.toast.emit("Проект сохранён")

@@ -4,7 +4,7 @@ import socket
 import pytest
 from conftest import wait_until
 from dialog_helpers import click_native, native_dialog, replace_native
-from PySide6.QtCore import QObject, Qt
+from PySide6.QtCore import QObject, QSettings, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
@@ -258,3 +258,57 @@ def test_rejected_mcp_dates_leave_visible_chart_and_file_unchanged(gui, tmp_path
     assert (bar.x(), bar.width()) == geometry and not c.dirty and not c.canUndo
     assert path.read_bytes() == source_bytes
     server.stop()
+
+
+def test_mcp_persistent_token_ui_flow(gui, tmp_path):
+    c, window = gui
+    ini_path = str(tmp_path / "mcp_ui_settings.ini")
+    settings = QSettings(ini_path, QSettings.Format.IniFormat)
+    c.settings = settings
+    dialog = open_mcp(window)
+    assert not dialog.persistent_token.isChecked()
+    assert click_native("mcpPersistentToken")
+    assert dialog.persistent_token.isChecked()
+    assert dialog.server.persistent_token_enabled
+    token = dialog.token.text()
+    assert token and len(token) >= 32
+    assert settings.value("mcp/persistent_token", type=bool) is True
+    assert settings.value("mcp/token") == token
+
+    # Regenerate token button
+    assert click_native("mcpRegenerateToken")
+    new_token = dialog.token.text()
+    assert new_token != token
+    assert settings.value("mcp/token") == new_token
+
+    # Start server with persistent token
+    assert replace_native("mcpPort", "0") and click_native("mcpStart")
+    wait_until(lambda: dialog.server.running)
+    server = dialog.server
+    assert server.running and server.token == new_token
+    assert not dialog.persistent_token.isEnabled()
+    assert not dialog.regen_button.isEnabled()
+
+    # Verify clipboard configuration has both url and httpUrl
+    assert click_native("mcpCopyConfig")
+    clipboard = QGuiApplication.clipboard()
+    config = json.loads(clipboard.text())["mcpServers"]["gantt-desktop"]
+    assert config["url"] == server.url
+    assert config["httpUrl"] == server.url
+    assert config["headers"]["Authorization"] == f"Bearer {server.token}"
+    clipboard.clear()
+
+    # Switch project while server is running - server stays online with persistent token
+    c.load_project(Project(name="Other Project"))
+    assert server.running and server.token == new_token
+    assert item(window, "mcpIndicator").isVisible()
+
+    # Re-open dialog and stop server
+    dialog = open_mcp(window)
+    assert click_native("mcpStop")
+    assert not server.active
+    # In persistent mode, stopped dialog retains persistent token
+    assert dialog.token.text() == new_token
+    assert dialog.persistent_token.isEnabled()
+    assert dialog.regen_button.isEnabled()
+    QTest.keyClick(dialog, Qt.Key.Key_Escape)

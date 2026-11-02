@@ -28,9 +28,17 @@ An LLM **client/host** can now access the project open in Gantt Desktop. The app
 
 Use the **copied values**, not the placeholder above. Do not commit or publish this configuration. The token grants access to the whole open project, including hidden tasks, notes, resource data and baselines. A connected LLM host may send that data to its model provider; choose a trusted host/provider.
 
-The bottom-bar **MCP · чтение / MCP · изменения** indicator reopens the controls. **Выключить** revokes access. Successfully opening/importing another project or exiting also stops the server. A failed load leaves the current project and its access unchanged. Closing the MCP dialog alone does **not** stop it. Every enable generates a new token: reconnect with newly copied configuration, including a possibly different port.
+The bottom-bar **MCP · чтение / MCP · изменения** indicator reopens the controls. **Выключить** revokes access. Closing the MCP dialog alone does **not** stop it.
 
-Access settings and credentials are not saved in `.gantt.json` or preferences; there is no automatic startup. If SDK imports are unavailable, the dialog reports the failure without enabling access; reinstall dependencies in the interpreter used to launch the app.
+By default (with persistent token unchecked), every enable generates a fresh ephemeral token, and opening another project or exiting stops the server.
+
+### Persistent token across sessions
+
+To avoid re-configuring LLM clients (such as Gemini CLI) each time a new project is opened or between application sessions, check **Постоянный токен (сохраняется между сессиями)** / **Persistent token across sessions**:
+- The token is securely stored in application preferences (`QSettings`).
+- When persistent token is enabled, opening/loading another project keeps the server active on the same port with the same token, resetting document revisions to 0 for the newly opened project.
+- You can generate a new token at any time by clicking **Сгенерировать** / **Regenerate**, or enter a custom token while stopped.
+- The **Копировать конфигурацию** / **Copy configuration** output includes both `"url"` and `"httpUrl"`, making it directly compatible with Gemini CLI (`~/.gemini/settings.json`) and other standard MCP clients without manual edits.
 
 ## Gemini CLI and other clients
 

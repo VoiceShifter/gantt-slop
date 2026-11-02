@@ -877,10 +877,18 @@ Item {
         onPositionChanged: if (pressed) { view.gridScroll=position*view.gridContentWidth; view.clampGridScroll() }
     }
     Text {
-        anchors.centerIn: body
+        objectName: "emptyStateHint"
+        x: 0
+        width: view.gridWidth
+        anchors.verticalCenter: body.verticalCenter
         visible: controller.taskCount===0 || controller.rowCount<=1
         text: controller.taskCount===0 ? i18n.tr.empty_start_hint : i18n.tr.empty_filter_hint
-        color:appTheme.colors.muted; font.pixelSize:16; lineHeight:1.6
-        horizontalAlignment:Text.AlignHCenter
+        color: appTheme.colors.muted
+        font.pixelSize: 15
+        lineHeight: 1.5
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
+        leftPadding: 24
+        rightPadding: 24
     }
 }
