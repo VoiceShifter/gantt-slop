@@ -61,7 +61,7 @@ In read-only mode, only `get_project` is advertised. To expose the other tools, 
 
 | Tool | Operation |
 |---|---|
-| `get_project` | Detached full native project snapshot, revision, computed task/group/milestone start/finish spans, dirty state and Undo/Redo labels. Includes filtered/collapsed elements; no file-system path. |
+| `get_project` | Detached full native project snapshot, revision, computed task/group/milestone start/finish spans, `critical_path` analysis, dirty state and Undo/Redo labels. Includes filtered/collapsed elements; no file-system path. |
 | `create_task` | Append a task, group or milestone under an existing group or at the root; returns its stable ID. |
 | `edit_task` | Edit one name/notes/color/parent/deadline/status/priority/effort/cost/progress/duration/start/end/time/assignee field using desktop validation and scheduling. |
 | `set_assignee` | Set or clear a task's assignee by resource name; automatically resolves or creates the project-local resource. |
@@ -69,6 +69,20 @@ In read-only mode, only `get_project` is advertised. To expose the other tools, 
 | `assign_resources` | Assign existing project resource IDs, or clear them. No invitations or implicit resource creation. Changed sets receive equal shares; unchanged sets retain their allocation. |
 | `save_dependency` | Create a dependency or update an existing ID; FS/SS/FF/SF and signed lag, with cycle validation and downstream scheduling. |
 | `delete_dependency` | Remove an existing dependency without pulling dates back. |
+| `rename_project` | Rename the active project. |
+| `save_resource` | Create or update a project-local resource with daily capacity (hours) and workdays (0=Mon..6=Sun). |
+| `delete_resource` | Remove a resource from the project and unassign it from all tasks. |
+| `save_custom_field` | Create or update a custom field definition (text, number, date, select, checkbox, color, multi, people, labels). |
+| `delete_custom_field` | Remove a custom field definition and clear its values from all tasks. |
+| `set_custom_value` | Set or clear a task's custom field value. |
+| `create_baseline` | Snapshot the current schedule as a named baseline. |
+| `select_baseline` | Activate a baseline for variance tracking or clear active baseline. |
+| `delete_baseline` | Delete a baseline by ID. |
+| `set_project_workdays` | Set project calendar working days as a list of integers (0..6). |
+| `set_holidays` | Set project calendar holidays as a list of ISO date strings (YYYY-MM-DD). |
+| `move_task` | Shift a task start date by a signed integer number of days, propagating downstream dependencies. |
+| `relocate_task` | Move a task in the WBS before/after another task or into/appended to a group. |
+| `bulk_edit_tasks` | Apply changes (status, priority, color, assignee, resources) to multiple tasks in a single Undo step. |
 | `undo` / `redo` | Walk the shared document history, which includes **human edits**, not only MCP actions. Check the returned labels first. |
 
 Tool discovery supplies argument schemas and descriptions. Use stable IDs from `get_project`, not row numbers. Use `spans` for computed summary dates/finishes rather than inferring them from stored task duration.
@@ -89,7 +103,7 @@ Tool discovery supplies argument schemas and descriptions. Use stable IDs from `
 - The token is generated with `secrets.token_urlsafe(32)`, held in memory and masked in the dialog. The copied configuration deliberately contains it. Logs do not intentionally include authorization headers.
 - Request bodies are limited to **256 KiB**, including chunked requests; editable text parameters to **64 KiB**. HTTP concurrency is bounded. Qt bridge waits time out after 15 seconds; an already executing document transaction cannot be interrupted halfway through.
 - This is a local static-token integration, **not** an Internet/OAuth/TLS service. Do not expose it through a tunnel/reverse proxy. Direct browser-origin clients and stdio-only hosts are not supported by this transport.
-- Reads currently return the whole project; there is no pagination, change subscription, resource/prompt catalog or general GUI automation API. Tools do not create resources, change calendars/custom-field definitions/baselines/filter presets, or implement cascade sorting.
+- Reads currently return the whole project; there is no pagination, change subscription, prompt catalog or general GUI automation API.
 - Native JSON remains **schema 9**. The feature changes neither file interchange fidelity nor the existing GanttPRO transfer limitations. It does not connect to GanttPRO or revive discontinued MPP work.
 
 ## Verification

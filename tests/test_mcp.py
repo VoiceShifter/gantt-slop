@@ -349,6 +349,20 @@ def test_real_sdk_handshake_tools_read_edit_undo_redo_and_qt_thread(online):
             "assign_resources",
             "save_dependency",
             "delete_dependency",
+            "rename_project",
+            "save_resource",
+            "delete_resource",
+            "save_custom_field",
+            "delete_custom_field",
+            "set_custom_value",
+            "create_baseline",
+            "select_baseline",
+            "delete_baseline",
+            "set_project_workdays",
+            "set_holidays",
+            "move_task",
+            "relocate_task",
+            "bulk_edit_tasks",
             "undo",
             "redo",
         }
@@ -804,4 +818,168 @@ def test_set_assignee_mcp_tool_and_edit_task_assignee(access, online):
         assert c_online.project.tasks["c"].assignee == "Dave"
 
     run_async(lambda: connect(server_online, online_test))
+
+
+def test_mcp_critical_path_in_get_project(online):
+    _c, server = online
+
+    async def journey(client):
+        state = (await client.call_tool("get_project")).structured_content
+        assert "critical_path" in state
+        cp = state["critical_path"]
+        assert "critical_tasks" in cp and "critical_links" in cp and "total_float" in cp
+        assert cp["finish"] is not None
+
+    run_async(lambda: connect(server, journey))
+
+
+def test_mcp_rename_project(access):
+    c, server = access
+    before = c.project.name
+    res = call(server, "rename_project", name="Renamed Project")
+    assert res["changed"] and c.project.name == "Renamed Project"
+    undone = call(server, "undo")
+    assert undone["changed"] and c.project.name == before
+
+
+def test_mcp_resources_management(access):
+    c, server = access
+    # 1. Create resource
+    res = call(server, "save_resource", name="Senior Dev", capacity=7.0, workdays=[0, 1, 2, 3])
+    r_id = res["resource_id"]
+    assert res["changed"] and r_id in c.project.resources
+    r = c.project.resources[r_id]
+    assert r.name == "Senior Dev" and r.capacity == 7.0 and r.workdays == {0, 1, 2, 3}
+
+    # 2. Update resource
+    res_up = call(server, "save_resource", resource_id=r_id, name="Lead Dev", capacity=6.0, workdays=[1, 2, 3, 4])
+    assert res_up["changed"]
+    assert c.project.resources[r_id].name == "Lead Dev"
+    assert c.project.resources[r_id].capacity == 6.0
+    assert c.project.resources[r_id].workdays == {1, 2, 3, 4}
+
+    # 3. Delete resource
+    res_del = call(server, "delete_resource", resource_id=r_id)
+    assert res_del["changed"] and r_id not in c.project.resources
+
+    # 4. Unknown resource
+    with pytest.raises(ValueError, match="Unknown resource ID"):
+        call(server, "delete_resource", resource_id="nonexistent")
+
+
+def test_mcp_custom_fields_management(access):
+    c, server = access
+    # 1. Create text custom field
+    field_res = call(server, "save_custom_field", name="Ticket ID", kind="text")
+    fid = field_res["field_id"]
+    assert field_res["changed"] and fid in c.project.custom_fields
+    assert c.project.custom_fields[fid].name == "Ticket ID"
+
+    # 2. Set custom value on task
+    val_res = call(server, "set_custom_value", task_id="c", field_id=fid, value="PROJ-1234")
+    assert val_res["changed"] and c.project.tasks["c"].custom_values[fid] == "PROJ-1234"
+
+    # 3. Clear custom value
+    clear_res = call(server, "set_custom_value", task_id="c", field_id=fid, value=None)
+    assert clear_res["changed"] and fid not in c.project.tasks["c"].custom_values
+
+    # 4. Delete custom field
+    del_res = call(server, "delete_custom_field", field_id=fid)
+    assert del_res["changed"] and fid not in c.project.custom_fields
+
+    # 5. Invalid IDs
+    with pytest.raises(ValueError, match="Unknown custom field ID"):
+        call(server, "delete_custom_field", field_id="nonexistent")
+    with pytest.raises(ValueError, match="Unknown custom field ID"):
+        call(server, "set_custom_value", task_id="c", field_id="nonexistent", value="test")
+
+
+def test_mcp_baselines_management(access):
+    c, server = access
+    # 1. Create baseline (automatically activates it)
+    base_res = call(server, "create_baseline", name="Initial Baseline")
+    bid = base_res["baseline_id"]
+    assert base_res["changed"] and bid in c.project.baselines
+    assert c.project.baselines[bid].name == "Initial Baseline"
+    assert c.project.active_baseline == bid
+
+    # 2. Deselect baseline
+    desel_res = call(server, "select_baseline", baseline_id="")
+    assert desel_res["changed"] and c.project.active_baseline == ""
+
+    # 3. Re-select baseline
+    sel_res = call(server, "select_baseline", baseline_id=bid)
+    assert sel_res["changed"] and c.project.active_baseline == bid
+
+    # 4. Delete baseline
+    del_res = call(server, "delete_baseline", baseline_id=bid)
+    assert del_res["changed"] and bid not in c.project.baselines
+
+    # 5. Unknown baseline
+    with pytest.raises(ValueError, match="Unknown baseline ID"):
+        call(server, "select_baseline", baseline_id="nonexistent")
+    with pytest.raises(ValueError, match="Unknown baseline ID"):
+        call(server, "delete_baseline", baseline_id="nonexistent")
+
+
+def test_mcp_calendar_workdays_and_holidays(access):
+    c, server = access
+    # 1. Set project workdays
+    wd_res = call(server, "set_project_workdays", workdays=[0, 1, 2, 3, 4, 5])
+    assert wd_res["changed"] and c.project.calendar.workdays == {0, 1, 2, 3, 4, 5}
+
+    # 2. Set holidays
+    h_res = call(server, "set_holidays", holidays=["2026-01-01", "2026-12-31"])
+    assert h_res["changed"]
+    from datetime import date
+    assert date(2026, 1, 1) in c.project.calendar.holidays
+    assert date(2026, 12, 31) in c.project.calendar.holidays
+
+    # 3. Invalid holiday format
+    with pytest.raises(ValueError, match="Invalid holiday date format"):
+        call(server, "set_holidays", holidays=["not-a-date"])
+
+
+def test_mcp_task_movement_and_relocation(access):
+    c, server = access
+    # 1. Move task
+    start_before = c.project.tasks["c"].start
+    move_res = call(server, "move_task", task_id="c", days=3)
+    assert move_res["changed"] and c.project.tasks["c"].start > start_before
+
+    # 2. Relocate task
+    reloc_res = call(server, "relocate_task", task_id="c", target_id="g", placement="inside")
+    assert reloc_res["changed"] and c.project.tasks["c"].parent == "g"
+
+    # 3. Unknown task / target
+    with pytest.raises(ValueError, match="Unknown task ID"):
+        call(server, "move_task", task_id="nonexistent", days=1)
+    with pytest.raises(ValueError, match="Unknown target task ID"):
+        call(server, "relocate_task", task_id="c", target_id="nonexistent", placement="before")
+
+
+def test_mcp_bulk_edit_tasks(access):
+    c, server = access
+    # 1. Bulk edit status, priority, color
+    res = call(server, "bulk_edit_tasks", task_ids=["a", "c"],
+               status="in_progress", priority="high", color="#123456")
+    assert res["changed"]
+    assert c.project.tasks["a"].status == "in_progress"
+    assert c.project.tasks["c"].status == "in_progress"
+    assert c.project.tasks["a"].priority == "high"
+    assert c.project.tasks["c"].priority == "high"
+    assert c.project.tasks["a"].color == "#123456"
+    assert c.project.tasks["c"].color == "#123456"
+
+    # 2. Single Undo undoes both
+    undone = call(server, "undo")
+    assert undone["changed"]
+    assert c.project.tasks["a"].color != "#123456"
+    assert c.project.tasks["c"].color != "#123456"
+
+    # 3. Validation: empty task_ids or unknown task ID
+    with pytest.raises(ValueError, match="No task IDs provided"):
+        call(server, "bulk_edit_tasks", task_ids=[])
+    with pytest.raises(ValueError, match="Unknown task ID"):
+        call(server, "bulk_edit_tasks", task_ids=["c", "nonexistent"])
 

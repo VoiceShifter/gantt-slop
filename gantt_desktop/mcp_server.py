@@ -8,7 +8,8 @@ import socket
 import threading
 import weakref
 from concurrent.futures import Future
-from datetime import datetime
+from copy import deepcopy
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
@@ -187,8 +188,21 @@ class McpServer(QObject):
 
     def snapshot(self, controller: Controller) -> dict:
         project = controller.project
+        from .critical_path import analyze
+        critical_info = None
+        try:
+            critical = analyze(project)
+            critical_info = {
+                "critical_tasks": sorted(critical.critical_tasks),
+                "critical_links": sorted(critical.critical_links),
+                "total_float": critical.total_float,
+                "finish": critical.finish.isoformat(timespec="minutes") if critical.finish else None,
+            }
+        except Exception as error:  # noqa: BLE001
+            critical_info = {"error": str(error)}
         return {"revision": self._revision, "project": project.to_dict(), "dirty": controller.dirty,
                 "spans": {key: [value.isoformat(timespec="minutes") for value in project.span(key)] for key in project.tasks},
+                "critical_path": critical_info,
                 "undo_label": controller._history[controller._history_index][0] if controller.canUndo else "",
                 "redo_label": controller._history[controller._history_index + 1][0] if controller.canRedo else ""}
 
@@ -196,7 +210,8 @@ class McpServer(QObject):
         project = controller.project
         result = {}
         task_id = args.get("task_id", "")
-        if operation in {"edit_task", "delete_task", "assign_resources", "set_assignee"} and task_id not in project.tasks:
+        if operation in {"edit_task", "delete_task", "assign_resources", "set_assignee",
+                         "set_custom_value", "move_task", "relocate_task"} and task_id not in project.tasks:
             raise ValueError("Unknown task ID.")
         if operation == "create_task":
             task_id = new_id()
@@ -240,6 +255,122 @@ class McpServer(QObject):
                 raise ValueError("Unknown dependency ID.")
             success = controller.edit("MCP · Удаление зависимости",
                                       lambda p: setattr(p, "dependencies", [link for link in p.dependencies if link.id != key]))
+        elif operation == "rename_project":
+            name = args["name"]
+            success = controller.edit("MCP · Название проекта", lambda p: setattr(p, "name", name))
+            result["name"] = name
+        elif operation == "save_resource":
+            resource_id = args.get("resource_id", "")
+            name = args["name"]
+            capacity = args.get("capacity", 8.0)
+            workdays = args.get("workdays", list(range(5)))
+            key = controller.saveResource(resource_id, name, str(capacity), workdays)
+            success = bool(key)
+            result["resource_id"] = key
+        elif operation == "delete_resource":
+            resource_id = args["resource_id"]
+            if resource_id not in project.resources:
+                raise ValueError("Unknown resource ID.")
+            success = controller.removeResource(resource_id)
+            result["resource_id"] = resource_id
+        elif operation == "save_custom_field":
+            field_id = args.get("field_id", "")
+            name = args["name"]
+            kind = args.get("kind", "text")
+            options = args.get("options", [])
+            aggregate = args.get("aggregate", "")
+            key = controller.saveCustomField(field_id, name, kind, options, aggregate)
+            success = bool(key)
+            result["field_id"] = key
+        elif operation == "delete_custom_field":
+            field_id = args["field_id"]
+            if field_id not in project.custom_fields:
+                raise ValueError("Unknown custom field ID.")
+            success = controller.removeCustomField(field_id)
+            result["field_id"] = field_id
+        elif operation == "set_custom_value":
+            field_id = args["field_id"]
+            if field_id not in project.custom_fields:
+                raise ValueError("Unknown custom field ID.")
+            success = controller.setCustomValue(task_id, field_id, args.get("value"))
+            result["field_id"] = field_id
+        elif operation == "create_baseline":
+            name = args["name"]
+            baseline_id = controller.createBaseline(name)
+            success = bool(baseline_id)
+            result["baseline_id"] = baseline_id
+        elif operation == "select_baseline":
+            baseline_id = args.get("baseline_id", "")
+            if baseline_id and baseline_id not in project.baselines:
+                raise ValueError("Unknown baseline ID.")
+            success = controller.selectBaseline(baseline_id)
+            result["baseline_id"] = baseline_id
+        elif operation == "delete_baseline":
+            baseline_id = args["baseline_id"]
+            if baseline_id not in project.baselines:
+                raise ValueError("Unknown baseline ID.")
+            success = controller.removeBaseline(baseline_id)
+            result["baseline_id"] = baseline_id
+        elif operation == "set_project_workdays":
+            workdays = args["workdays"]
+            success = controller.setProjectWorkdays(workdays)
+            result["workdays"] = sorted(workdays)
+        elif operation == "set_holidays":
+            raw_holidays = args["holidays"]
+            try:
+                parsed_holidays = {date.fromisoformat(h) for h in raw_holidays}
+            except ValueError as error:
+                raise ValueError(f"Invalid holiday date format: {error}") from error
+
+            def update_holidays(p: Project):
+                calendar = deepcopy(p.calendar)
+                calendar.holidays = parsed_holidays
+                p.set_calendar(calendar)
+
+            success = controller.edit("MCP · Праздники проекта", update_holidays)
+            result["holidays"] = sorted(h.isoformat() for h in parsed_holidays)
+        elif operation == "move_task":
+            days = args["days"]
+            success = controller.moveTask(task_id, days)
+        elif operation == "relocate_task":
+            target_id = args.get("target_id", "")
+            placement = args.get("placement", "after")
+            if target_id and target_id not in project.tasks:
+                raise ValueError("Unknown target task ID.")
+            success = controller.relocateRow(task_id, target_id, placement)
+            result["target_id"] = target_id
+            result["placement"] = placement
+        elif operation == "bulk_edit_tasks":
+            task_ids = args.get("task_ids", [])
+            if not task_ids:
+                raise ValueError("No task IDs provided for bulk edit.")
+            for tid in task_ids:
+                if tid not in project.tasks:
+                    raise ValueError(f"Unknown task ID: {tid}")
+            status = args.get("status", "")
+            priority = args.get("priority", "")
+            color = args.get("color", "")
+            has_assignee = "assignee" in args and args["assignee"] is not None
+            assignee_val = args.get("assignee", "")
+            has_resources = "resource_ids" in args and args["resource_ids"] is not None
+            resource_ids_val = args.get("resource_ids", [])
+
+            def apply_bulk(p: Project):
+                for tid in task_ids:
+                    t = p.tasks[tid]
+                    if status and t.kind != "group":
+                        t.set_status(status)
+                    if priority and t.kind != "group":
+                        t.priority = priority
+                    if color:
+                        t.color = color
+                    if has_assignee and t.kind != "group":
+                        p.assign_name(tid, assignee_val)
+                    elif has_resources and t.kind != "group":
+                        p.assign_resources(tid, list(resource_ids_val))
+
+            success = controller.edit("MCP · Массовое изменение задач", apply_bulk)
+            result["task_ids"] = task_ids
         elif operation in {"undo", "redo"}:
             if operation == "undo":
                 controller.undo()
@@ -250,6 +381,6 @@ class McpServer(QObject):
             raise ValueError("Unknown MCP operation.")
         if not success:
             raise ValueError(messages[-1] if messages else "Desktop rejected the change.")
-        if task_id:
+        if task_id and "task_id" not in result:
             result["task_id"] = task_id
         return result

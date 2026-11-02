@@ -15,6 +15,11 @@ Revision = Annotated[int, Field(strict=True, ge=0)]
 TaskField = Literal["name", "notes", "color", "parent", "deadline", "status", "priority",
                     "effort", "cost", "progress", "duration", "start", "end", "startTime", "endTime", "assignee"]
 Text = Annotated[str, Field(max_length=65536)]
+CustomFieldKind = Literal["text", "number", "date", "select", "checkbox", "color", "multi", "people", "labels"]
+CustomFieldAggregate = Literal["", "sum", "average"]
+PlacementKind = Literal["before", "after", "inside", "append"]
+Weekday = Annotated[int, Field(ge=0, le=6)]
+CapacityHours = Annotated[float, Field(ge=0.0, le=24.0)]
 
 
 def build_app(request, generation: int, token: str, port: int, allow_writes: bool):
@@ -38,7 +43,7 @@ def build_app(request, generation: int, token: str, port: int, allow_writes: boo
     async def get_project() -> Result:
         """Full native project, including hidden tasks, resources, calendars, baselines and notes.
 
-        Also returns revision, computed start/finish spans, dirty state and Undo/Redo labels.
+        Also returns revision, computed start/finish spans, critical_path, dirty state and Undo/Redo labels.
         Native task duration and dependency lag are working MINUTES; effort is HOURS.
         Dates are local ISO values, without timezone. No file-system path is returned.
         """
@@ -111,6 +116,106 @@ def build_app(request, generation: int, token: str, port: int, allow_writes: boo
         async def delete_dependency(expected_revision: Revision, dependency_id: str) -> Result:
             """Remove an existing dependency without pulling tasks back. Undoable."""
             return await call("delete_dependency", expected_revision=expected_revision, dependency_id=dependency_id)
+
+        @server.tool(annotations=write)
+        async def rename_project(expected_revision: Revision, name: Text) -> Result:
+            """Rename the open project. One Undo operation."""
+            return await call("rename_project", expected_revision=expected_revision, name=name)
+
+        @server.tool(annotations=write)
+        async def save_resource(expected_revision: Revision, name: Text,
+                                capacity: CapacityHours = 8.0,
+                                workdays: list[Weekday] | None = None,
+                                resource_id: str = "") -> Result:
+            """Create or update a project-local resource.
+
+            Daily capacity is in hours (0..24); workdays is a list of integers 0=Mon..6=Sun (default Mon–Fri).
+            Returns resource_id. One Undo operation.
+            """
+            days = [0, 1, 2, 3, 4] if workdays is None else workdays
+            return await call("save_resource", expected_revision=expected_revision, name=name,
+                              capacity=capacity, workdays=days, resource_id=resource_id)
+
+        @server.tool(annotations=write)
+        async def delete_resource(expected_revision: Revision, resource_id: str) -> Result:
+            """Remove a project resource and unassign it from tasks. One Undo operation."""
+            return await call("delete_resource", expected_revision=expected_revision, resource_id=resource_id)
+
+        @server.tool(annotations=write)
+        async def save_custom_field(expected_revision: Revision, name: Text,
+                                    kind: CustomFieldKind = "text",
+                                    options: list[Text] | None = None,
+                                    aggregate: CustomFieldAggregate = "",
+                                    field_id: str = "") -> Result:
+            """Create or update a custom field definition.
+
+            kind can be: text, number, date, select, checkbox, color, multi, people, labels.
+            aggregate can be: '' or 'sum' or 'average' for number fields.
+            Returns field_id. One Undo operation.
+            """
+            opts = [] if options is None else options
+            return await call("save_custom_field", expected_revision=expected_revision, name=name,
+                              kind=kind, options=opts, aggregate=aggregate, field_id=field_id)
+
+        @server.tool(annotations=write)
+        async def delete_custom_field(expected_revision: Revision, field_id: str) -> Result:
+            """Delete a custom field definition and clear its values from all tasks. One Undo operation."""
+            return await call("delete_custom_field", expected_revision=expected_revision, field_id=field_id)
+
+        @server.tool(annotations=write)
+        async def set_custom_value(expected_revision: Revision, task_id: str, field_id: str,
+                                   value: str | float | bool | list[str] | None = None) -> Result:
+            """Set or clear a task's custom field value according to the custom field type.
+
+            Pass null/empty string/empty list to clear. One Undo operation.
+            """
+            return await call("set_custom_value", expected_revision=expected_revision, task_id=task_id,
+                              field_id=field_id, value=value)
+
+        @server.tool(annotations=write)
+        async def create_baseline(expected_revision: Revision, name: Text) -> Result:
+            """Snapshot current task dates and spans as a named baseline. Returns baseline_id. One Undo operation."""
+            return await call("create_baseline", expected_revision=expected_revision, name=name)
+
+        @server.tool(annotations=write)
+        async def select_baseline(expected_revision: Revision, baseline_id: str = "") -> Result:
+            """Select an active baseline for variance tracking, or pass empty string to deactivate."""
+            return await call("select_baseline", expected_revision=expected_revision, baseline_id=baseline_id)
+
+        @server.tool(annotations=write)
+        async def delete_baseline(expected_revision: Revision, baseline_id: str) -> Result:
+            """Delete a baseline by ID. One Undo operation."""
+            return await call("delete_baseline", expected_revision=expected_revision, baseline_id=baseline_id)
+
+        @server.tool(annotations=write)
+        async def set_project_workdays(expected_revision: Revision, workdays: list[Weekday]) -> Result:
+            """Set project working days as integers 0..6 (e.g. [0,1,2,3,4] for Mon–Fri). One Undo operation."""
+            return await call("set_project_workdays", expected_revision=expected_revision, workdays=workdays)
+
+        @server.tool(annotations=write)
+        async def set_holidays(expected_revision: Revision, holidays: list[str]) -> Result:
+            """Set project calendar holidays as a list of ISO date strings (YYYY-MM-DD). One Undo operation."""
+            return await call("set_holidays", expected_revision=expected_revision, holidays=holidays)
+
+        @server.tool(annotations=write)
+        async def move_task(expected_revision: Revision, task_id: str, days: int) -> Result:
+            """Shift task start date by a signed integer number of days, propagating downstream dependencies."""
+            return await call("move_task", expected_revision=expected_revision, task_id=task_id, days=days)
+
+        @server.tool(annotations=write)
+        async def relocate_task(expected_revision: Revision, task_id: str, target_id: str = "",
+                                placement: PlacementKind = "after") -> Result:
+            """Move a task in the WBS before or after target_id, or inside/appended to group target_id (or root if empty)."""
+            return await call("relocate_task", expected_revision=expected_revision, task_id=task_id,
+                              target_id=target_id, placement=placement)
+
+        @server.tool(annotations=write)
+        async def bulk_edit_tasks(expected_revision: Revision, task_ids: list[str],
+                                  status: str = "", priority: str = "", color: str = "",
+                                  assignee: str = "", resource_ids: list[str] | None = None) -> Result:
+            """Apply changes to multiple tasks in a single document transaction and Undo step."""
+            return await call("bulk_edit_tasks", expected_revision=expected_revision, task_ids=task_ids,
+                              status=status, priority=priority, color=color, assignee=assignee, resource_ids=resource_ids)
 
         @server.tool(annotations=write)
         async def undo(expected_revision: Revision) -> Result:
