@@ -149,7 +149,7 @@ For isolated Linux GUI testing, install **Xvfb and xauth**, then use:
 
 The wrapper uses a private Xvfb display, Qt's offscreen platform and software rendering, without interacting with the physical desktop. The test fixtures also enforce offscreen Qt. The wrapper is for automation, not normal application use.
 
-The [0.19.1 Linux verification](docs/AUDIT.md) passed **1,156 tests**, including **63 additional audit-fix cases** and dedicated internationalization tests, plus Ruff and full-source Pyright. An independent wheel installation also passed **149 focused audit/MCP/native-UI/calendar tests**. Windows/macOS and live Gemini sessions remain unverified.
+The [0.19.1 Linux verification](docs/AUDIT.md) passed **1,157 tests**, including **63 additional audit-fix cases** and dedicated internationalization and dependency routing tests, plus Ruff and full-source Pyright. An independent wheel installation also passed **149 focused audit/MCP/native-UI/calendar tests**. Windows/macOS and live Gemini sessions remain unverified.
 
 ### Project structure
 

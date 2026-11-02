@@ -196,7 +196,7 @@ class McpServer(QObject):
         project = controller.project
         result = {}
         task_id = args.get("task_id", "")
-        if operation in {"edit_task", "delete_task", "assign_resources"} and task_id not in project.tasks:
+        if operation in {"edit_task", "delete_task", "assign_resources", "set_assignee"} and task_id not in project.tasks:
             raise ValueError("Unknown task ID.")
         if operation == "create_task":
             task_id = new_id()
@@ -215,6 +215,8 @@ class McpServer(QObject):
             success = controller.edit("MCP · Добавление задачи", add)
         elif operation == "edit_task":
             success = controller.editField(task_id, args["field"], args["value"])
+        elif operation == "set_assignee":
+            success = controller.editField(task_id, "assignee", args.get("assignee", ""))
         elif operation == "delete_task":
             if project.descendants(task_id) and not args["include_descendants"]:
                 raise ValueError("Deleting a nonempty group requires include_descendants=true.")

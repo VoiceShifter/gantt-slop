@@ -91,3 +91,26 @@ def test_releasing_between_rows_does_not_create_an_arrow(gui):
     end = target.mapToScene(QPointF(target.width() / 2, -3)).toPoint()
     drag(window, point(source), end)
     assert c.project.to_dict() == before and not c.canUndo
+
+
+def test_fs_arrow_between_adjacent_blocks_has_three_straight_lines(gui):
+    _c, window = gui
+    canvas = item(window, "chartCanvas")
+
+    def paths():
+        value = canvas.property("paths")
+        return value.toVariant() if hasattr(value, "toVariant") else value
+
+    # In sample_project, link-4 connects supplier (end 40) to supplier-control (start 42).
+    # Even when scale is small (gap < 24 px), it should use 3 straight lines (4 points).
+    wait_until(lambda: any(p["id"] == "link-4" for p in paths()))
+    path = next(p for p in paths() if p["id"] == "link-4")
+    # 4 points = 3 straight lines (start -> middle -> middle,ty -> end)
+    assert len(path["points"]) == 4
+    # Line 1: horizontal out of source
+    assert abs(path["points"][0][1] - path["points"][1][1]) < 0.001
+    # Line 2: vertical straight down/up
+    assert abs(path["points"][1][0] - path["points"][2][0]) < 0.001
+    # Line 3: horizontal into target
+    assert abs(path["points"][2][1] - path["points"][3][1]) < 0.001
+

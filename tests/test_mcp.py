@@ -98,6 +98,7 @@ def test_full_snapshot_is_detached_unfiltered_and_has_no_file_path(access, tmp_p
         ("startTime", "10:00"),
         ("endTime", "17:00"),
         ("parent", "empty"),
+        ("assignee", "Alice"),
     ],
 )
 def test_field_edits_use_one_desktop_history_transaction(access, field, value):
@@ -344,6 +345,7 @@ def test_real_sdk_handshake_tools_read_edit_undo_redo_and_qt_thread(online):
             "create_task",
             "edit_task",
             "delete_task",
+            "set_assignee",
             "assign_resources",
             "save_dependency",
             "delete_dependency",
@@ -742,3 +744,64 @@ def test_failed_native_load_keeps_current_http_access_and_success_revokes_it(
     accepted.write_text(json.dumps(Project("Accepted").to_dict()), encoding="utf-8")
     assert c.load_path(accepted)
     assert not server.active and server._thread is None and not server.token
+
+
+def test_set_assignee_mcp_tool_and_edit_task_assignee(access, online):
+    c, server = access
+    # 1. Test set_assignee tool
+    result = call(server, "set_assignee", task_id="c", assignee="Bob")
+    assert result["changed"] and result["task_id"] == "c"
+    assert c.project.tasks["c"].assignee == "Bob"
+    assert any(r.name == "Bob" for r in c.project.resources.values())
+
+    # Redundant set is no-op
+    no_change = call(server, "set_assignee", task_id="c", assignee="Bob")
+    assert not no_change["changed"]
+
+    # Clear assignee
+    cleared = call(server, "set_assignee", task_id="c", assignee="")
+    assert cleared["changed"]
+    assert c.project.tasks["c"].assignee == ""
+    assert c.project.tasks["c"].resource_ids == []
+
+    # Assigning to a group is rejected
+    with pytest.raises(ValueError, match="групп"):
+        call(server, "set_assignee", task_id="g", assignee="Bob")
+
+    # Unknown task is rejected
+    with pytest.raises(ValueError, match="Unknown task ID"):
+        call(server, "set_assignee", task_id="nonexistent", assignee="Bob")
+
+    # 2. Test via real HTTP client in online fixture
+    c_online, server_online = online
+
+    async def online_test(client):
+        state = (await client.call_tool("get_project")).structured_content
+        # Test set_assignee over HTTP
+        res = await client.call_tool(
+            "set_assignee",
+            {
+                "expected_revision": state["revision"],
+                "task_id": "c",
+                "assignee": "Charlie",
+            },
+        )
+        assert not res.is_error
+        assert c_online.project.tasks["c"].assignee == "Charlie"
+
+        # Test edit_task field="assignee" over HTTP
+        state2 = (await client.call_tool("get_project")).structured_content
+        res2 = await client.call_tool(
+            "edit_task",
+            {
+                "expected_revision": state2["revision"],
+                "task_id": "c",
+                "field": "assignee",
+                "value": "Dave",
+            },
+        )
+        assert not res2.is_error
+        assert c_online.project.tasks["c"].assignee == "Dave"
+
+    run_async(lambda: connect(server_online, online_test))
+

@@ -663,8 +663,8 @@ Item {
                             const ty=(link.targetRow+0.5)*view.rowHeight+(link.targetSummary?8.5:0)
                             const stubS=sx+(link.sourceFinish?12:-12), stubT=tx+(link.targetFinish?12:-12)
                             let points
-                            if (link.sourceFinish && !link.targetFinish && stubS <= stubT) {
-                                const middle=(stubS+stubT)/2
+                            if (link.sourceFinish && !link.targetFinish && sx < tx) {
+                                const middle=(sx+tx)/2
                                 points=[[sx,sy],[middle,sy],[middle,ty],[tx,ty]]
                             } else {
                                 const midY=sy+(ty>=sy?view.rowHeight/2:-view.rowHeight/2)

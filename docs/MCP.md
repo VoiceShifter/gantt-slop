@@ -63,7 +63,8 @@ In read-only mode, only `get_project` is advertised. To expose the other tools, 
 |---|---|
 | `get_project` | Detached full native project snapshot, revision, computed task/group/milestone start/finish spans, dirty state and Undo/Redo labels. Includes filtered/collapsed elements; no file-system path. |
 | `create_task` | Append a task, group or milestone under an existing group or at the root; returns its stable ID. |
-| `edit_task` | Edit one name/notes/color/parent/deadline/status/priority/effort/cost/progress/duration/start/end/time field using desktop validation and scheduling. |
+| `edit_task` | Edit one name/notes/color/parent/deadline/status/priority/effort/cost/progress/duration/start/end/time/assignee field using desktop validation and scheduling. |
+| `set_assignee` | Set or clear a task's assignee by resource name; automatically resolves or creates the project-local resource. |
 | `delete_task` | Delete an element and incident links. Nonempty groups require explicit `include_descendants=true`, including hidden descendants. |
 | `assign_resources` | Assign existing project resource IDs, or clear them. No invitations or implicit resource creation. Changed sets receive equal shares; unchanged sets retain their allocation. |
 | `save_dependency` | Create a dependency or update an existing ID; FS/SS/FF/SF and signed lag, with cycle validation and downstream scheduling. |
@@ -72,7 +73,7 @@ In read-only mode, only `get_project` is advertised. To expose the other tools, 
 
 Tool discovery supplies argument schemas and descriptions. Use stable IDs from `get_project`, not row numbers. Use `spans` for computed summary dates/finishes rather than inferring them from stored task duration.
 
-**Units:** native snapshot task durations and dependency lags are working **minutes**. `create_task.duration_minutes` and `save_dependency.lag_minutes` also use minutes. In contrast, `edit_task`'s numeric string values use working **hours** for `duration` and `effort`, 0–100 for progress, and a nonnegative amount for cost. All dates/times are local civil values, not UTC. Creation accepts a local ISO date/time with minute precision; groups/milestones require duration 0. Date edits use `YYYY-MM-DD`, time edits `HH:MM`; an empty deadline clears it. Nonzero seconds/microseconds and timezone-aware task times are rejected, including during native loading, not silently rounded.
+**Units:** native snapshot task durations and dependency lags are working **minutes**. `create_task.duration_minutes` and `save_dependency.lag_minutes` also use minutes. In contrast, `edit_task`'s numeric string values use working **hours** for `duration` and `effort`, 0–100 for progress, and a nonnegative amount for cost. All dates/times are local civil values, not UTC. Creation accepts a local ISO date/time with minute precision; groups/milestones require duration 0. Date edits use `YYYY-MM-DD`, time edits `HH:MM`; an empty deadline or assignee clears it. Nonzero seconds/microseconds and timezone-aware task times are rejected, including during native loading, not silently rounded.
 
 ## Transactions and concurrent use
 

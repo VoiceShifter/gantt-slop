@@ -477,9 +477,9 @@ class ExportDocument:
             start, end = points
             stub_s = start.x() + (12 if link.kind[0] == "F" else -12)
             stub_t = end.x() + (12 if link.kind[1] == "F" else -12)
-            middle = (stub_s+stub_t)/2
+            middle = (start.x() + end.x()) / 2
             route = [start, QPointF(middle, start.y()), QPointF(middle, end.y()), end]
-            if not (link.kind == "FS" and stub_s <= stub_t):
+            if not (link.kind == "FS" and start.x() < end.x()):
                 mid_y = start.y() + (15 if end.y() >= start.y() else -15)
                 route = [start, QPointF(stub_s, start.y()), QPointF(stub_s, mid_y), QPointF(stub_t, mid_y), QPointF(stub_t, end.y()), end]
             path = QPainterPath(start)

@@ -13,7 +13,7 @@ from starlette.responses import PlainTextResponse
 Result = dict[str, object]
 Revision = Annotated[int, Field(strict=True, ge=0)]
 TaskField = Literal["name", "notes", "color", "parent", "deadline", "status", "priority",
-                    "effort", "cost", "progress", "duration", "start", "end", "startTime", "endTime"]
+                    "effort", "cost", "progress", "duration", "start", "end", "startTime", "endTime", "assignee"]
 Text = Annotated[str, Field(max_length=65536)]
 
 
@@ -64,9 +64,18 @@ def build_app(request, generation: int, token: str, port: int, allow_writes: boo
             Numeric values are strings: duration/effort in HOURS, progress 0..100, cost >=0.
             start/end/deadline: YYYY-MM-DD (empty clears deadline); startTime/endTime: HH:MM.
             parent is a group ID or empty. status: open/in_progress/completed/closed;
-            priority: highest/high/medium/low/lowest; color: #RRGGBB. No type conversion.
+            priority: highest/high/medium/low/lowest; color: #RRGGBB; assignee: resource name or empty.
+            No type conversion.
             """
             return await call("edit_task", expected_revision=expected_revision, task_id=task_id, field=field, value=value)
+
+        @server.tool(annotations=write)
+        async def set_assignee(expected_revision: Revision, task_id: str, assignee: Text = "") -> Result:
+            """Set the assignee name on a task; empty string clears the assignment.
+
+            Automatically resolves or creates the project-local resource. One Undo operation.
+            """
+            return await call("set_assignee", expected_revision=expected_revision, task_id=task_id, assignee=assignee)
 
         @server.tool(annotations=write)
         async def delete_task(expected_revision: Revision, task_id: str, include_descendants: bool = False) -> Result:
