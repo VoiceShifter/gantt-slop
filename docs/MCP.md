@@ -65,11 +65,13 @@ Other MCP hosts can use the same endpoint and bearer header if they support **St
 
 ## Tools
 
-In read-only mode, only `get_project` is advertised. To expose the other tools, stop the server, explicitly check **Разрешить изменения проекта и Отмену/Повтор**, and enable again. Close the dialog before asking the client to edit.
+In read-only mode, `get_project`, `export_diagram`, and `export_data` (in-memory) are advertised. To expose write and file export tools, stop the server, explicitly check **Разрешить изменения проекта и Отмену/Повтор**, and enable again. Close the dialog before asking the client to edit.
 
 | Tool | Operation |
 |---|---|
 | `get_project` | Detached full native project snapshot, revision, computed task/group/milestone start/finish spans, `critical_path` analysis, dirty state and Undo/Redo labels. Includes filtered/collapsed elements; no file-system path. |
+| `export_diagram` | Export Gantt diagram to PNG or PDF with custom scale (`detailed_days`, `days`, `weeks`, `months`, `quarters`, `years`, or `pixels_per_day`), scope, content (`both`, `chart`, `table`), date ranges, critical path, baseline comparison, and bottom resource workload panel with tab selection (`hours`, `percent`, `tasks`). Returns base64 image/PDF data and/or writes to `file_path`. |
+| `export_data` | Export project data to CSV, Excel (`xlsx`), MS Project XML, or GanttPRO formats with selectable columns and scope. Returns text content or base64 data and/or writes to `file_path`. |
 | `create_task` | Append a task, group or milestone under an existing group or at the root; returns its stable ID. |
 | `edit_task` | Edit one name/notes/color/parent/deadline/status/priority/effort/cost/progress/duration/start/end/time/assignee field using desktop validation and scheduling. |
 | `set_assignee` | Set or clear a task's assignee by resource name; automatically resolves or creates the project-local resource. |
@@ -101,7 +103,7 @@ Tool discovery supplies argument schemas and descriptions. Use stable IDs from `
 
 - Read `get_project` and pass its integer `revision` as `expected_revision` on **every mutation**. Human edits, successful MCP changes and Undo/Redo advance the revision. A stale revision returns an actionable tool error without changing the project. Two clients cannot both change the same revision.
 - A successful ordinary mutation is one existing document-history transaction, including any propagated dates. Edits are validated on detached drafts; document/view preparation succeeds before history and revision changes are published. Rejected validation preserves the document, history and revision; no-ops do not dirty the document or add history. Editing several fields means several separate tool calls/Undo steps, not a hidden batch.
-- Edits are visible in the desktop and remain **unsaved** until the user saves normally. There is no MCP Save/Open/Import/Export or arbitrary file access.
+- Edits are visible in the desktop and remain **unsaved** until the user saves normally. Export tools (`export_diagram` and `export_data`) allow exporting diagram snapshots or tabular data in-memory or to specified paths when write permissions are granted. There is no automated document save or project import over MCP.
 - Reads and writes execute on the Qt thread. The HTTP worker never directly accesses the live document. Writes are refused while a modal editor, bulk draft, text edit or mouse gesture is active; finish the interaction first. Reads remain available.
 - Bridge requests cancelled before Qt delivery cannot apply later. Stop/project changes revoke queued requests, including requests from an earlier server generation. A client timeout or network disconnect alone does not guarantee server-side cancellation or rollback: **re-read before retrying**. There is no cross-process exactly-once promise.
 

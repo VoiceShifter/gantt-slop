@@ -363,6 +363,8 @@ def test_real_sdk_handshake_tools_read_edit_undo_redo_and_qt_thread(online):
             "move_task",
             "relocate_task",
             "bulk_edit_tasks",
+            "export_diagram",
+            "export_data",
             "undo",
             "redo",
         }
@@ -502,7 +504,7 @@ def test_readonly_tool_list_and_restart_revokes_old_token(online):
 
     async def journey(client):
         assert [tool.name for tool in (await client.list_tools()).tools] == [
-            "get_project"
+            "get_project", "export_diagram", "export_data"
         ]
         assert (await client.call_tool("undo", {"expected_revision": 0})).is_error
         assert not (await client.call_tool("get_project")).is_error
@@ -833,6 +835,33 @@ def test_mcp_critical_path_in_get_project(online):
     run_async(lambda: connect(server, journey))
 
 
+def test_real_sdk_export_tools(online):
+    _c, server = online
+
+    async def journey(client):
+        # 1. export_diagram over HTTP
+        diag_res = (await client.call_tool("export_diagram", {
+            "format": "png",
+            "time_scale": "days",
+            "workload": True,
+            "workload_mode": "percent",
+        })).structured_content
+        assert diag_res["format"] == "png"
+        assert diag_res["pixels_per_day"] == 26.0
+        assert diag_res["workload"] is True
+        assert diag_res["workload_mode"] == "percent"
+        assert diag_res["base64_data"] is not None
+
+        # 2. export_data over HTTP
+        data_res = (await client.call_tool("export_data", {
+            "format": "csv",
+        })).structured_content
+        assert data_res["format"] == "csv"
+        assert data_res["content"] is not None
+
+    run_async(lambda: connect(server, journey))
+
+
 def test_mcp_rename_project(access):
     c, server = access
     before = c.project.name
@@ -1100,4 +1129,109 @@ def test_regenerate_and_custom_persistent_token(qapp, tmp_path):
 
     server.stop()
     c.dialogs.dispose()
+
+
+def test_mcp_export_diagram_options(access, tmp_path):
+    import base64
+    _c, server = access
+
+    # 1. Default PNG export (base64 in-memory)
+    png_res = call(server, "export_diagram", format="png", time_scale="weeks")
+    assert png_res["format"] == "png"
+    assert png_res["file_path"] is None
+    assert png_res["width"] > 0 and png_res["height"] > 0
+    assert png_res["pixels_per_day"] == 10.0
+    assert png_res["base64_data"] is not None
+    raw_png = base64.b64decode(png_res["base64_data"])
+    assert raw_png.startswith(b"\x89PNG")
+
+    # 2. PDF export with paper and landscape
+    pdf_res = call(server, "export_diagram", format="pdf", paper="A4", landscape=True)
+    assert pdf_res["format"] == "pdf"
+    assert pdf_res["base64_data"] is not None
+    raw_pdf = base64.b64decode(pdf_res["base64_data"])
+    assert raw_pdf.startswith(b"%PDF")
+
+    # 3. Time scale variations
+    for scale, expected_ppd in [("detailed_days", 52.0), ("days", 26.0), ("months", 4.0), ("quarters", 2.0), ("years", 1.0)]:
+        res = call(server, "export_diagram", format="png", time_scale=scale)
+        assert res["pixels_per_day"] == expected_ppd
+
+    # 4. Custom pixels_per_day
+    res_ppd = call(server, "export_diagram", format="png", pixels_per_day=15.5)
+    assert res_ppd["pixels_per_day"] == 15.5
+
+    # 5. Workload toggle and modes (hours, percent, tasks)
+    for mode in ("hours", "percent", "tasks"):
+        res_wl = call(server, "export_diagram", format="png", workload=True, workload_mode=mode)
+        assert res_wl["workload"] is True
+        assert res_wl["workload_mode"] == mode
+        assert res_wl["base64_data"] is not None
+
+    # 6. File path export with allow_writes
+    out_file = tmp_path / "test_export.png"
+    file_res = call(server, "export_diagram", format="png", file_path=str(out_file))
+    assert file_res["file_path"] == str(out_file)
+    assert out_file.exists() and out_file.stat().st_size > 0
+    assert file_res["base64_data"] is None  # not included by default when saved to disk
+
+    # 7. File path export with include_base64=True
+    file_b64_res = call(server, "export_diagram", format="png", file_path=str(out_file), include_base64=True)
+    assert file_b64_res["base64_data"] is not None
+
+
+def test_mcp_export_data_options(access, tmp_path):
+    import base64
+    _c, server = access
+
+    # 1. CSV export (text content in-memory)
+    csv_res = call(server, "export_data", format="csv")
+    assert csv_res["format"] == "csv"
+    assert csv_res["file_path"] is None
+    assert csv_res["rows_exported"] > 0
+    assert "content" in csv_res and csv_res["content"] is not None
+    assert "№" in csv_res["content"] or "Задача" in csv_res["content"]
+
+    # 2. MS Project XML export
+    xml_res = call(server, "export_data", format="xml")
+    assert xml_res["format"] == "xml"
+    assert "<Project" in xml_res["content"]
+
+    # 3. GanttPRO CSV export
+    gp_res = call(server, "export_data", format="ganttpro_csv")
+    assert gp_res["format"] == "ganttpro_csv"
+    assert gp_res["content"] is not None
+
+    # 4. Excel (XLSX) binary export
+    xlsx_res = call(server, "export_data", format="xlsx")
+    assert xlsx_res["format"] == "xlsx"
+    assert xlsx_res["base64_data"] is not None
+    raw_xlsx = base64.b64decode(xlsx_res["base64_data"])
+    assert raw_xlsx.startswith(b"PK")  # ZIP container for xlsx
+
+    # 5. File path export
+    csv_file = tmp_path / "data.csv"
+    f_res = call(server, "export_data", format="csv", file_path=str(csv_file))
+    assert f_res["file_path"] == str(csv_file)
+    assert csv_file.exists() and csv_file.stat().st_size > 0
+
+
+def test_mcp_export_readonly_restrictions(qapp):
+    controller = Controller(filter_project())
+    server = McpServer(controller)
+    server.start(0, allow_writes=False)  # Read-only server
+    wait_until(lambda: server.running)
+    try:
+        # In-memory export allowed in read-only mode
+        res = call(server, "export_diagram", format="png")
+        assert res["base64_data"] is not None
+
+        # Saving to file prohibited in read-only mode
+        with pytest.raises(ValueError, match="requires allow_writes"):
+            call(server, "export_diagram", format="png", file_path="/tmp/should_fail.png")
+
+        with pytest.raises(ValueError, match="requires allow_writes"):
+            call(server, "export_data", format="csv", file_path="/tmp/should_fail.csv")
+    finally:
+        server.stop()
 

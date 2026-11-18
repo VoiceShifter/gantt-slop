@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import secrets
 import socket
@@ -10,6 +11,7 @@ import weakref
 from concurrent.futures import Future
 from copy import deepcopy
 from datetime import date, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal, Slot
@@ -232,6 +234,8 @@ class McpServer(QObject):
                 raise ValueError("The desktop is closed.")
             if operation == "get_project":
                 result = self.snapshot(controller)
+            elif operation in {"export_diagram", "export_data"}:
+                result = self.export(controller, operation, arguments)
             else:
                 if not self.allow_writes:
                     raise ValueError("Read-only MCP access.")
@@ -253,6 +257,143 @@ class McpServer(QObject):
             future.set_result(result)
         except Exception as error:  # noqa: BLE001 - forward failures across the Qt/async boundary
             future.set_exception(error)
+
+    def export(self, controller: Controller, operation: str, arguments: dict) -> dict:
+        from .exporting import (
+            ExportDocument,
+            ExportOptions,
+            ExportSource,
+            export_bytes,
+            export_file,
+        )
+
+        scale_map = {
+            "detailed_days": 52.0, "detailed-days": 52.0, "days_detailed": 52.0,
+            "days": 26.0, "day": 26.0, "weeks": 10.0, "week": 10.0,
+            "months": 4.0, "month": 4.0, "quarters": 2.0, "quarter": 2.0,
+            "years": 1.0, "year": 1.0,
+        }
+        file_path_str = str(arguments.get("file_path") or "").strip()
+        if file_path_str and not self.allow_writes:
+            raise ValueError("Writing export files to disk requires allow_writes permissions on the MCP server.")
+        target_path = Path(file_path_str).expanduser().resolve() if file_path_str else None
+        if target_path is not None:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        source = ExportSource.capture(controller)
+
+        if operation == "export_diagram":
+            format_ = arguments.get("format", "png")
+            content = arguments.get("content", "both")
+            time_scale = arguments.get("time_scale", "weeks")
+            ppd = float(arguments.get("pixels_per_day") or 0.0)
+            if ppd <= 0.0:
+                ppd = scale_map.get(time_scale, 10.0)
+            start_date_str = arguments.get("start_date") or ""
+            end_date_str = arguments.get("end_date") or ""
+            start_val = date.fromisoformat(start_date_str) if start_date_str else None
+            end_val = date.fromisoformat(end_date_str) if end_date_str else None
+
+            cols = arguments.get("columns")
+            if cols:
+                columns = tuple(cols)
+            elif content == "chart":
+                columns = ()
+            else:
+                columns = source.default_columns
+
+            options = ExportOptions(
+                format=format_,
+                scope=arguments.get("scope", "all"),
+                columns=columns,
+                content=content,
+                pixels_per_day=ppd,
+                start=start_val,
+                end=end_val,
+                paper=arguments.get("paper", "Full"),
+                landscape=arguments.get("landscape", True),
+                labels=arguments.get("task_labels", "inside"),
+                links=arguments.get("links", True),
+                today=arguments.get("today_marker", True),
+                workload=arguments.get("workload", False),
+                workload_mode=arguments.get("workload_mode", "hours"),
+                strike_closed=arguments.get("strike_closed", True),
+                fade_closed=arguments.get("fade_closed", True),
+                critical=arguments.get("critical_path", False),
+                baseline=arguments.get("baseline", False),
+            )
+            doc = ExportDocument(source, options)
+            file_size_bytes = 0
+            if target_path is not None:
+                export_file(target_path, doc)
+                file_size_bytes = target_path.stat().st_size
+            include_base64 = arguments.get("include_base64", False) or target_path is None
+            base64_data = None
+            if include_base64:
+                raw_bytes = export_bytes(doc)
+                if not file_size_bytes:
+                    file_size_bytes = len(raw_bytes)
+                base64_data = base64.b64encode(raw_bytes).decode("ascii")
+
+            return {
+                "format": format_,
+                "file_path": str(target_path) if target_path is not None else None,
+                "file_size_bytes": file_size_bytes,
+                "width": doc.width,
+                "height": doc.height,
+                "body_rows": doc.body_rows,
+                "start_date": doc.start.isoformat(),
+                "end_date": doc.end.isoformat(),
+                "time_scale": time_scale,
+                "pixels_per_day": doc.options.pixels_per_day,
+                "workload": doc.options.workload,
+                "workload_mode": doc.options.workload_mode if doc.options.workload else None,
+                "base64_data": base64_data,
+            }
+
+        elif operation == "export_data":
+            format_ = arguments.get("format", "csv")
+            cols = arguments.get("columns")
+            if cols:
+                columns = tuple(cols)
+            else:
+                columns = source.default_columns
+
+            options = ExportOptions(
+                format=format_,
+                scope=arguments.get("scope", "all"),
+                columns=columns,
+                content="table",
+                table_headers=arguments.get("table_headers", True),
+            )
+            doc = ExportDocument(source, options)
+            file_size_bytes = 0
+            if target_path is not None:
+                export_file(target_path, doc)
+                file_size_bytes = target_path.stat().st_size
+            include_content = arguments.get("include_content", True) or target_path is None
+            content_str = None
+            base64_data = None
+            if include_content:
+                raw_bytes = export_bytes(doc)
+                if not file_size_bytes:
+                    file_size_bytes = len(raw_bytes)
+                if format_ in {"csv", "xml", "ganttpro_csv"}:
+                    content_str = raw_bytes.decode("utf-8")
+                else:
+                    base64_data = base64.b64encode(raw_bytes).decode("ascii")
+
+            return {
+                "format": format_,
+                "file_path": str(target_path) if target_path is not None else None,
+                "file_size_bytes": file_size_bytes,
+                "rows_exported": len(doc.rows),
+                "columns": [c["key"] for c in doc.columns],
+                "content": content_str,
+                "base64_data": base64_data,
+            }
+
+        raise ValueError(f"Unknown export operation: {operation}")
 
     def snapshot(self, controller: Controller) -> dict:
         project = controller.project

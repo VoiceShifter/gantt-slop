@@ -71,6 +71,7 @@ class ExportOptions:
     links: bool = True
     today: bool = True
     workload: bool = False
+    workload_mode: str = "hours"
     strike_closed: bool = True
     fade_closed: bool = True
     critical: bool = False
@@ -85,6 +86,8 @@ class ExportOptions:
             raise ExportError("Некорректный формат или состав задач.")
         if self.content not in {"both", "table", "chart"} or self.labels not in {"inside", "right", "none"}:
             raise ExportError("Некорректные настройки отображения.")
+        if self.workload_mode not in {"hours", "percent", "tasks"}:
+            raise ExportError("Некорректный режим отображения нагрузки ресурсов.")
         if self.paper != "Full" and self.paper not in PAPERS:
             raise ExportError("Неизвестный размер бумаги.")
         if not math.isfinite(self.pixels_per_day) or not 1 <= self.pixels_per_day <= 100:
@@ -590,7 +593,13 @@ class ExportDocument:
         if first <= title_index < first + count:
             y = self.header + (title_index-first)*self.row_height
             painter.fillRect(QRectF(0, y, self.width, 30), QColor("#f8f8f8"))
-            self._text(painter, QRectF(0, y, self.width, 30), "Загрузка ресурсов · часы / доступность", bold=True)
+            mode_titles = {
+                "hours": "Загрузка ресурсов · часы / доступность",
+                "percent": "Загрузка ресурсов · процент",
+                "tasks": "Загрузка ресурсов · задачи",
+            }
+            title_text = mode_titles.get(self.options.workload_mode, "Загрузка ресурсов · часы / доступность")
+            self._text(painter, QRectF(0, y, self.width, 30), title_text, bold=True)
         for i, resource in enumerate(self.resources):
             index = title_index + 1 + i
             if not first <= index < first + count:
@@ -601,13 +610,27 @@ class ExportDocument:
                 days = resource["days"][offset:offset+length]
                 hours = sum(d["hours"] for d in days)
                 capacity = sum(d["capacity"] for d in days)
+                task_count = len({t["id"] for d in days for t in d.get("tasks", [])})
                 overloaded = any(d["overloaded"] for d in days)
                 weekend = any(d["weekendWork"] for d in days)
                 rect = QRectF(self.left+offset*self.options.pixels_per_day, y, length*self.options.pixels_per_day, 30)
-                if hours:
+                if hours or (self.options.workload_mode == "tasks" and task_count):
                     painter.fillRect(rect, QColor("#fceae8" if overloaded else "#fff4d9" if weekend else "#e6f7ec"))
-                self._text(painter, rect, f"{hours:g}/{capacity:g}", color="#b93d30" if overloaded else "#ad7a16" if weekend else "#129534",
-                           align=Qt.AlignmentFlag.AlignHCenter)
+                if self.options.workload_mode == "percent":
+                    if capacity > 0:
+                        pct = hours / capacity * 100
+                        text = f"{pct:.0f}%" if pct.is_integer() else f"{pct:.1f}%"
+                    elif hours > 0:
+                        text = "!"
+                    else:
+                        text = ""
+                elif self.options.workload_mode == "tasks":
+                    text = str(task_count) if task_count > 0 else ""
+                else:
+                    text = f"{hours:g}/{capacity:g}" if (hours or capacity) else ""
+                if text:
+                    self._text(painter, rect, text, color="#b93d30" if overloaded else "#ad7a16" if weekend else "#129534",
+                               align=Qt.AlignmentFlag.AlignHCenter)
             painter.setPen(QColor("#dfe4ea"))
             painter.drawRect(QRectF(0, y, self.left+chart_width, 30))
 
@@ -702,3 +725,16 @@ def export_file(path: Path, document: ExportDocument) -> None:
         else:
             write_csv(target, document)
     atomic_export(Path(path), write)
+
+
+def export_bytes(document: ExportDocument) -> bytes:
+    format_ = document.options.format
+    suffix = "." + ("csv" if format_ == "ganttpro_csv" else "xlsx" if format_ == "ganttpro_xlsx" else format_)
+    descriptor, temporary = tempfile.mkstemp(prefix=".gantt-export-bytes-", suffix=suffix)
+    os.close(descriptor)
+    temp_path = Path(temporary)
+    try:
+        export_file(temp_path, document)
+        return temp_path.read_bytes()
+    finally:
+        temp_path.unlink(missing_ok=True)

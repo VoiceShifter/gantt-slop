@@ -20,6 +20,14 @@ CustomFieldAggregate = Literal["", "sum", "average"]
 PlacementKind = Literal["before", "after", "inside", "append"]
 Weekday = Annotated[int, Field(ge=0, le=6)]
 CapacityHours = Annotated[float, Field(ge=0.0, le=24.0)]
+DiagramFormat = Literal["png", "pdf"]
+TimeScale = Literal["detailed_days", "days", "weeks", "months", "quarters", "years"]
+DiagramContent = Literal["both", "chart", "table"]
+DiagramScope = Literal["all", "visible"]
+WorkloadMode = Literal["hours", "percent", "tasks"]
+TaskLabels = Literal["inside", "right", "none"]
+DataFormat = Literal["csv", "xlsx", "xml", "ganttpro_csv", "ganttpro_xlsx"]
+PaperSize = Literal["Full", "A4", "A3", "A2", "A1", "A0", "Letter", "Legal", "Tabloid", "Ledger"]
 
 
 def build_app(request, generation: int, token: str, port: int, allow_writes: bool):
@@ -48,6 +56,69 @@ def build_app(request, generation: int, token: str, port: int, allow_writes: boo
         Dates are local ISO values, without timezone. No file-system path is returned.
         """
         return await call("get_project")
+
+    @server.tool(annotations=read)
+    async def export_diagram(
+        format: DiagramFormat = "png",
+        time_scale: TimeScale = "weeks",
+        pixels_per_day: float = 0.0,
+        scope: DiagramScope = "all",
+        content: DiagramContent = "both",
+        columns: list[str] | None = None,
+        start_date: str = "",
+        end_date: str = "",
+        workload: bool = False,
+        workload_mode: WorkloadMode = "hours",
+        critical_path: bool = False,
+        baseline: bool = False,
+        task_labels: TaskLabels = "inside",
+        links: bool = True,
+        today_marker: bool = True,
+        strike_closed: bool = True,
+        fade_closed: bool = True,
+        paper: PaperSize = "Full",
+        landscape: bool = True,
+        file_path: str = "",
+        include_base64: bool = False,
+    ) -> Result:
+        """Export the Gantt diagram to PNG or PDF with custom scale and options.
+
+        - time_scale: 'detailed_days' (52 ppd), 'days' (26 ppd), 'weeks' (10 ppd), 'months' (4 ppd), 'quarters' (2 ppd), 'years' (1 ppd).
+        - pixels_per_day: overrides time_scale if > 0 (1 to 100).
+        - workload: whether to display the resource workload panel at the bottom.
+        - workload_mode: 'hours' (hours/capacity), 'percent' (allocation %), or 'tasks' (concurrent task count).
+        - file_path: if set, saves the file to disk (requires allow_writes).
+        - Returns base64_data (if no file_path or include_base64=True) plus diagram dimensions and date spans.
+        """
+        return await call(
+            "export_diagram", format=format, time_scale=time_scale, pixels_per_day=pixels_per_day,
+            scope=scope, content=content, columns=columns, start_date=start_date, end_date=end_date,
+            workload=workload, workload_mode=workload_mode, critical_path=critical_path, baseline=baseline,
+            task_labels=task_labels, links=links, today_marker=today_marker,
+            strike_closed=strike_closed, fade_closed=fade_closed, paper=paper,
+            landscape=landscape, file_path=file_path, include_base64=include_base64,
+        )
+
+    @server.tool(annotations=read)
+    async def export_data(
+        format: DataFormat = "csv",
+        scope: DiagramScope = "all",
+        columns: list[str] | None = None,
+        table_headers: bool = True,
+        file_path: str = "",
+        include_content: bool = True,
+    ) -> Result:
+        """Export project tasks or data to CSV, Excel (XLSX), MS Project XML, or GanttPRO formats.
+
+        - format: 'csv', 'xlsx', 'xml', 'ganttpro_csv', or 'ganttpro_xlsx'.
+        - columns: list of field keys to export (e.g. ['wbs', 'name', 'assignee', 'effort', 'cost']).
+        - file_path: if set, saves the file to disk (requires allow_writes).
+        - Returns text content (for csv/xml/ganttpro_csv) or base64_data (for xlsx/ganttpro_xlsx).
+        """
+        return await call(
+            "export_data", format=format, scope=scope, columns=columns,
+            table_headers=table_headers, file_path=file_path, include_content=include_content,
+        )
 
     if allow_writes:
         @server.tool(annotations=write)
